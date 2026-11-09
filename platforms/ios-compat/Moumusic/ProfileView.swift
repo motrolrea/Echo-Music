@@ -221,34 +221,34 @@ struct ProfileView: View {
                         }
                     }
                     BeansCardGroup {
-                        VStack(alignment: .leading, spacing: 0) {
-                            HStack(alignment: .center, spacing: 12) {
-                                Image(systemName: "info.circle")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(Color.beansHighlight)
-                                    .frame(width: 24)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("原项目地址")
-                                        .font(BeansFont.appFont(14, .semibold))
-                                        .foregroundStyle(Color.beansLabel)
-                                    Button {
-                                        if let url = URL(string: "https://github.com/jiajia2222/Moumusic") {
-                                            UIApplication.shared.open(url)
-                                        }
-                                    } label: {
-                                        Text("GitHub：jiajia2222/Moumusic")
-                                            .font(BeansFont.appFont(11))
-                                            .foregroundStyle(Color.beansHighlight)
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(0.8)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                Spacer()
+                        HStack(alignment: .center, spacing: 12) {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(Color.beansHighlight)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("原项目地址")
+                                    .font(BeansFont.appFont(14, .semibold))
+                                    .foregroundStyle(Color.beansLabel)
+                                Text("https://github.com/jiajia2222/Moumusic")
+                                    .font(BeansFont.appFont(11))
+                                    .foregroundStyle(Color.beansComment)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
+                            Spacer()
+                            Button {
+                                UIPasteboard.general.string = "https://github.com/jiajia2222/Moumusic"
+                                BeansHaptics.tap()
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(Color.beansHighlight)
+                            }
+                            .buttonStyle(.plain)
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
                     }
                     profileVersionFooter
                 }

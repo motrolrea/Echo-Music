@@ -6,10 +6,11 @@ name: iOS unsigned IPAs
 on:
   workflow_dispatch:
   push:
-    branches: [refactor/beans-ui]
+    branches: [main]
     paths:
       - "platforms/ios/**"
       - "platforms/ios15/**"
+      - "platforms/ios-compat/**"
       - ".github/workflows/ios-build.yml"
       - ".github/scripts/**"
 
@@ -154,8 +155,7 @@ jobs:
   # (a failed or skipped build of one never changes what the other serves).
   publish-ios26:
     needs: [full]
-    # A commit whose message contains [compat-only] updates the compatibility channel only.
-    if: github.ref == 'refs/heads/refactor/beans-ui' && !contains(github.event.head_commit.message, '[compat-only]') && !contains(github.event.head_commit.message, '[no-publish]')
+    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[compat-only]') && !contains(github.event.head_commit.message, '[no-publish]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -178,7 +178,7 @@ jobs:
 
   publish-compat:
     needs: [compat]
-    if: github.ref == 'refs/heads/refactor/beans-ui' && !contains(github.event.head_commit.message, '[no-publish]')
+    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[no-publish]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
