@@ -391,11 +391,11 @@ struct ExploreView: View {
     }
 
     private var filteredOfficial: [LXPlaylistSummary] {
-        model.officialPlaylists.filter(matchesPlaylist)
+        model.officialPlaylists.filter { matchesPlaylist($0) }
     }
 
     private var filteredPlaylists: [LXPlaylistSummary] {
-        model.playlists.filter(matchesPlaylist)
+        model.playlists.filter { matchesPlaylist($0) }
     }
 
     private func matchesPlaylist(_ playlist: LXPlaylistSummary) -> Bool {

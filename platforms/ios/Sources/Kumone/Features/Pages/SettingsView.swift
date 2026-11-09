@@ -5,6 +5,22 @@ import AVFoundation
 import PhotosUI
 #endif
 
+/// `.toolbar(.hidden, for: .tabBar)` is iOS 16+. The compat target still builds for iOS 15.
+private struct SettingsTabBarHidden: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        if #available(iOS 16.0, *) {
+            content.toolbar(.hidden, for: .tabBar)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
+    }
+}
+
 struct SettingsView: View {
     @EnvironmentObject private var settings: SettingsManager
 #if os(iOS)
@@ -73,7 +89,7 @@ struct SettingsView: View {
                 .padding(.top, 2)
                 .onAppear { hideBottomChrome = true }
                 .onDisappear { hideBottomChrome = false }
-                .toolbar(.hidden, for: .tabBar)
+                .modifier(SettingsTabBarHidden())
 #if os(iOS)
             settingsNavigator
 #endif
