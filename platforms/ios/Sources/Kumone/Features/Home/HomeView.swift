@@ -385,8 +385,10 @@ struct HomeView: View {
                         // and pulls to refresh.
                         .frame(minHeight: proxy.size.height, alignment: .top)
                         .contentShape(Rectangle())
+                        .modifier(BeansScrollCollapseTracker())
                     }
                     .scrollBounceBehavior(.always)
+                    .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
                 }
             }
         }

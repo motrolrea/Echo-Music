@@ -46,8 +46,14 @@ struct MyProfileView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 10)
+            .modifier(BeansScrollCollapseTracker())
         }
+        .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
         .scrollIndicators(.hidden)
+        .onAppear {
+            // 「我的」页强制展开底栏
+            BottomBarCollapseStore.shared.expandByUser()
+        }
         .task {
             _ = await moumusicServer.start()
             await DeviceReporter.shared.reportHeartbeat()

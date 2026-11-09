@@ -294,7 +294,9 @@ struct ExploreView: View {
 
                 PlayerClearanceSpacer()
             }
+            .modifier(BeansScrollCollapseTracker())
         }
+        .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
         .refreshable { await model.refresh() }
         .navigationTitle("精选")
 #if os(iOS)

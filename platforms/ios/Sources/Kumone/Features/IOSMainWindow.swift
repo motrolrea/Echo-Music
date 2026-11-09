@@ -14,6 +14,7 @@ public struct IOSMainWindow: View {
     @StateObject private var startup = IOSStartupCoordinator.shared
     @StateObject private var backupStore = AppDataBackupManager.shared
     @ObservedObject private var deviceReporter = DeviceReporter.shared
+    @StateObject private var bottomCollapse = BottomBarCollapseStore.shared
     @AppStorage("moumusic.tabBarMinimize") private var tabBarMinimizes = true
     @AppStorage(AppAppearanceKeys.floatingEffects) private var floatingEffects = false
     @ObservedObject private var backgroundStore = BackgroundImageStore.shared
@@ -344,7 +345,7 @@ public struct IOSMainWindow: View {
             selectedPage
 
             VStack(spacing: 8) {
-                if player.hasCurrentTrack {
+                if player.hasCurrentTrack && !isBarCollapsed {
                     IOSMiniPlayerBar(presentation: .legacyOverlay)
                         .nowPlayingTransitionSource(in: nowPlayingTransition)
                         .padding(.horizontal, 12)
@@ -357,7 +358,13 @@ public struct IOSMainWindow: View {
             }
             .padding(.bottom, 6)
         }
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: bottomCollapse.isCollapsed)
         .animation(AppAnimation.standard, value: player.hasCurrentTrack)
+    }
+
+    /// 底栏折叠状态：「我的」页强制展开
+    private var isBarCollapsed: Bool {
+        bottomCollapse.isCollapsed && selectedTab != .profile
     }
 
     @ViewBuilder
@@ -457,6 +464,60 @@ extension IOSMainWindow {
 
 private enum NowPlayingTransitionID {
     static let surface = "now-playing-surface"
+}
+
+// MARK: - 底栏折叠追踪
+
+enum BeansScrollCollapse {
+    static let coordinateSpace = "beans.bottomBarScroll"
+    /// 内容向上滚过多少点后收起底栏
+    static let triggerOffset: CGFloat = 14
+}
+
+final class BottomBarCollapseStore: ObservableObject {
+    static let shared = BottomBarCollapseStore()
+
+    @Published private(set) var isCollapsed = false
+    /// 用户点小球手动展开后，滚回顶部前不再自动收起
+    private var userExpanded = false
+
+    func update(offset: CGFloat) {
+        let shouldCollapse = offset > BeansScrollCollapse.triggerOffset
+        if shouldCollapse {
+            guard !userExpanded else { return }
+        } else {
+            userExpanded = false
+        }
+        setCollapsed(shouldCollapse)
+    }
+
+    func expandByUser() {
+        userExpanded = true
+        setCollapsed(false)
+    }
+
+    private func setCollapsed(_ value: Bool) {
+        guard value != isCollapsed else { return }
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+            isCollapsed = value
+        }
+    }
+}
+
+/// 放在各页 ScrollView 内容上，读取滚动偏移并驱动底栏折叠
+struct BeansScrollCollapseTracker: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background {
+            GeometryReader { proxy in
+                let minY = proxy.frame(in: .named(BeansScrollCollapse.coordinateSpace)).minY
+                Color.clear
+                    .onAppear { BottomBarCollapseStore.shared.update(offset: -minY) }
+                    .onChange(of: minY) { value in
+                        BottomBarCollapseStore.shared.update(offset: -value)
+                    }
+            }
+        }
+    }
 }
 
 // MARK: - Mini player bar for iOS
