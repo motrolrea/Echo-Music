@@ -66,9 +66,11 @@ jobs:
       - name: Package IPA
         working-directory: platforms/ios/ios
         run: |
+          APP_NAME=$(grep -m1 '^PRODUCT_NAME' Config/Shared.xcconfig | sed -E 's/.*= *//')
+          echo "App binary: $APP_NAME"
           mkdir -p dist/Payload
-          cp -R build/Build/Products/Release-iphoneos/EchoMusic.app dist/Payload/EchoMusic.app
-          plutil -p dist/Payload/EchoMusic.app/Info.plist | grep -E "CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion"
+          cp -R build/Build/Products/Release-iphoneos/${APP_NAME}.app dist/Payload/${APP_NAME}.app
+          plutil -p dist/Payload/${APP_NAME}.app/Info.plist | grep -E "CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion"
           ditto -c -k --sequesterRsrc --keepParent dist/Payload dist/EchoMusic-full-ios26-unsigned.ipa
 
       - uses: actions/upload-artifact@v4
@@ -135,9 +137,11 @@ jobs:
       - name: Package IPA
         working-directory: platforms/ios/ios
         run: |
+          APP_NAME=$(grep -m1 '^PRODUCT_NAME' Config/Shared.xcconfig | sed -E 's/.*= *//')
+          echo "App binary: $APP_NAME"
           mkdir -p dist/Payload
-          cp -R build/Build/Products/Release-iphoneos/EchoMusic.app dist/Payload/EchoMusic.app
-          plutil -p dist/Payload/EchoMusic.app/Info.plist | grep -E "CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion"
+          cp -R build/Build/Products/Release-iphoneos/${APP_NAME}.app dist/Payload/${APP_NAME}.app
+          plutil -p dist/Payload/${APP_NAME}.app/Info.plist | grep -E "CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion"
           ditto -c -k --sequesterRsrc --keepParent dist/Payload dist/EchoMusic-compat-ios15-18-unsigned.ipa
 
       - uses: actions/upload-artifact@v4
