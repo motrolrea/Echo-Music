@@ -1,0 +1,200 @@
+name: iOS unsigned IPAs
+
+# Two unsigned IPAs. Never creates a release.
+#   full   : platforms/ios (Echo Music, iOS 26+, all features)
+#   compat : platforms/ios + platforms/ios15 (same sources, iOS 15-18)
+on:
+  workflow_dispatch:
+  push:
+    branches: [refactor/beans-ui]
+    paths:
+      - "platforms/ios/**"
+      - "platforms/ios15/**"
+      - ".github/workflows/ios-build.yml"
+      - ".github/scripts/**"
+
+permissions:
+  contents: read
+
+jobs:
+  full:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install XcodeGen
+        run: HOMEBREW_NO_REQUIRE_TAP_TRUST=1 brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: platforms/ios/ios
+        run: xcodegen generate
+
+      - name: Package Xcode project (ios26)
+        run: |
+          cat > platforms/ios/README-Xcode.txt <<'EOF'
+          Echo Music - Xcode project (iOS 26, all features)
+
+          1. Unzip, open  ios/KumoneIOS.xcodeproj  in Xcode 26 (macOS 26 or later).
+          2. Target KumoneIOS > Signing & Capabilities: choose your Team and a unique Bundle Identifier.
+          3. Pick your iPhone (or a simulator) and Run.
+          The Swift package  Sources/Kumone  (KumoneCore) is referenced by relative path: keep the folder layout.
+          To regenerate the project after editing  ios/project.yml : brew install xcodegen && cd ios && xcodegen generate
+          EOF
+          ditto -c -k --keepParent platforms/ios EchoMusic-xcode-ios26.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EchoMusic-xcode-ios26
+          path: EchoMusic-xcode-ios26.zip
+
+      - name: Build (unsigned)
+        working-directory: platforms/ios/ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project KumoneIOS.xcodeproj \
+            -scheme KumoneIOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= \
+            build 2>&1 | tee build.log | tail -n 400
+
+      - name: Package IPA
+        working-directory: platforms/ios/ios
+        run: |
+          mkdir -p dist/Payload
+          cp -R build/Build/Products/Release-iphoneos/EchoMusic.app dist/Payload/EchoMusic.app
+          plutil -p dist/Payload/EchoMusic.app/Info.plist | grep -E "CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion"
+          ditto -c -k --sequesterRsrc --keepParent dist/Payload dist/EchoMusic-full-ios26-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EchoMusic-full-ios26-unsigned
+          path: platforms/ios/ios/dist/EchoMusic-full-ios26-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-log-full-ios26
+          path: platforms/ios/ios/build.log
+
+  compat:
+    # iOS 15-18 build of the very same sources as the iOS 26 app: platforms/ios15 lowers the deployment
+    # target, adds the iOS 15 stand-ins and patches the few spots that need them (CI checkout only).
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Prepare iOS 15 tree
+        run: bash platforms/ios15/prepare.sh
+
+      - name: Install XcodeGen
+        run: HOMEBREW_NO_REQUIRE_TAP_TRUST=1 brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: platforms/ios/ios
+        run: xcodegen generate
+
+      - name: Package Xcode project (compat)
+        run: |
+          cat > platforms/ios/README-Xcode.txt <<'EOF'
+          Echo Music - Xcode project (iOS 15-18 compatibility build, already patched)
+
+          1. Unzip, open  ios/KumoneIOS.xcodeproj  in Xcode 26 (macOS 26 or later).
+          2. Target KumoneIOS > Signing & Capabilities: choose your Team and a unique Bundle Identifier.
+          3. Pick your iPhone (or a simulator) and Run.
+          The Swift package  Sources/Kumone  (KumoneCore) is referenced by relative path: keep the folder layout.
+          To regenerate the project after editing  ios/project.yml : brew install xcodegen && cd ios && xcodegen generate
+          EOF
+          ditto -c -k --keepParent platforms/ios EchoMusic-xcode-compat.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EchoMusic-xcode-compat
+          path: EchoMusic-xcode-compat.zip
+
+      - name: Build (unsigned)
+        working-directory: platforms/ios/ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project KumoneIOS.xcodeproj \
+            -scheme KumoneIOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= \
+            build 2>&1 | tee build.log | tail -n 400
+
+      - name: Package IPA
+        working-directory: platforms/ios/ios
+        run: |
+          mkdir -p dist/Payload
+          cp -R build/Build/Products/Release-iphoneos/EchoMusic.app dist/Payload/EchoMusic.app
+          plutil -p dist/Payload/EchoMusic.app/Info.plist | grep -E "CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion"
+          ditto -c -k --sequesterRsrc --keepParent dist/Payload dist/EchoMusic-compat-ios15-18-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EchoMusic-compat-ios15-18-unsigned
+          path: platforms/ios/ios/dist/EchoMusic-compat-ios15-18-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: build-log-compat-ios15-18
+          path: platforms/ios/ios/build.log
+
+  # Every successful build of a channel is uploaded to the update host; the two channels are independent
+  # (a failed or skipped build of one never changes what the other serves).
+  publish-ios26:
+    needs: [full]
+    # A commit whose message contains [compat-only] updates the compatibility channel only.
+    if: github.ref == 'refs/heads/refactor/beans-ui' && !contains(github.event.head_commit.message, '[compat-only]') && !contains(github.event.head_commit.message, '[no-publish]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: EchoMusic-full-ios26-unsigned
+          path: dl
+
+      - name: Upload iOS 26 channel
+        env:
+          IMGBED_TOKEN: ${{ secrets.IMGBED_TOKEN }}
+          CHANNEL: ios26
+          BUILD: ${{ github.run_number }}
+          IPA: dl/EchoMusic-full-ios26-unsigned.ipa
+        run: |
+          export VERSION="$(grep -m1 '^MARKETING_VERSION' platforms/ios/ios/Config/Shared.xcconfig | sed -E 's/.*= *//')"
+          export NOTES="$(git log -1 --pretty=%s)"
+          python3 .github/scripts/publish_update.py
+
+  publish-compat:
+    needs: [compat]
+    if: github.ref == 'refs/heads/refactor/beans-ui' && !contains(github.event.head_commit.message, '[no-publish]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: EchoMusic-compat-ios15-18-unsigned
+          path: dl
+
+      - name: Upload compatibility channel
+        env:
+          IMGBED_TOKEN: ${{ secrets.IMGBED_TOKEN }}
+          CHANNEL: compat
+          BUILD: ${{ github.run_number }}
+          IPA: dl/EchoMusic-compat-ios15-18-unsigned.ipa
+        run: |
+          export VERSION="$(grep -m1 '^MARKETING_VERSION' platforms/ios/ios/Config/Shared.xcconfig | sed -E 's/.*= *//')"
+          export NOTES="$(git log -1 --pretty=%s)"
+          python3 .github/scripts/publish_update.py

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f3f2ee" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0e1016" media="(prefers-color-scheme: dark)" />
+    <meta name="description" data-i18n-content="meta.homeDescription" content="Moumusic 的赞助者名单，与应用内赞助页面同步。" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://music.nadev.xyz/sponsors" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/site.css?v=20261002" />
+    <title>鸣谢名单｜Moumusic</title>
+  </head>  <body>
+      <header class="shell bar">
+        <a class="wordmark" href="/" aria-label="Moumusic"><span>Moumusic</span></a>
+        <nav aria-label="主导航" data-i18n-aria-label="profile.home">
+          <a href="/install" data-i18n="nav.install">安装教程</a>
+          <a href="/sponsors" aria-current="page" data-i18n="nav.credits">鸣谢</a>
+          <button class="language-toggle" id="language-toggle" type="button" aria-label="切换到 English">EN</button>
+          <button class="theme-toggle" id="theme-toggle" type="button" aria-label="切换到深色模式"><span class="theme-toggle__icon" aria-hidden="true">◐</span><span id="theme-toggle-label" data-i18n="theme.dark">深色</span></button>
+        </nav>
+      </header>
+    <main class="shell">
+      <section class="page-head" aria-labelledby="credits-title">
+        <div>
+          <h1 id="credits-title" data-i18n="c.title">鸣谢名单</h1>
+          <p data-i18n="c.lead">Moumusic 的每一次更新，都有这些人的一份。名单与应用内“赞助”页面同步。</p>
+        </div>
+        <div class="page-head__stats" aria-live="polite">
+          <strong id="stat-count">—</strong>
+          <span id="stat-latest"></span>
+          <span id="stat-total"></span>
+        </div>
+      </section>
+
+      <div class="filter">
+        <label class="sr-only" for="search" data-i18n="c.search">搜索名字</label>
+        <input id="search" type="search" autocomplete="off" placeholder="搜索名字" data-i18n-placeholder="c.search" />
+        <a class="btn btn--small" id="support-link" data-support-action href="#support" target="_blank" rel="noopener noreferrer"><span data-i18n="c.support">支持 Moumusic</span></a>
+      </div>
+
+      <div id="credits" aria-live="polite">
+        <div class="skeleton-row" aria-hidden="true"></div><div class="skeleton-row" aria-hidden="true"></div><div class="skeleton-row" aria-hidden="true"></div>
+      </div>
+      <div class="notice" id="state-box" hidden role="status">
+        <p id="state-text"></p>
+        <button class="btn btn--small" id="retry-button" type="button" hidden data-i18n="c.retry">重新加载</button>
+      </div>
+      <p class="sign-note" data-i18n="c.inApp">在应用内：我的 → 赞助与支持</p>
+    </main>
+      <footer class="shell foot">
+        <span data-i18n="f.note">Moumusic 是个人开发的开源项目。</span>
+        <span><a id="footer-support-link" data-support-action href="#support" target="_blank" rel="noopener noreferrer" data-i18n="footer.afdian">前往爱发电</a><a href="/sponsors" data-i18n="nav.credits">鸣谢</a><a href="https://github.com/jiajia2222/Moumusic" target="_blank" rel="noopener noreferrer" data-i18n="footer.github">GitHub 源码</a></span>
+      </footer>
+    <dialog class="support-dialog" id="afdian-payment-dialog" aria-labelledby="afdian-payment-title">
+      <div class="support-dialog__surface">
+        <button class="support-dialog__close" id="afdian-dialog-close" type="button" aria-label="关闭" data-i18n-aria-label="supportDialog.close">×</button>
+        <p class="dialog-kicker" data-i18n="supportDialog.kicker">支持 Moumusic</p>
+        <h2 id="afdian-payment-title" data-i18n="supportDialog.title">选择支持方案</h2>
+        <p class="support-dialog__intro" data-i18n="supportDialog.body">付款由爱发电官方页面安全处理。</p>
+        <div class="support-dialog__choices" role="group" aria-label="支持金额" data-i18n-aria-label="supportDialog.choicesLabel">
+          <button class="support-choice is-selected" id="afdian-plan-choice" type="button" data-i18n="supportDialog.planChoice">固定方案</button>
+          <button class="support-choice" id="afdian-custom-choice" type="button" data-i18n="supportDialog.customChoice">自选金额</button>
+        </div>
+        <p class="support-dialog__mode" id="afdian-payment-mode" data-i18n="supportDialog.planHint">选择固定方案，或切换到官方页面填写自选金额。</p>
+        <div class="support-dialog__frame-wrap">
+          <iframe id="afdian-payment-frame" title="爱发电支持方案" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="payment *"></iframe>
+        </div>
+        <p class="support-dialog__fallback"><span data-i18n="supportDialog.fallback">如果内嵌页面被浏览器拦截：</span> <a id="afdian-direct-link" href="https://ifdian.net/a/moumou2026/plan" target="_blank" rel="noopener noreferrer" data-i18n="supportDialog.openDirect">在新窗口打开爱发电</a></p>
+      </div>
+    </dialog>
+
+    <button class="chatway-fallback" id="chatway-fallback" type="button" hidden aria-controls="chatway-dialog">
+      <span class="chatway-fallback__dot" aria-hidden="true"></span>
+      <span data-i18n="chatway.fallbackButton">在线反馈</span>
+    </button>
+    <dialog class="chatway-dialog" id="chatway-dialog" aria-labelledby="chatway-dialog-title">
+      <div class="chatway-dialog__surface">
+        <button class="support-dialog__close" id="chatway-dialog-close" type="button" aria-label="关闭" data-i18n-aria-label="supportDialog.close">×</button>
+        <h2 id="chatway-dialog-title" data-i18n="chatway.title">联系支持</h2>
+        <div class="chatway-dialog__frame-wrap">
+          <iframe id="chatway-fallback-frame" title="在线反馈" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="microphone; camera"></iframe>
+        </div>
+        <p class="support-dialog__fallback"><a href="https://github.com/jiajia2222/Moumusic/issues/new/choose" target="_blank" rel="noopener noreferrer" data-i18n="chatway.issueLink">也可以提交 GitHub Issue</a></p>
+      </div>
+    </dialog>
+    <div id="site-config" hidden>__SITE_CONFIG__</div>
+    <script src="/i18n.js?v=20261002" defer></script>
+    <script src="/copy.js?v=20261002" defer></script>
+    <script src="/support.js?v=20261002" defer></script>
+    <script src="/chatway.js?v=20261002" defer></script>
+    <script src="/app.js?v=20261002" defer></script>
+    <script id="chatway" async="true" src="https://cdn.chatway.app/widget.js?id=__CHATWAY_SCRIPT_ID__&widget_id=__CHATWAY_WIDGET_ID__"></script>
+  </body>
+</html>
