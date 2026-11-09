@@ -757,6 +757,7 @@ struct SettingsView: View {
         }
     }
 
+    @ViewBuilder
     private func settingsGroup<Content: View>(
         _ title: String,
         @ViewBuilder content: () -> Content
