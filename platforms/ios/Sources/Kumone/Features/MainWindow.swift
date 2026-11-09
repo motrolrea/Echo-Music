@@ -202,6 +202,8 @@ struct ToastView: View {
             .font(.system(size: 12.5, weight: .medium))
             .padding(.horizontal, 16)
             .padding(.vertical, 9)
+            .frame(maxWidth: 280)
+            .fixedSize(horizontal: false, vertical: true)
             .compatGlass(in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
     }

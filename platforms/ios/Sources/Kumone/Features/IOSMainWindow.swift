@@ -16,6 +16,7 @@ public struct IOSMainWindow: View {
     @ObservedObject private var deviceReporter = DeviceReporter.shared
     @StateObject private var bottomCollapse = BottomBarCollapseStore.shared
     @AppStorage("moumusic.tabBarMinimize") private var tabBarMinimizes = true
+    @AppStorage("moumusic.hideBottomChrome") private var hideBottomChrome = false
     @AppStorage(AppAppearanceKeys.floatingEffects) private var floatingEffects = false
     @ObservedObject private var backgroundStore = BackgroundImageStore.shared
     @ObservedObject private var dynamicWallpaper = DynamicWallpaperStore.shared
@@ -64,6 +65,10 @@ public struct IOSMainWindow: View {
                 selectedTab = .profile
                 profilePath = NavigationPath()
                 profilePath.append(Destination.accountSync)
+            })
+            .environment(\.openProfile, {
+                selectedTab = .profile
+                profilePath = NavigationPath()
             })
             .task {
                 backupStore.startAutomaticBackup()
@@ -118,13 +123,6 @@ public struct IOSMainWindow: View {
                 IOSUpdateLogSheet()
             }
             .task { QualitySupport.normalizeSelection() }
-            .overlay {
-                if !startup.isReady {
-                    IOSStartupSplashView(coordinator: startup)
-                        .transition(.opacity)
-                        .zIndex(100)
-                }
-            }
             .overlay(alignment: .top) {
                 // On modern iOS the now-playing page is a full-screen cover.
                 // Its host overlay is underneath that cover, so render the
@@ -133,6 +131,7 @@ public struct IOSMainWindow: View {
                     ToastView(toast: toast)
                         .transition(.move(edge: .top).combined(with: .opacity))
                         .padding(.top, 8)
+                        .padding(.horizontal, 56)
                 }
             }
             // The duration-based spring overload is iOS 17+. Use the
@@ -313,11 +312,11 @@ public struct IOSMainWindow: View {
     @available(iOS 26.0, *)
     private var iOS26TabInterface: some View {
         iOS26TabView
-            .tabBarMinimizeBehavior(tabBarMinimizes ? .onScrollDown : .never)
+            .tabBarMinimizeBehavior(.never)
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
-                isActive: player.hasCurrentTrack,
+                isActive: player.hasCurrentTrack && !hideBottomChrome,
                 transitionNamespace: nowPlayingTransition,
                 colorScheme: resolvedColorScheme
             ))
@@ -331,7 +330,7 @@ public struct IOSMainWindow: View {
                 tabStack(.home) { HomeView() }
             }
 
-            Tab("发现", systemImage: "square.grid.2x2", value: .explore) {
+            Tab("精选", systemImage: "square.grid.2x2", value: .explore) {
                 tabStack(.explore) { ExploreView() }
             }
 
@@ -363,14 +362,16 @@ public struct IOSMainWindow: View {
 
             legacyBottomBar
         }
-        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: bottomCollapse.isCollapsed)
+        .animation(.easeInOut(duration: 0.26), value: bottomCollapse.isCollapsed)
         .animation(AppAnimation.standard, value: player.hasCurrentTrack)
     }
 
     /// 胶囊底栏 + 迷你播放器 dock；滚动折叠后收成「当前页小球 + 迷你播放器 + 独立搜索小球」
     @ViewBuilder
     private var legacyBottomBar: some View {
-        if isBarCollapsed {
+        if hideBottomChrome {
+            EmptyView()
+        } else if isBarCollapsed {
             HStack(spacing: 10) {
                 collapsedTabBall
 
@@ -382,7 +383,7 @@ public struct IOSMainWindow: View {
                     Spacer(minLength: 0)
                 }
 
-                searchBall(size: 50)
+                searchBall(size: 52)
             }
             .frame(maxWidth: 560)
             .padding(.horizontal, 18)
@@ -400,7 +401,7 @@ public struct IOSMainWindow: View {
                     GlassTabBar(items: Self.tabItems, selection: $selectedTab) { tab in
                         popToRoot(tab)
                     }
-                    searchBall(size: 56)
+                    searchBall(size: 52)
                         .padding(.trailing, 12)
                 }
             }
@@ -417,10 +418,12 @@ public struct IOSMainWindow: View {
             Image(systemName: currentTabIcon)
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(.primary.opacity(0.9))
-                .frame(width: 50, height: 50)
+                .frame(width: 52, height: 52)
                 .mouMaterialBackground(.regularMaterial, in: Circle())
+                .clipShape(Circle())
+                .compositingGroup()
                 .overlay { Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5) }
-                .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+                .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(currentTabTitle)
@@ -437,8 +440,11 @@ public struct IOSMainWindow: View {
                 .foregroundStyle(.primary.opacity(0.85))
                 .frame(width: size, height: size)
                 .mouMaterialBackground(.regularMaterial, in: Circle())
+                .clipShape(Circle())
+                .contentShape(Circle())
+                .compositingGroup()
                 .overlay { Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5) }
-                .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+                .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("搜索")
@@ -545,7 +551,7 @@ enum IOSTab: Hashable {
 extension IOSMainWindow {
     static let tabItems: [GlassTabBar.Item] = [
         .init(tab: .home, title: "推荐", icon: "house"),
-        .init(tab: .explore, title: "发现", icon: "square.grid.2x2"),
+        .init(tab: .explore, title: "精选", icon: "square.grid.2x2"),
         .init(tab: .playlists, title: "歌单", icon: "music.note.list"),
         .init(tab: .profile, title: "我的", icon: "person.crop.circle"),
     ]
@@ -758,6 +764,19 @@ struct IOSMiniPlayerBar: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// 迷你播放器第二行：默认歌词，可在设置里改回歌手。
+    private var miniPlayerSecondLine: String {
+        let mode = UserDefaults.standard.string(forKey: "moumusic.miniPlayerSecondLine") ?? "lyric"
+        if mode != "artist",
+           let lyrics = player.lyrics,
+           let index = lyrics.activeIndex(at: player.progress + SettingsManager.shared.effectiveLyricsOffset),
+           lyrics.lines.indices.contains(index) {
+            let text = lyrics.lines[index].text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty { return text }
+        }
+        return player.currentTrack?.artistNames ?? ""
+    }
+
     private var trackSummary: some View {
         HStack(alignment: .top, spacing: 8) {
             CachedAsyncImage(url: player.currentTrack?.album.picUrl?.resizedImageURL(128))
@@ -774,7 +793,7 @@ struct IOSMiniPlayerBar: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Text(player.currentTrack?.artistNames ?? "")
+                Text(miniPlayerSecondLine)
                     .font(artistFont)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

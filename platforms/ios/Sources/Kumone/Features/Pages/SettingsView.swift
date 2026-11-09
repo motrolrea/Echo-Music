@@ -59,12 +59,21 @@ struct SettingsView: View {
         nonmutating set { collapsedStorage = newValue.sorted().joined(separator: "|") }
     }
 
+    @AppStorage("moumusic.hideBottomChrome") private var hideBottomChrome = false
+    @AppStorage("moumusic.miniPlayerSecondLine") private var miniPlayerSecondLine = "lyric"
     @State private var settingsQuery = ""
     @State private var settingsPage: SettingsCategory?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+            Text("设置")
+                .font(.title3.weight(.bold))
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 2)
+                .onAppear { hideBottomChrome = true }
+                .onDisappear { hideBottomChrome = false }
+                .toolbar(.hidden, for: .tabBar)
 #if os(iOS)
             settingsNavigator
 #endif
@@ -377,6 +386,10 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                Picker("迷你播放器第二行", selection: $miniPlayerSecondLine) {
+                    Text("歌词").tag("lyric")
+                    Text("歌手").tag("artist")
+                }
 
                 Picker("歌词样式", selection: $settings.lyricsDisplayStyle) {
                     ForEach(LyricsDisplayStyle.allCases) { style in
@@ -706,7 +719,28 @@ struct SettingsView: View {
 #endif
     }
 
-    @ViewBuilder
+    private func settingsIcon(for title: String) -> String {
+        switch title {
+        case "音源与音质": return "waveform"
+        case "播放设置": return "play.circle"
+        case "哔哩哔哩": return "play.rectangle.fill"
+        case "LX 音源": return "square.and.arrow.down"
+        case "主题模式": return "circle.lefthalf.filled"
+        case "播放器模式": return "slider.horizontal.3"
+        case "动态壁纸": return "photo"
+        case "播放器氛围": return "sparkles"
+        case "图片背景": return "photo.on.rectangle"
+        case "歌词显示": return "quote.bubble"
+        case "存储与下载": return "internaldrive"
+        case "数据备份与恢复": return "arrow.triangle.2.circlepath"
+        case "界面与颜色": return "paintpalette"
+        case "显示与性能": return "speedometer"
+        case "关于": return "info.circle"
+        case "开发者", "开发者工具": return "hammer"
+        default: return "gearshape"
+        }
+    }
+
     private func settingsGroup<Content: View>(
         _ title: String,
         @ViewBuilder content: () -> Content
@@ -724,7 +758,7 @@ struct SettingsView: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Text(title)
+                    Label(title, systemImage: settingsIcon(for: title))
                         .font(.headline.weight(.semibold))
                     Spacer(minLength: 0)
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")

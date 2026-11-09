@@ -40,7 +40,6 @@ struct MyProfileView: View {
                 accountSourcesCard
                 listeningCard
                 quickLinks
-                appearanceCard
                 originalProjectCard
                 PlayerClearanceSpacer()
             }
@@ -226,6 +225,18 @@ struct MyProfileView: View {
                     }
                     .frame(width: 54, height: 54)
                     .clipShape(Circle())
+                    .padding(2)
+                    .background { Circle().fill(.ultraThinMaterial) }
+                    .overlay {
+                        Circle().strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.78), .white.opacity(0.18)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 1.2
+                        )
+                    }
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(appearance.nickname.trimmingCharacters(in: .whitespaces).isEmpty ? (account.profile?.nickname ?? "Echo Music 用户") : appearance.nickname)
@@ -533,12 +544,12 @@ struct MyProfileView: View {
     }
 
     private var accountSourcesCard: some View {
-        MouGlassCard(padding: 10) {
-            VStack(alignment: .leading, spacing: 0) {
+        MouGlassCard(padding: 16) {
+            VStack(alignment: .leading, spacing: 8) {
                 Label("账号音源与同步", systemImage: "person.2.wave.2")
                     .font(.headline.weight(.semibold))
-                    .padding(.horizontal, 6)
-                    .padding(.bottom, 6)
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 4)
 
                 accountSourceRow(
                     title: "网易云音乐",

@@ -402,7 +402,15 @@ struct HomeView: View {
                             Button {
                                 selectHomePlatform(platform)
                             } label: {
-                                Label(platform.displayName, systemImage: platformMenuIcon(platform))
+                                HStack(spacing: 8) {
+                                    PlatformGlyph(platform: platform)
+                                        .frame(width: 22, height: 22)
+                                        .clipShape(Circle())
+                                    Text(platform.displayName)
+                                    if isHomePlatform(platform) {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
                             }
                         }
                     }
@@ -438,11 +446,7 @@ struct HomeView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink(value: Destination.recents) {
-                    Image(systemName: "clock.arrow.circlepath")
-                }
-                .accessibilityLabel("最近播放")
-                .accessibilityHint("打开最近播放的歌曲列表")
+                EchoAvatarButton()
             }
         }
         #endif
@@ -616,7 +620,7 @@ struct HomeView: View {
         .accessibilityLabel("公告：Echo Music QQ 群 945130957，欢迎加入交流群，反馈问题和获取更新通知")
     }
     private var lxLoadedBody: some View {
-        LazyVStack(alignment: .leading, spacing: 22) {
+        LazyVStack(alignment: .leading, spacing: 10) {
 #if os(macOS)
             homePlatformPicker
 #endif
@@ -667,7 +671,7 @@ struct HomeView: View {
             }
             PlayerClearanceSpacer()
         }
-        .padding(.vertical, Theme.Layout.contentInset - 8)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -1066,9 +1070,14 @@ struct HomePlatformBadge: View {
     let platform: LXCatalogPlatform
 
     var body: some View {
-        // Vector platform mark; the system toolbar supplies the liquid-glass button.
         PlatformGlyph(platform: platform)
-            .frame(width: 26, height: 26)
+            .frame(width: 28, height: 28)
+            .clipShape(Circle())
+            .padding(2)
+            .background { Circle().fill(.ultraThinMaterial) }
+            .overlay {
+                Circle().strokeBorder(.white.opacity(0.45), lineWidth: 1)
+            }
     }
 
     private var iconName: String {

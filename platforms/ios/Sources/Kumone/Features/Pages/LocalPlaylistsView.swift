@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct LocalPlaylistsView: View {
     @StateObject private var store = LocalPlaylistStore.shared
     @EnvironmentObject private var account: AccountStore
+    @EnvironmentObject private var settings: SettingsManager
     @State private var showImport = false
     @State private var showCreate = false
     @State private var newName = ""
@@ -11,6 +12,10 @@ struct LocalPlaylistsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
+                NavigationLink(value: Destination.recents) {
+                    recentPlaysRow
+                }
+                .buttonStyle(.plain)
                 NavigationLink(value: Destination.likedSongs) {
                     likedSongsRow
                 }
@@ -75,17 +80,38 @@ struct LocalPlaylistsView: View {
         }
         .navigationTitle("本地歌单")
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    showImport = true
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
+                    Section("切换平台") {
+                        ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }) { platform in
+                            Button {
+                                settings.homeRecommendationMode = platform == .wy ? .netease : .lx
+                                settings.homeRecommendationPlatform = platform
+                            } label: {
+                                HStack(spacing: 8) {
+                                    PlatformGlyph(platform: platform)
+                                        .frame(width: 22, height: 22)
+                                        .clipShape(Circle())
+                                    Text(platform.displayName)
+                                }
+                            }
+                        }
+                    }
                 } label: {
-                    Label("导入歌单", systemImage: "square.and.arrow.down")
+                    HomePlatformBadge(
+                        platform: settings.homeRecommendationMode == .netease ? .wy : settings.homeRecommendationPlatform
+                    )
                 }
-                Button {
-                    showCreate = true
-                } label: {
-                    Label("新建歌单", systemImage: "plus")
-                }
+                .accessibilityLabel("切换平台")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                EchoPlaylistActions(
+                    onImport: { showImport = true },
+                    onCreate: { showCreate = true }
+                )
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                EchoAvatarButton()
             }
         }
         .sheet(isPresented: $showImport) {
@@ -99,6 +125,41 @@ struct LocalPlaylistsView: View {
             }
             Button("取消", role: .cancel) { newName = "" }
         }
+    }
+
+    private var recentPlaysRow: some View {
+        HStack(spacing: 14) {
+            Image(systemName: "clock.fill")
+                .font(.system(size: 25, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 68, height: 68)
+                .background(
+                    LinearGradient(
+                        colors: [Color.blue.opacity(0.85), Color.cyan.opacity(0.7)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+            VStack(alignment: .leading, spacing: 5) {
+                Text("最近播放")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text("播放过的歌曲")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(12)
+        .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, Theme.Layout.contentInset)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("最近播放")
     }
 
     private var likedSongsRow: some View {

@@ -4,10 +4,19 @@ private struct OpenLoginKey: EnvironmentKey {
     static let defaultValue: () -> Void = {}
 }
 
+private struct OpenProfileKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
+}
+
 extension EnvironmentValues {
     var openLogin: () -> Void {
         get { self[OpenLoginKey.self] }
         set { self[OpenLoginKey.self] = newValue }
+    }
+
+    var openProfile: () -> Void {
+        get { self[OpenProfileKey.self] }
+        set { self[OpenProfileKey.self] = newValue }
     }
 }
 

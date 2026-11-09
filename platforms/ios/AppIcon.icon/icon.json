@@ -4,15 +4,8 @@
     {
       "layers" : [
         {
-          "image-name" : "ChatGPT Image Aug 16, 2026, 03_05_19 AM.png",
-          "name" : "ChatGPT Image Aug 16, 2026, 03_05_19 AM",
-          "position" : {
-            "scale" : 1.4,
-            "translation-in-points" : [
-              0,
-              34.15625
-            ]
-          }
+          "image-name" : "AppIcon.png",
+          "name" : "AppIcon"
         }
       ],
       "shadow" : {
@@ -20,7 +13,7 @@
         "opacity" : 0.5
       },
       "translucency" : {
-        "enabled" : true,
+        "enabled" : false,
         "value" : 0.5
       }
     }

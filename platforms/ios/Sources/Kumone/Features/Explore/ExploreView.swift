@@ -216,6 +216,7 @@ final class ExploreViewModel: ObservableObject {
 struct ExploreView: View {
     @StateObject private var model = ExploreViewModel.shared
     @EnvironmentObject private var settings: SettingsManager
+    @State private var playlistQuery = ""
 #if os(iOS)
     @EnvironmentObject private var bilibili: BilibiliSessionStore
     @State private var showBilibili = false
@@ -239,9 +240,9 @@ struct ExploreView: View {
                     }
                     .frame(minHeight: 300)
                 } else {
-                    if !model.officialPlaylists.isEmpty {
+                    if !filteredOfficial.isEmpty {
                         Shelf(title: "官方推荐歌单", rowHeight: Theme.Layout.coverShelfHeight) {
-                            ForEach(model.officialPlaylists.prefix(12)) { playlist in
+                            ForEach(filteredOfficial.prefix(12)) { playlist in
                                 NavigationLink(value: Destination.lxPlaylist(source: playlist.source, id: playlist.id)) {
                                     CoverCardBody(
                                         coverURL: playlist.coverURL?.resizedImageURL(384),
@@ -255,15 +256,22 @@ struct ExploreView: View {
                         }
                     }
 
-                    if !model.tracks.isEmpty {
+                    if playlistQueryTrimmed.isEmpty, !model.tracks.isEmpty {
                         SectionHeader(title: "\(model.platform.displayName) 热门歌曲")
                             .padding(.horizontal, Theme.Layout.contentInset)
                         TrackListView(tracks: model.tracks)
                             .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }
 
+                    if !playlistQueryTrimmed.isEmpty, filteredOfficial.isEmpty, filteredPlaylists.isEmpty {
+                        Text("没有匹配的歌单")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 120)
+                    }
+
                     CardGrid {
-                        ForEach(Array(model.playlists.enumerated()), id: \.element.id) { index, playlist in
+                        ForEach(Array(filteredPlaylists.enumerated()), id: \.element.id) { index, playlist in
                             NavigationLink(value: Destination.lxPlaylist(source: playlist.source, id: playlist.id)) {
                                 CoverCardBody(
                                     coverURL: playlist.coverURL?.resizedImageURL(384),
@@ -298,21 +306,26 @@ struct ExploreView: View {
         }
         .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
         .refreshable { await model.refresh() }
-        .navigationTitle("精选")
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
 #if os(iOS)
-        // Same liquid-glass platform switch as the home page (top-left).
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
-                    Section("发现平台") {
+                    Section("切换平台") {
                         ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }) { platform in
                             Button {
-                                model.selectPlatform(platform)
+                                settings.homeRecommendationMode = platform == .wy ? .netease : .lx
+                                settings.homeRecommendationPlatform = platform
                             } label: {
-                                if model.platform == platform {
-                                    Label(platform.displayName, systemImage: "checkmark")
-                                } else {
+                                HStack(spacing: 8) {
+                                    PlatformGlyph(platform: platform)
+                                        .frame(width: 22, height: 22)
+                                        .clipShape(Circle())
                                     Text(platform.displayName)
+                                    if barPlatform == platform {
+                                        Image(systemName: "checkmark")
+                                    }
                                 }
                             }
                         }
@@ -323,9 +336,30 @@ struct ExploreView: View {
                         }
                     }
                 } label: {
-                    HomePlatformBadge(platform: model.platform)
+                    HomePlatformBadge(platform: barPlatform)
                 }
-                .accessibilityLabel("当前发现平台：\(model.platform.displayName)，点击切换")
+                .accessibilityLabel("切换平台")
+            }
+            ToolbarItem(placement: .principal) {
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    TextField("搜索歌单", text: $playlistQuery)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 15))
+                        .submitLabel(.search)
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 34)
+                .frame(maxWidth: 260)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay { Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.8) }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("搜索歌单")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                EchoAvatarButton()
             }
         }
 #endif
@@ -346,6 +380,28 @@ struct ExploreView: View {
             }
         }
 #endif
+    }
+
+    private var barPlatform: LXCatalogPlatform {
+        settings.homeRecommendationMode == .netease ? .wy : settings.homeRecommendationPlatform
+    }
+
+    private var playlistQueryTrimmed: String {
+        playlistQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filteredOfficial: [LXPlaylistSummary] {
+        model.officialPlaylists.filter(matchesPlaylist)
+    }
+
+    private var filteredPlaylists: [LXPlaylistSummary] {
+        model.playlists.filter(matchesPlaylist)
+    }
+
+    private func matchesPlaylist(_ playlist: LXPlaylistSummary) -> Bool {
+        guard !playlistQueryTrimmed.isEmpty else { return true }
+        return playlist.name.localizedCaseInsensitiveContains(playlistQueryTrimmed)
+            || (playlist.author?.localizedCaseInsensitiveContains(playlistQueryTrimmed) ?? false)
     }
 
     private var platformPicker: some View {
