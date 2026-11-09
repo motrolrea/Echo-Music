@@ -221,8 +221,33 @@ struct ProfileView: View {
                         }
                     }
                     BeansCardGroup {
-                        BeansExpandRow(icon: "heart.fill", title: "自愿赞助", expanded: $donationExpanded) {
-                            SponsorExpandedContent()
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack(alignment: .center, spacing: 12) {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color.beansHighlight)
+                                    .frame(width: 24)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("原项目地址")
+                                        .font(BeansFont.appFont(14, .semibold))
+                                        .foregroundStyle(Color.beansLabel)
+                                    Button {
+                                        if let url = URL(string: "https://github.com/jiajia2222/Moumusic") {
+                                            UIApplication.shared.open(url)
+                                        }
+                                    } label: {
+                                        Text("GitHub：jiajia2222/Moumusic")
+                                            .font(BeansFont.appFont(11))
+                                            .foregroundStyle(Color.beansHighlight)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.8)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
                         }
                     }
                     profileVersionFooter
@@ -691,7 +716,7 @@ struct ProfileView: View {
     }
 
     private var profileVersionFooter: some View {
-        Text(appVersionText)
+        Text("Echo Music 1.5.0")
             .font(BeansFont.appFont(11))
             .foregroundStyle(Color.beansComment.opacity(0.7))
             .multilineTextAlignment(.center)
