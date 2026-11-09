@@ -75,7 +75,7 @@ struct DiagnosticLogView: View {
             isPresented: $isExporting,
             document: DiagnosticLogDocument(data: store.exportData()),
             contentType: .json,
-            defaultFilename: "Moumusic-diagnostic-logs"
+            defaultFilename: "EchoMusic-diagnostic-logs"
         ) { _ in }
     }
 

@@ -73,7 +73,7 @@ final class DiagnosticLogStore: ObservableObject {
 
     private var fileURL: URL {
         let root = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Moumusic", isDirectory: true)
+            .appendingPathComponent("EchoMusic", isDirectory: true)
         try? fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         return root.appendingPathComponent("diagnostic-logs.json")
     }

@@ -159,7 +159,7 @@ jobs:
   # (a failed or skipped build of one never changes what the other serves).
   publish-ios26:
     needs: [full]
-    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[compat-only]') && !contains(github.event.head_commit.message, '[no-publish]')
+    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[compat-only]') && !contains(github.event.head_commit.message, '[no-publish]') && secrets.IMGBED_TOKEN != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -182,7 +182,7 @@ jobs:
 
   publish-compat:
     needs: [compat]
-    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[no-publish]')
+    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[no-publish]') && secrets.IMGBED_TOKEN != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

@@ -151,7 +151,7 @@ final class AppDataBackupManager: ObservableObject {
     func restoreFromICloud() -> Bool {
         refreshAvailability()
         guard let data = NSUbiquitousKeyValueStore.default.data(forKey: Self.iCloudKey) else {
-            statusMessage = "iCloud 中暂无 Moumusic 备份"
+            statusMessage = "iCloud 中暂无 Echo Music 备份"
             return false
         }
 

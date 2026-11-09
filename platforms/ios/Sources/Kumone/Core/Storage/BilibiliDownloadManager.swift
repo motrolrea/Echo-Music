@@ -64,7 +64,7 @@ final class BilibiliDownloadManager: NSObject, ObservableObject {
 
     private nonisolated static var applicationDirectory: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Moumusic", isDirectory: true)
+            .appendingPathComponent("EchoMusic", isDirectory: true)
     }
 
     nonisolated static var downloadDirectory: URL {
@@ -219,7 +219,7 @@ extension BilibiliDownloadManager: URLSessionDownloadDelegate {
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                                 didFinishDownloadingTo location: URL) {
         let stagingURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Moumusic-Bilibili-\(UUID().uuidString).download")
+            .appendingPathComponent("EchoMusic-Bilibili-\(UUID().uuidString).download")
         let moved = (try? {
             try FileManager.default.moveItem(at: location, to: stagingURL)
             return true

@@ -41,7 +41,7 @@ struct MyProfileView: View {
                 listeningCard
                 quickLinks
                 appearanceCard
-                supportCard
+                originalProjectCard
                 PlayerClearanceSpacer()
             }
             .padding(.horizontal, 16)
@@ -228,7 +228,7 @@ struct MyProfileView: View {
                     .clipShape(Circle())
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(appearance.nickname.trimmingCharacters(in: .whitespaces).isEmpty ? (account.profile?.nickname ?? "Moumusic 用户") : appearance.nickname)
+                        Text(appearance.nickname.trimmingCharacters(in: .whitespaces).isEmpty ? (account.profile?.nickname ?? "Echo Music 用户") : appearance.nickname)
                             .font(.headline)
                             .lineLimit(1)
                         HStack(spacing: 8) {
@@ -342,7 +342,7 @@ struct MyProfileView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(moumusicServer.profile?.nickname ?? "Moumusic 用户")
+                        Text(moumusicServer.profile?.nickname ?? "Echo Music 用户")
                             .font(.title3.weight(.bold))
                             .lineLimit(1)
                         Text("ID 闂?\(moumusicServer.displayID)")
@@ -431,7 +431,7 @@ struct MyProfileView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 5) {
-                        Text(moumusicServer.profile?.nickname ?? "Moumusic 用户")
+                        Text(moumusicServer.profile?.nickname ?? "Echo Music 用户")
                             .font(.title3.weight(.bold))
                             .lineLimit(1)
                         Text("个人 ID：\(moumusicServer.displayID)")
@@ -457,7 +457,7 @@ struct MyProfileView: View {
 
                 Divider()
                 HStack {
-                    Label("Moumusic 服务", systemImage: "server.rack")
+                    Label("Echo Music 服务", systemImage: "server.rack")
                         .font(.subheadline.weight(.semibold))
                     Spacer()
                     Text(moumusicServer.statusText)
@@ -710,21 +710,36 @@ struct MyProfileView: View {
         }
     }
 
-    private var supportCard: some View {
+    private var originalProjectCard: some View {
         MouGlassCard {
-            VStack(alignment: .leading, spacing: 11) {
-                Label("支持项目", systemImage: "heart.circle.fill")
-                    .font(.headline.weight(.semibold))
+            HStack(spacing: 12) {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Theme.accent)
-                NavigationLink {
-                    AfdianSupportView()
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("原项目地址")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text(verbatim: "https://github.com/jiajia2222/Moumusic")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+                Spacer(minLength: 8)
+                Button {
+                    UIPasteboard.general.string = "https://github.com/jiajia2222/Moumusic"
+                    ToastCenter.shared.show("已复制原项目地址")
+                    Haptics.tap()
                 } label: {
-                    rowLabel("赞赏支持项目", icon: "heart.fill", tint: Theme.accent)
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 34, height: 34)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                Text("感谢每一位支持 Moumusic 的朋友。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .accessibilityLabel("复制原项目地址")
             }
         }
     }
@@ -821,7 +836,7 @@ private struct MoumusicProfileEditorView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
 
-                    Text("保存后会用于 Moumusic 个人 ID 卡片。建议使用稳定的 HTTPS 图片地址。")
+                    Text("保存后会用于 Echo Music 个人 ID 卡片。建议使用稳定的 HTTPS 图片地址。")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

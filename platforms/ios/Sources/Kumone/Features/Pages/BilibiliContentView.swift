@@ -409,7 +409,7 @@ struct BilibiliContentView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("动态需要登录", systemImage: "person.crop.circle.badge.exclamationmark")
                             .font(.headline)
-                        Text("登录后读取关注动态；登录只保存平台会话，不会把密码交给 Moumusic。")
+                        Text("登录后读取关注动态；登录只保存平台会话，不会把密码交给 Echo Music。")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         Text("请在“账号与同步”中完成哔哩哔哩扫码登录。")
@@ -538,7 +538,7 @@ struct BilibiliContentView: View {
                 .padding(.horizontal, -Theme.Layout.contentInset)
 
             BilibiliRowCard(title: "设置", titleIcon: "slider.horizontal.3", rows: [
-                .init(icon: "paintpalette", title: "界面显示", subtitle: "强调色跟随 Moumusic") {
+                .init(icon: "paintpalette", title: "界面显示", subtitle: "强调色跟随 Echo Music") {
                     showSettings = true
                 },
                 .init(icon: "house", title: "首页与搜索",
@@ -551,7 +551,7 @@ struct BilibiliContentView: View {
                 .init(icon: "line.3.horizontal.decrease.circle", title: "内容过滤", subtitle: "推荐与动态关键词过滤") {
                     showFilter = true
                 },
-                .init(icon: "gearshape", title: "Moumusic 设置", subtitle: "Moumusic 软件设置") {
+                .init(icon: "gearshape", title: "Echo Music 设置", subtitle: "Echo Music 软件设置") {
                     showAppSettings = true
                 },
             ])

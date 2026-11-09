@@ -357,7 +357,7 @@ struct AccountSyncView: View {
                     .foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text("播放歌曲达到有效时长后，Moumusic 会把匹配到的歌曲播放记录和时长同步到账号。没有可用账号音频时，LX 音源负责提供回退音频地址。")
+            Text("播放歌曲达到有效时长后，Echo Music 会把匹配到的歌曲播放记录和时长同步到账号。没有可用账号音频时，LX 音源负责提供回退音频地址。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 

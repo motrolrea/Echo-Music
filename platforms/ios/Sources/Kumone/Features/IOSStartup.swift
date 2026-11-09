@@ -159,7 +159,7 @@ struct IOSStartupSplashView: View {
                 }
 
                 VStack(spacing: 8) {
-                    Text("Moumusic")
+                    Text("Echo Music")
                         .font(.title2.weight(.bold))
                         .foregroundStyle(.primary)
 
@@ -177,7 +177,7 @@ struct IOSStartupSplashView: View {
             .padding(.horizontal, 32)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(String(localized: "Moumusic 濮濓絽婀崥顖氬З楠炲爼顣╅崝鐘烘祰閸︺劎鍤庨崘鍛啇"))
+        .accessibilityLabel(String(localized: "Echo Music 濮濓絽婀崥顖氬З楠炲爼顣╅崝鐘烘祰閸︺劎鍤庨崘鍛啇"))
         .onAppear {
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {

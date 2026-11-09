@@ -122,7 +122,7 @@ final class BackgroundImageStore: ObservableObject {
             in: .userDomainMask,
             appropriateFor: nil,
             create: true
-        ).appendingPathComponent("MoumusicBackground", isDirectory: true)
+        ).appendingPathComponent("EchoMusicBackground", isDirectory: true)
         try FileManager.default.createDirectory(
             at: directory,
             withIntermediateDirectories: true,

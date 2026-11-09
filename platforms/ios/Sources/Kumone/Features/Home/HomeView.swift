@@ -585,7 +585,7 @@ struct HomeView: View {
                 Text("公告")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Theme.accent)
-                Text("Moumusic QQ 群：945130957")
+                Text("Echo Music QQ 群：945130957")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -613,7 +613,7 @@ struct HomeView: View {
         .padding(.horizontal, Theme.Layout.contentInset)
         .padding(.top, 8)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("公告：Moumusic QQ 群 945130957，欢迎加入交流群，反馈问题和获取更新通知")
+        .accessibilityLabel("公告：Echo Music QQ 群 945130957，欢迎加入交流群，反馈问题和获取更新通知")
     }
     private var lxLoadedBody: some View {
         LazyVStack(alignment: .leading, spacing: 22) {

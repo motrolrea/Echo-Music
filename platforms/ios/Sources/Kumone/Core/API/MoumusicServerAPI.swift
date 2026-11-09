@@ -195,7 +195,7 @@ final class MoumusicServerStore: ObservableObject {
 
         ProviderSessionSupport.deleteCookie(service: sessionService)
         do {
-            let body = try JSONEncoder().encode(RegisterBody(deviceID: deviceID, nickname: "Moumusic User"))
+            let body = try JSONEncoder().encode(RegisterBody(deviceID: deviceID, nickname: "Echo Music User"))
             let response: AuthResponse = try await request(
                 "/api/moumusic/auth/register",
                 method: "POST",

@@ -80,7 +80,7 @@ enum MoumusicBackendAPI {
 
     @MainActor
     static func submitFeedback(content: String, contact: String, attachments: [BackendAttachment]) async throws -> String {
-        let boundary = "MoumusicBoundary-" + UUID().uuidString
+        let boundary = "EchoMusicBoundary-" + UUID().uuidString
         var body = Data()
         func field(_ name: String, _ value: String) {
             body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))

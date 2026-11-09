@@ -155,7 +155,7 @@ final class LXSourceStore: ObservableObject {
         }
 
         var request = URLRequest(url: url)
-        request.setValue("Moumusic LX source importer", forHTTPHeaderField: "User-Agent")
+        request.setValue("EchoMusic LX source importer", forHTTPHeaderField: "User-Agent")
         request.setValue("text/plain, application/json, application/javascript, */*", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 30
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -794,7 +794,7 @@ final class LXSourceStore: ObservableObject {
 
     private static var directoryURL: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Moumusic", isDirectory: true)
+            .appendingPathComponent("EchoMusic", isDirectory: true)
     }
 
     private static var fileURL: URL {

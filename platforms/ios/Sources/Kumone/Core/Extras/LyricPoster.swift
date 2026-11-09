@@ -119,7 +119,7 @@ struct LyricPosterSheet: View {
         renderer.scale = 1
         guard let image = renderer.uiImage, let data = image.pngData() else { return }
         let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("Moumusic-lyrics-\(Int(Date().timeIntervalSince1970)).png")
+            .appendingPathComponent("EchoMusic-lyrics-\(Int(Date().timeIntervalSince1970)).png")
         try? data.write(to: url)
         shareURL = url
     }
@@ -175,7 +175,7 @@ struct LyricPosterCanvas: View {
                     }
                     Spacer(minLength: 0)
                     HStack {
-                        Text("Moumusic").font(.system(size: 30 * u, weight: .semibold))
+                        Text("Echo Music").font(.system(size: 30 * u, weight: .semibold))
                         Spacer()
                         Text("听见喜欢的每一句").font(.system(size: 28 * u))
                     }

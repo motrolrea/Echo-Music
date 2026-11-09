@@ -70,7 +70,7 @@ actor AfdianSponsorService {
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Moumusic-iOS", forHTTPHeaderField: "User-Agent")
+        request.setValue("EchoMusic-iOS", forHTTPHeaderField: "User-Agent")
 
         let (data, response): (Data, URLResponse)
         do {

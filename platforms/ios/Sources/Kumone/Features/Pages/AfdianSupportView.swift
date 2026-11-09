@@ -43,7 +43,7 @@ struct AfdianSupportView: View {
                 .frame(width: 58, height: 58)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("支持 Moumusic")
+                    Text("支持 Echo Music")
                         .font(.title2.weight(.bold))
                     Text("每一份支持都会回到维护、修复和新的播放体验里。")
                         .font(.subheadline)

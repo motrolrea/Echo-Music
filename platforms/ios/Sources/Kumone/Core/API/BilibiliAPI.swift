@@ -712,7 +712,7 @@ actor BilibiliAPI {
             "fp_local": Self.deviceFingerprint(),
             "fp_remote": Self.deviceFingerprint(),
             "bili-http-engine": "cronet",
-            "x-bili-trace-id": "Moumusic-\(UUID().uuidString)"
+            "x-bili-trace-id": "EchoMusic-\(UUID().uuidString)"
         ]
         let root = try await requestObject(components.url!, cookie: cookie,
                                            referer: "https://www.bilibili.com/",

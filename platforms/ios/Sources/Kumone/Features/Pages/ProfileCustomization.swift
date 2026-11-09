@@ -50,7 +50,7 @@ final class ProfileAppearanceStore: ObservableObject {
 
     private static func url(_ name: String) -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Moumusic", isDirectory: true)
+            .appendingPathComponent("EchoMusic", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base.appendingPathComponent("profile-\(name).jpg")
     }

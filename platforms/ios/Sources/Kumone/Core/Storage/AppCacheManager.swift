@@ -130,7 +130,7 @@ actor AppCacheManager {
         // are explicitly named as cache/temp. In particular, saved Bilibili
         // files under BilibiliDownloads are intentionally preserved.
         if let applicationSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first {
-            let support = applicationSupport.appendingPathComponent("Moumusic", isDirectory: true)
+            let support = applicationSupport.appendingPathComponent("EchoMusic", isDirectory: true)
             if let children = try? fileManager.contentsOfDirectory(
                 at: support,
                 includingPropertiesForKeys: [.isDirectoryKey],

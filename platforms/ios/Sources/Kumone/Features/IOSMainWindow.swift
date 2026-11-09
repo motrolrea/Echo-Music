@@ -31,6 +31,9 @@ public struct IOSMainWindow: View {
     }
 
     @State private var selectedTab: IOSTab = .home
+    /// 「搜索」是独立小球：选中即弹出全屏搜索，再退回上一个功能页
+    @State private var showSearch = false
+    @State private var lastPrimaryTab: IOSTab = .home
     @State private var homePath = NavigationPath()
     @State private var explorePath = NavigationPath()
     @State private var searchPath = NavigationPath()
@@ -103,7 +106,7 @@ public struct IOSMainWindow: View {
                 guard url.scheme?.lowercased() == "moumusic" else { return }
                 player.showNowPlaying = true
             }
-            .alert("当前设备已被禁止使用 Moumusic。", isPresented: .constant(deviceReporter.isBlocked)) {
+            .alert("当前设备已被禁止使用 Echo Music。", isPresented: .constant(deviceReporter.isBlocked)) {
                 Button("退出应用", role: .destructive) { exit(0) }
             } message: {
                 Text("如有疑问请通过反馈联系开发者。")
@@ -282,10 +285,24 @@ public struct IOSMainWindow: View {
         // iOS 26 and later supply the real system Liquid Glass through
         // TabView and its bottom accessory. Do not substitute a custom
         // Material tab bar on iOS 27, otherwise the system effect is lost.
-        if #available(iOS 26.0, *) {
-            iOS26TabInterface
-        } else {
-            customTabInterface
+        Group {
+            if #available(iOS 26.0, *) {
+                iOS26TabInterface
+            } else {
+                customTabInterface
+            }
+        }
+        .onChange(of: selectedTab) { newValue in
+            // 独立搜索小球：点中搜索时立刻回到上一个功能页，并拉起全屏搜索
+            if newValue == .search {
+                selectedTab = lastPrimaryTab
+                showSearch = true
+            } else {
+                lastPrimaryTab = newValue
+            }
+        }
+        .fullScreenCover(isPresented: $showSearch) {
+            tabStack(.search) { SearchView(query: "") }
         }
     }
 
@@ -326,10 +343,10 @@ public struct IOSMainWindow: View {
                 tabStack(.profile) { MyProfileView() }
             }
 
-            // Keep a regular tab so iOS does not add the trailing search-tab
-            // exit X. SearchView still owns the native searchable field.
-            Tab("搜索", systemImage: "magnifyingglass", value: .search) {
-                tabStack(.search) { SearchView(query: "") }
+            // 独立搜索小球：role: .search 让 iOS 26 把搜索渲染成底栏右侧的独立圆钮，
+            // 点中时由 tabInterface 的 onChange 拉起全屏搜索。
+            Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
+                Color.clear
             }
         }
         .toolbarBackground(.hidden, for: .tabBar)
@@ -344,22 +361,95 @@ public struct IOSMainWindow: View {
             // not opened those tabs yet.
             selectedPage
 
+            legacyBottomBar
+        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: bottomCollapse.isCollapsed)
+        .animation(AppAnimation.standard, value: player.hasCurrentTrack)
+    }
+
+    /// 胶囊底栏 + 迷你播放器 dock；滚动折叠后收成「当前页小球 + 迷你播放器 + 独立搜索小球」
+    @ViewBuilder
+    private var legacyBottomBar: some View {
+        if isBarCollapsed {
+            HStack(spacing: 10) {
+                collapsedTabBall
+
+                if player.hasCurrentTrack {
+                    IOSMiniPlayerBar(presentation: .collapsed)
+                        .frame(maxWidth: .infinity)
+                        .transition(.opacity)
+                } else {
+                    Spacer(minLength: 0)
+                }
+
+                searchBall(size: 50)
+            }
+            .frame(maxWidth: 560)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 6)
+        } else {
             VStack(spacing: 8) {
-                if player.hasCurrentTrack && !isBarCollapsed {
+                if player.hasCurrentTrack {
                     IOSMiniPlayerBar(presentation: .legacyOverlay)
                         .nowPlayingTransitionSource(in: nowPlayingTransition)
                         .padding(.horizontal, 12)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
-                GlassTabBar(items: Self.tabItems, selection: $selectedTab) { tab in
-                    popToRoot(tab)
+                HStack(spacing: 10) {
+                    GlassTabBar(items: Self.tabItems, selection: $selectedTab) { tab in
+                        popToRoot(tab)
+                    }
+                    searchBall(size: 56)
+                        .padding(.trailing, 12)
                 }
             }
             .padding(.bottom, 6)
         }
-        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: bottomCollapse.isCollapsed)
-        .animation(AppAnimation.standard, value: player.hasCurrentTrack)
+    }
+
+    /// 折叠后的当前页小球（点击展开底栏）
+    private var collapsedTabBall: some View {
+        Button {
+            Haptics.tap()
+            bottomCollapse.expandByUser()
+        } label: {
+            Image(systemName: currentTabIcon)
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(.primary.opacity(0.9))
+                .frame(width: 50, height: 50)
+                .mouMaterialBackground(.regularMaterial, in: Circle())
+                .overlay { Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5) }
+                .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(currentTabTitle)
+    }
+
+    /// 独立悬浮搜索小球（与胶囊底栏分离）
+    private func searchBall(size: CGFloat) -> some View {
+        Button {
+            Haptics.tap()
+            showSearch = true
+        } label: {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: size > 52 ? 20 : 18, weight: .semibold))
+                .foregroundStyle(.primary.opacity(0.85))
+                .frame(width: size, height: size)
+                .mouMaterialBackground(.regularMaterial, in: Circle())
+                .overlay { Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5) }
+                .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("搜索")
+    }
+
+    private var currentTabIcon: String {
+        Self.tabItems.first { $0.tab == selectedTab }?.icon ?? "house"
+    }
+
+    private var currentTabTitle: String {
+        Self.tabItems.first { $0.tab == selectedTab }?.title ?? "推荐"
     }
 
     /// 底栏折叠状态：「我的」页强制展开
@@ -458,7 +548,6 @@ extension IOSMainWindow {
         .init(tab: .explore, title: "发现", icon: "square.grid.2x2"),
         .init(tab: .playlists, title: "歌单", icon: "music.note.list"),
         .init(tab: .profile, title: "我的", icon: "person.crop.circle"),
-        .init(tab: .search, title: "搜索", icon: "magnifyingglass"),
     ]
 }
 
@@ -587,9 +676,12 @@ struct IOSMiniPlayerBar: View {
         case bottomAccessory
         case inlineAccessory
         case legacyOverlay
+        case collapsed
 
         var isInline: Bool { self == .inlineAccessory }
-        var drawsBackground: Bool { self == .legacyOverlay }
+        /// 折叠态：最精简的迷你播放器（封面 + 歌名 + 播放/暂停）
+        var isCompact: Bool { self == .collapsed }
+        var drawsBackground: Bool { self == .legacyOverlay || self == .collapsed }
     }
 
     @EnvironmentObject private var player: PlayerService
@@ -616,7 +708,7 @@ struct IOSMiniPlayerBar: View {
     }
 
     private var content: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: presentation.isCompact ? 2 : 4) {
             Button(action: showNowPlaying) {
                 trackSummary
             }
@@ -624,7 +716,7 @@ struct IOSMiniPlayerBar: View {
             .accessibilityLabel(nowPlayingAccessibilityLabel)
             .accessibilityHint("打开正在播放")
 
-            if !presentation.isInline {
+            if !presentation.isInline && !presentation.isCompact {
                 Button(action: player.previous) {
                     Image(systemName: "backward.fill")
                         .font(.system(size: 14, weight: .semibold))
@@ -648,7 +740,7 @@ struct IOSMiniPlayerBar: View {
             .buttonStyle(.pressable)
             .accessibilityLabel(player.isPlaying ? "暂停" : "播放")
 
-            if !presentation.isInline {
+            if !presentation.isInline && !presentation.isCompact {
                 Button(action: player.next) {
                     Image(systemName: "forward.fill")
                         .font(.system(size: 14, weight: .semibold))
@@ -694,15 +786,15 @@ struct IOSMiniPlayerBar: View {
     }
 
     private var artworkSize: CGFloat {
-        presentation.isInline ? 28 : 32
+        presentation.isInline ? 28 : (presentation.isCompact ? 26 : 32)
     }
 
     private var titleFont: Font {
-        .system(size: presentation.isInline ? 10 : 13, weight: .semibold)
+        .system(size: presentation.isInline ? 10 : (presentation.isCompact ? 12 : 13), weight: .semibold)
     }
 
     private var artistFont: Font {
-        .system(size: presentation.isInline ? 8 : 10)
+        .system(size: presentation.isInline ? 8 : (presentation.isCompact ? 9 : 10))
     }
 
     private var metadataSpacing: CGFloat {

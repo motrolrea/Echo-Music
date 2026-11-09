@@ -16,7 +16,6 @@ struct SettingsView: View {
     @ObservedObject private var playerAmbience = PlayerAmbienceStore.shared
 #endif
     @State private var cacheSize = "计算中…"
-    private let afdianURL = URL(string: "https://afdian.com/a/moumou2026")!
     @State private var isClearingCache = false
     @State private var cacheProgress: Double?
     @State private var cacheClearMessage: String?
@@ -54,7 +53,7 @@ struct SettingsView: View {
     @State private var exportDocument: MoumusicBackupFileDocument?
     /// Accordion state is remembered across launches (comma-joined titles in
     /// UserDefaults; `nil` means the user never changed it, so use the defaults).
-    @AppStorage("moumusic.settings.collapsed") private var collapsedStorage: String = "播放器氛围|图片背景|歌词显示|存储与下载|数据备份与恢复|更新|关于|赞赏与支持"
+    @AppStorage("moumusic.settings.collapsed") private var collapsedStorage: String = "播放器氛围|图片背景|歌词显示|存储与下载|数据备份与恢复|更新|关于"
     private var collapsedSettings: Set<String> {
         get { Set(collapsedStorage.split(separator: "|").map(String.init)) }
         nonmutating set { collapsedStorage = newValue.sorted().joined(separator: "|") }
@@ -585,11 +584,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-                supportLink
-#else
-                Link(destination: afdianURL) {
-                    Label("在爱发电支持 Moumusic", systemImage: "heart")
-                }
 #endif
             }
 #if os(iOS)
@@ -619,7 +613,7 @@ struct SettingsView: View {
             isPresented: $isExportingBackup,
             document: exportDocument,
             contentType: .json,
-            defaultFilename: "Moumusic-Backup"
+            defaultFilename: "EchoMusic-Backup"
         ) { result in
             if case .failure(let error) = result {
                 backupStore.setStatusMessage("备份导出失败：\(error.localizedDescription)")
@@ -829,9 +823,8 @@ struct SettingsView: View {
         "更新": "检查更新 更新日志 诊断 日志 崩溃 卡死",
         "显示与性能": "高刷新率 120hz 帧率 性能",
         "界面与颜色": "强调色 颜色 液态 玻璃 漂浮 特效 底栏 语言",
-        "关于与支持": "版本 更新 检查更新 日志 诊断 崩溃 卡死 反馈 工单 开发者工具 赞助 爱发电 支持 捐赠",
-        "关于": "版本 免责声明 运行环境",
-        "赞赏与支持": "赞助 爱发电 捐赠 支持"
+        "关于与支持": "版本 更新 检查更新 日志 诊断 崩溃 卡死 反馈 工单 开发者工具",
+        "关于": "版本 免责声明 运行环境"
     ]
 
     private func isSettingsGroupVisible(_ title: String) -> Bool {
@@ -871,31 +864,6 @@ struct SettingsView: View {
     }
 #endif
 #if os(iOS)
-    private var supportLink: some View {
-        NavigationLink {
-            AfdianSupportView()
-        } label: {
-            HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(Color.orange.opacity(0.16))
-                    .overlay {
-                        Image(systemName: "heart.fill")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(.orange)
-                    }
-                    .frame(width: 48, height: 48)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("赞助者名单与支持")
-                        .font(.headline.weight(.semibold))
-                    Text("查看真实支持者、金额并在应用内支持")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
     private var sourceManagerRow: some View {
         Button {
             showSourceManager = true

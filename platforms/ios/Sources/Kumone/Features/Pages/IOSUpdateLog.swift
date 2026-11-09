@@ -54,7 +54,7 @@ struct IOSUpdateLogSheet: View {
                             .foregroundStyle(Theme.accent)
                         Text("更新日志")
                             .font(.largeTitle.weight(.bold))
-                        Text("Moumusic \(updateLog.version)")
+                        Text("Echo Music \(updateLog.version)")
                             .font(.subheadline.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }

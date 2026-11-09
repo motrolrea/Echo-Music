@@ -61,7 +61,7 @@ enum ReleaseChecker {
         var components = URLComponents(url: manifestURL, resolvingAgainstBaseURL: false)!
         components.queryItems = [URLQueryItem(name: "t", value: String(Int(Date().timeIntervalSince1970)))]
         var request = URLRequest(url: components.url!, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData)
-        request.setValue("Moumusic-iOS", forHTTPHeaderField: "User-Agent")
+        request.setValue("EchoMusic-iOS", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 15
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
