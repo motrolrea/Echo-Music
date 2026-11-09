@@ -159,7 +159,7 @@ jobs:
   # (a failed or skipped build of one never changes what the other serves).
   publish-ios26:
     needs: [full]
-    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[compat-only]') && !contains(github.event.head_commit.message, '[no-publish]') && secrets.IMGBED_TOKEN != ''
+    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[compat-only]') && !contains(github.event.head_commit.message, '[no-publish]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -169,7 +169,22 @@ jobs:
           name: EchoMusic-full-ios26-unsigned
           path: dl
 
+      # `secrets` 不能出现在 job 级 if 中，否则整个 workflow 解析失败。改为在步骤里检测：
+      # 未配置 IMGBED_TOKEN 时优雅跳过上传，job 仍显示为成功（IPA 产物已由 full 上传）。
+      - name: Check update-host token
+        id: token
+        env:
+          IMGBED_TOKEN: ${{ secrets.IMGBED_TOKEN }}
+        run: |
+          if [ -n "$IMGBED_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=跳过上传::仓库未配置 IMGBED_TOKEN，本次仅产出 IPA 产物，不更新下载源。"
+          fi
+
       - name: Upload iOS 26 channel
+        if: steps.token.outputs.available == 'true'
         env:
           IMGBED_TOKEN: ${{ secrets.IMGBED_TOKEN }}
           CHANNEL: ios26
@@ -182,7 +197,7 @@ jobs:
 
   publish-compat:
     needs: [compat]
-    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[no-publish]') && secrets.IMGBED_TOKEN != ''
+    if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[no-publish]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -192,7 +207,20 @@ jobs:
           name: EchoMusic-compat-ios15-18-unsigned
           path: dl
 
+      - name: Check update-host token
+        id: token
+        env:
+          IMGBED_TOKEN: ${{ secrets.IMGBED_TOKEN }}
+        run: |
+          if [ -n "$IMGBED_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=跳过上传::仓库未配置 IMGBED_TOKEN，本次仅产出 IPA 产物，不更新下载源。"
+          fi
+
       - name: Upload compatibility channel
+        if: steps.token.outputs.available == 'true'
         env:
           IMGBED_TOKEN: ${{ secrets.IMGBED_TOKEN }}
           CHANNEL: compat
