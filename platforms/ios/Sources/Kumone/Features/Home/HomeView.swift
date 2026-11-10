@@ -365,6 +365,11 @@ struct HomeView: View {
     @AppStorage("moumusic.announcement.dismissed") private var dismissedAnnouncement = ""
     @State private var showAnnouncementPopup = false
 #endif
+    @State private var roamCovers: [URL] = []
+    @State private var heartbeatCovers: [URL] = []
+    @State private var chartCovers: [Int: [URL]] = [:]
+    @State private var lxChartCovers: [String: [URL]] = [:]
+    @State private var coverToken = UUID()
 
     var body: some View {
         Group {
@@ -404,7 +409,7 @@ struct HomeView: View {
                             } label: {
                                 HStack(spacing: 8) {
                                     PlatformGlyph(platform: platform)
-                                        .frame(width: 22, height: 22)
+                                        .frame(width: 28, height: 28)
                                         .clipShape(Circle())
                                     Text(platform.displayName)
                                     if isHomePlatform(platform) {
@@ -426,7 +431,7 @@ struct HomeView: View {
                 } label: {
                     if bilibiliShown {
                         BrandIconView(name: "BrandBilibili")
-                            .frame(width: 26, height: 26)
+                            .frame(width: 34, height: 34)
                     } else {
                         HomePlatformBadge(platform: selectedHomePlatform)
                     }
@@ -527,6 +532,66 @@ struct HomeView: View {
                              platform: settings.homeRecommendationPlatform,
                              qishuiSessionRevision: 0)
         }
+        await loadRotatingCovers()
+    }
+
+    /// Live song art for LX 漫游, 心动模式 and the official charts. Does not start playback.
+    private func loadRotatingCovers() async {
+        let token = UUID()
+        coverToken = token
+        if settings.homeRecommendationMode == .lx {
+            let pool = echoCoverURLs(from: model.recommendTracks, limit: 24)
+            var assigned: [String: [URL]] = [:]
+            let charts = model.lxToplists
+            if pool.count > 1, !charts.isEmpty {
+                let slice = max(1, pool.count / max(charts.count, 1))
+                for (index, chart) in charts.enumerated() {
+                    let start = min(index * slice, max(pool.count - 1, 0))
+                    let end = min(max(start + max(slice, 2), start + 1), pool.count)
+                    let part = Array(pool[start..<end])
+                    if part.count > 1 { assigned[chart.id] = part }
+                }
+            }
+            guard coverToken == token else { return }
+            lxChartCovers = assigned
+            chartCovers = [:]
+            roamCovers = []
+            heartbeatCovers = []
+            return
+        }
+
+        async let fmTracks = (try? await NeteaseAPI.personalFM()) ?? []
+        let likedIDs = Array(account.likedTrackIDs.prefix(8))
+        async let likedTracks = likedIDs.isEmpty
+            ? [Track]()
+            : ((try? await NeteaseAPI.songDetails(ids: likedIDs))?.songs ?? [])
+        let names = ["飙升", "新歌", "热歌", "原创"]
+        let chartIDs = model.toplists
+            .filter { item in names.contains { item.name.contains($0) } }
+            .prefix(6)
+            .map(\.id)
+        let previews: [(Int, [URL])] = await withTaskGroup(of: (Int, [URL]).self) { group in
+            for id in chartIDs {
+                group.addTask {
+                    let tracks = (try? await NeteaseAPI.playlistPreview(id: id, limit: 8)) ?? []
+                    return (id, echoCoverURLs(from: tracks))
+                }
+            }
+            var result: [(Int, [URL])] = []
+            for await item in group { result.append(item) }
+            return result
+        }
+        let fm = await fmTracks
+        let liked = await likedTracks
+        guard coverToken == token else { return }
+        roamCovers = echoCoverURLs(from: fm)
+        heartbeatCovers = echoCoverURLs(from: liked)
+        var map: [Int: [URL]] = [:]
+        for (id, urls) in previews where urls.count > 1 {
+            map[id] = urls
+        }
+        chartCovers = map
+        lxChartCovers = [:]
     }
 
     /// Identifies the announcement being shown (the remote text, or a fixed key for the built-in one).
@@ -648,26 +713,29 @@ struct HomeView: View {
             #endif
 
             // Official charts; a platform without a verified chart endpoint (Migu) keeps its recommended playlists.
-            if !model.lxToplists.isEmpty {
-                Shelf(title: "官方排行榜", rowHeight: Theme.Layout.coverShelfHeight) {
-                    ForEach(model.lxToplists) { chart in
-                        lxPlaylistCard(chart)
+            if !model.lxToplists.isEmpty || !model.recommendTracks.isEmpty || !model.lxRecommendPlaylists.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    if !model.lxToplists.isEmpty {
+                        Shelf(title: "官方排行榜", rowHeight: 208) {
+                            ForEach(model.lxToplists) { chart in
+                                lxPlaylistCard(chart)
+                            }
+                        }
+                    }
+                    if model.lxToplists.isEmpty, !model.lxRecommendPlaylists.isEmpty {
+                        Shelf(title: "热门歌单", rowHeight: 208) {
+                            ForEach(model.lxRecommendPlaylists.prefix(12)) { playlist in
+                                lxPlaylistCard(playlist)
+                            }
+                        }
+                    }
+                    if !model.recommendTracks.isEmpty {
+                        SectionHeader(title: model.activePlatform == .wy ? "热门歌曲" : "推荐歌曲")
+                            .padding(.horizontal, Theme.Layout.contentInset)
+                        TrackListView(tracks: model.recommendTracks, showsSummary: false)
+                            .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }
                 }
-            }
-            if model.lxToplists.isEmpty, !model.lxRecommendPlaylists.isEmpty {
-                Shelf(title: "热门歌单", rowHeight: Theme.Layout.coverShelfHeight) {
-                    ForEach(model.lxRecommendPlaylists.prefix(12)) { playlist in
-                        lxPlaylistCard(playlist)
-                    }
-                }
-            }
-
-            if !model.recommendTracks.isEmpty {
-                SectionHeader(title: model.activePlatform == .wy ? "热门歌曲" : "推荐歌曲")
-                    .padding(.horizontal, Theme.Layout.contentInset)
-                TrackListView(tracks: model.recommendTracks)
-                    .padding(.horizontal, Theme.Layout.contentInset - 10)
             }
             PlayerClearanceSpacer()
         }
@@ -757,7 +825,8 @@ struct HomeView: View {
                 coverURL: playlist.coverURL?.resizedImageURL(384),
                 title: playlist.name,
                 subtitle: playlist.author ?? "",
-                playCount: playlist.playCount
+                playCount: playlist.playCount,
+                covers: lxChartCovers[playlist.id] ?? []
             )
         }
         .buttonStyle(.plain)
@@ -786,23 +855,25 @@ struct HomeView: View {
             featureCards
                 .padding(.top, 8)
 
-            if !model.toplists.isEmpty {
-                Shelf(title: "官方排行榜", seeAll: nil, rowHeight: Theme.Layout.coverShelfHeight) {
-                    ForEach(model.toplists) { toplist in
-                        NavigationLink(value: Destination.playlist(toplist.id)) {
-                            toplistCard(toplist)
+            if !model.toplists.isEmpty || !model.recommendTracks.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    if !model.toplists.isEmpty {
+                        Shelf(title: "官方排行榜", seeAll: nil, rowHeight: 208) {
+                            ForEach(model.toplists) { toplist in
+                                NavigationLink(value: Destination.playlist(toplist.id)) {
+                                    toplistCard(toplist)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                        .buttonStyle(.plain)
+                    }
+                    if !model.recommendTracks.isEmpty {
+                        SectionHeader(title: "热门歌曲")
+                            .padding(.horizontal, Theme.Layout.contentInset)
+                        TrackListView(tracks: model.recommendTracks, showsSummary: false)
+                            .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }
                 }
-            }
-
-
-            if !model.recommendTracks.isEmpty {
-                SectionHeader(title: "热门歌曲")
-                    .padding(.horizontal, Theme.Layout.contentInset)
-                TrackListView(tracks: model.recommendTracks)
-                    .padding(.horizontal, Theme.Layout.contentInset - 10)
             }
 
             if !model.radarPlaylists.isEmpty {
@@ -870,6 +941,8 @@ struct HomeView: View {
                         title: "LX 漫游",
                         subtitle: "按首页平台生成漫游队列",
                         icon: "wave.3.right.circle.fill",
+                        coverURL: roamCovers.first,
+                        covers: roamCovers,
                         gradient: [Color(red: 0.16, green: 0.20, blue: 0.42),
                                    Color(red: 0.36, green: 0.24, blue: 0.62)]
                     )
@@ -884,6 +957,8 @@ struct HomeView: View {
                             title: "心动模式",
                             subtitle: "你的红心歌曲和相似推荐",
                             icon: "heart.circle.fill",
+                            coverURL: heartbeatCovers.first,
+                            covers: heartbeatCovers,
                             gradient: [Color(red: 0.85, green: 0.19, blue: 0.41),
                                        Color(red: 0.98, green: 0.42, blue: 0.34)]
                         )
@@ -973,9 +1048,15 @@ struct HomeView: View {
     private func toplistCard(_ toplist: ToplistItem) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack(alignment: .bottomLeading) {
-                CachedAsyncImage(url: toplist.coverImgUrl?.resizedImageURL(384))
-                    .frame(width: Theme.Layout.cardSize, height: Theme.Layout.cardSize)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
+                Group {
+                    if let covers = chartCovers[toplist.id], covers.count > 1 {
+                        RotatingCover(urls: covers)
+                    } else {
+                        CachedAsyncImage(url: toplist.coverImgUrl?.resizedImageURL(384))
+                    }
+                }
+                .frame(width: Theme.Layout.cardSize, height: Theme.Layout.cardSize)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
                 LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
                 Text(toplist.updateFrequency ?? "")
@@ -1014,13 +1095,19 @@ struct FeatureCard: View {
     let subtitle: String
     let icon: String
     var coverURL: URL?
+    var covers: [URL] = []
     var gradient: [Color] = [Color(red: 0.75, green: 0.16, blue: 0.22),
                              Color(red: 0.95, green: 0.35, blue: 0.28)]
     var showsDate = false
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            if let coverURL {
+            if covers.count > 1 {
+                RotatingCover(urls: covers)
+                    .frame(width: 230, height: 132)
+                LinearGradient(colors: [.black.opacity(0.1), .black.opacity(0.68)],
+                               startPoint: .top, endPoint: .bottom)
+            } else if let coverURL {
                 CachedAsyncImage(url: coverURL)
                     .frame(width: 230, height: 132)
                 LinearGradient(colors: [.black.opacity(0.1), .black.opacity(0.68)],
@@ -1071,12 +1158,12 @@ struct HomePlatformBadge: View {
 
     var body: some View {
         PlatformGlyph(platform: platform)
-            .frame(width: 28, height: 28)
+            .frame(width: 36, height: 36)
             .clipShape(Circle())
             .padding(2)
             .background { Circle().fill(.ultraThinMaterial) }
             .overlay {
-                Circle().strokeBorder(.white.opacity(0.45), lineWidth: 1)
+                Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1.5)
             }
     }
 
@@ -1113,6 +1200,7 @@ struct CoverCardBody: View {
     var subtitle: String?
     var playCount: Int = 0
     var size: CGFloat = Theme.Layout.cardSize
+    var covers: [URL] = []
     var onPlay: (() -> Void)?
 
     @State private var isHovering = false
@@ -1164,7 +1252,12 @@ struct CoverCardBody: View {
 
     @ViewBuilder
     private var artwork: some View {
-        if flexibleWidth {
+        if covers.count > 1 {
+            RotatingCover(urls: covers)
+                .aspectRatio(1, contentMode: .fit)
+                .frame(maxWidth: flexibleWidth ? .infinity : size, maxHeight: flexibleWidth ? .infinity : size)
+                .frame(width: flexibleWidth ? nil : size, height: flexibleWidth ? nil : size)
+        } else if flexibleWidth {
             CachedAsyncImage(url: coverURL)
                 .aspectRatio(1, contentMode: .fit)
                 .frame(maxWidth: .infinity)
@@ -1173,6 +1266,41 @@ struct CoverCardBody: View {
                 .frame(width: size, height: size)
         }
     }
+}
+
+private struct RotatingCover: View {
+    let urls: [URL]
+    @State private var index = 0
+
+    var body: some View {
+        CachedAsyncImage(url: urls.indices.contains(index) ? urls[index] : urls.first)
+            .id(index)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
+            .task(id: urls) {
+                index = 0
+                guard urls.count > 1 else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                    guard !Task.isCancelled, urls.count > 1 else { return }
+                    withAnimation(.easeInOut(duration: 0.45)) {
+                        index = (index + 1) % urls.count
+                    }
+                }
+            }
+    }
+}
+
+private func echoCoverURLs(from tracks: [Track], limit: Int = 8) -> [URL] {
+    var seen = Set<String>()
+    var urls: [URL] = []
+    for track in tracks {
+        guard let raw = track.album.picUrl, !raw.isEmpty, seen.insert(raw).inserted,
+              let url = raw.resizedImageURL(512) else { continue }
+        urls.append(url)
+        if urls.count >= limit { break }
+    }
+    return urls
 }
 
 #if os(iOS)

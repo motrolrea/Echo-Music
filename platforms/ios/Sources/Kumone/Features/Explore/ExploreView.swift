@@ -217,6 +217,10 @@ struct ExploreView: View {
     @StateObject private var model = ExploreViewModel.shared
     @EnvironmentObject private var settings: SettingsManager
     @State private var playlistQuery = ""
+    @State private var songResults: [Track] = []
+    @State private var searchHistory = ExploreSearchHistory.load()
+    @State private var songSearchTask: Task<Void, Never>?
+    @FocusState private var searchFocused: Bool
 #if os(iOS)
     @EnvironmentObject private var bilibili: BilibiliSessionStore
     @State private var showBilibili = false
@@ -229,6 +233,9 @@ struct ExploreView: View {
                 platformPicker
 #endif
                 categoryChips
+                if playlistQueryTrimmed.isEmpty, searchFocused, !searchHistory.isEmpty {
+                    searchHistoryRow
+                }
 
                 if model.isLoading && model.officialPlaylists.isEmpty && model.playlists.isEmpty && model.tracks.isEmpty {
                     ProgressView()
@@ -240,8 +247,10 @@ struct ExploreView: View {
                     }
                     .frame(minHeight: 300)
                 } else {
+                    if !filteredOfficial.isEmpty || (!playlistQueryTrimmed.isEmpty && !songResults.isEmpty) || (playlistQueryTrimmed.isEmpty && !model.tracks.isEmpty) {
+                        VStack(alignment: .leading, spacing: 4) {
                     if !filteredOfficial.isEmpty {
-                        Shelf(title: "官方推荐歌单", rowHeight: Theme.Layout.coverShelfHeight) {
+                        Shelf(title: "官方推荐歌单", rowHeight: 208) {
                             ForEach(filteredOfficial.prefix(12)) { playlist in
                                 NavigationLink(value: Destination.lxPlaylist(source: playlist.source, id: playlist.id)) {
                                     CoverCardBody(
@@ -256,15 +265,24 @@ struct ExploreView: View {
                         }
                     }
 
-                    if playlistQueryTrimmed.isEmpty, !model.tracks.isEmpty {
-                        SectionHeader(title: "\(model.platform.displayName) 热门歌曲")
+                    if !playlistQueryTrimmed.isEmpty, !songResults.isEmpty {
+                        SectionHeader(title: "歌曲")
                             .padding(.horizontal, Theme.Layout.contentInset)
-                        TrackListView(tracks: model.tracks)
+                        TrackListView(tracks: songResults, showsSummary: false)
                             .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }
 
-                    if !playlistQueryTrimmed.isEmpty, filteredOfficial.isEmpty, filteredPlaylists.isEmpty {
-                        Text("没有匹配的歌单")
+                    if playlistQueryTrimmed.isEmpty, !model.tracks.isEmpty {
+                        SectionHeader(title: "\(model.platform.displayName) 热门歌曲")
+                            .padding(.horizontal, Theme.Layout.contentInset)
+                        TrackListView(tracks: model.tracks, showsSummary: false)
+                            .padding(.horizontal, Theme.Layout.contentInset - 10)
+                    }
+                        }
+                    }
+
+                    if !playlistQueryTrimmed.isEmpty, filteredOfficial.isEmpty, filteredPlaylists.isEmpty, songResults.isEmpty {
+                        Text(songSearchTask == nil ? "没有匹配的歌曲或歌单" : "正在搜索…")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, minHeight: 120)
@@ -320,7 +338,7 @@ struct ExploreView: View {
                             } label: {
                                 HStack(spacing: 8) {
                                     PlatformGlyph(platform: platform)
-                                        .frame(width: 22, height: 22)
+                                        .frame(width: 28, height: 28)
                                         .clipShape(Circle())
                                     Text(platform.displayName)
                                     if barPlatform == platform {
@@ -345,18 +363,20 @@ struct ExploreView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.secondary)
-                    TextField("搜索歌单", text: $playlistQuery)
+                    TextField("搜索歌曲、歌单", text: $playlistQuery)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 15))
+                        .font(.system(size: 16))
                         .submitLabel(.search)
+                        .focused($searchFocused)
+                        .onSubmit { rememberSearch() }
                 }
-                .padding(.horizontal, 12)
-                .frame(height: 34)
-                .frame(maxWidth: 260)
+                .padding(.horizontal, 14)
+                .frame(height: 42)
+                .frame(maxWidth: .infinity)
                 .background(.ultraThinMaterial, in: Capsule())
                 .overlay { Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.8) }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("搜索歌单")
+                .accessibilityLabel("搜索歌曲和歌单")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 EchoAvatarButton()
@@ -372,6 +392,15 @@ struct ExploreView: View {
             guard !model.officialPlaylists.isEmpty || !model.playlists.isEmpty || !model.tracks.isEmpty else { return }
             model.refreshCurrent()
         }
+        .onDisappear {
+            songSearchTask?.cancel()
+            songSearchTask = nil
+            playlistQuery = ""
+            songResults = []
+            searchFocused = false
+        }
+        .onChange(of: playlistQuery) { _ in scheduleSongSearch() }
+        .onChange(of: model.platform) { _ in scheduleSongSearch() }
 #if os(iOS)
         .fullScreenCover(isPresented: $showBilibili) {
             NavigationStack {
@@ -402,6 +431,54 @@ struct ExploreView: View {
         guard !playlistQueryTrimmed.isEmpty else { return true }
         return playlist.name.localizedCaseInsensitiveContains(playlistQueryTrimmed)
             || (playlist.author?.localizedCaseInsensitiveContains(playlistQueryTrimmed) ?? false)
+    }
+
+    private var searchHistoryRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(searchHistory, id: \.self) { item in
+                    Button {
+                        playlistQuery = item
+                        rememberSearch()
+                    } label: {
+                        Text(item)
+                            .font(.system(size: 13, weight: .medium))
+                            .lineLimit(1)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 32)
+                            .background(Color.primary.opacity(0.06), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, Theme.Layout.contentInset)
+        }
+    }
+
+    private func rememberSearch() {
+        let query = playlistQueryTrimmed
+        guard !query.isEmpty else { return }
+        searchHistory = ExploreSearchHistory.remember(query)
+    }
+
+    private func scheduleSongSearch() {
+        songSearchTask?.cancel()
+        let query = playlistQueryTrimmed
+        let platform = model.platform
+        guard !query.isEmpty else {
+            songResults = []
+            songSearchTask = nil
+            return
+        }
+        songSearchTask = Task {
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard !Task.isCancelled else { return }
+            let tracks = (try? await LXCatalogService.search(query, platform: platform, page: 1, limit: 20)) ?? []
+            guard !Task.isCancelled else { return }
+            songResults = tracks
+            songSearchTask = nil
+            if !tracks.isEmpty { rememberSearch() }
+        }
     }
 
     private var platformPicker: some View {
@@ -467,6 +544,22 @@ struct ExploreView: View {
             }
             .padding(.vertical, 2)
         }
+    }
+}
+
+enum ExploreSearchHistory {
+    private static let key = "echo.explore.searchHistory"
+
+    static func load() -> [String] {
+        UserDefaults.standard.stringArray(forKey: key) ?? []
+    }
+
+    static func remember(_ query: String) -> [String] {
+        var items = load().filter { $0.caseInsensitiveCompare(query) != .orderedSame }
+        items.insert(query, at: 0)
+        items = Array(items.prefix(8))
+        UserDefaults.standard.set(items, forKey: key)
+        return items
     }
 }
 

@@ -26,7 +26,6 @@ struct SettingsView: View {
 #if os(iOS)
     @EnvironmentObject private var player: PlayerService
     @StateObject private var lxStore = LXSourceStore.shared
-    @StateObject private var updateLog = IOSUpdateLogStore.shared
     @ObservedObject private var backgroundStore = BackgroundImageStore.shared
     @ObservedObject private var dynamicWallpaper = DynamicWallpaperStore.shared
     @ObservedObject private var playerAmbience = PlayerAmbienceStore.shared
@@ -67,13 +66,8 @@ struct SettingsView: View {
     @State private var isExportingBackup = false
     @State private var isImportingBackup = false
     @State private var exportDocument: MoumusicBackupFileDocument?
-    /// Accordion state is remembered across launches (comma-joined titles in
-    /// UserDefaults; `nil` means the user never changed it, so use the defaults).
-    @AppStorage("moumusic.settings.collapsed") private var collapsedStorage: String = "播放器氛围|图片背景|歌词显示|存储与下载|数据备份与恢复|更新|关于"
-    private var collapsedSettings: Set<String> {
-        get { Set(collapsedStorage.split(separator: "|").map(String.init)) }
-        nonmutating set { collapsedStorage = newValue.sorted().joined(separator: "|") }
-    }
+    /// Expanded groups live only in this visit. Leaving Settings collapses them again.
+    @State private var expandedSettings = Set<String>()
 
     @AppStorage("moumusic.hideBottomChrome") private var hideBottomChrome = false
     @AppStorage("moumusic.miniPlayerSecondLine") private var miniPlayerSecondLine = "lyric"
@@ -83,13 +77,6 @@ struct SettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-            Text("设置")
-                .font(.title3.weight(.bold))
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 2)
-                .onAppear { hideBottomChrome = true }
-                .onDisappear { hideBottomChrome = false }
-                .modifier(SettingsTabBarHidden())
 #if os(iOS)
             settingsNavigator
 #endif
@@ -581,18 +568,7 @@ struct SettingsView: View {
 
             settingsGroup("关于与支持") {
                 LabeledContent("版本", value: appVersion)
-                Toggle("启动时自动检查更新", isOn: $settings.autoCheckUpdates)
 #if os(iOS)
-                Button {
-                    IOSUpdater.shared.check(interactive: true)
-                } label: {
-                    Label("检查更新", systemImage: "arrow.triangle.2.circlepath")
-                }
-                Button {
-                    updateLog.present()
-                } label: {
-                    Label("更新日志", systemImage: "doc.text.magnifyingglass")
-                }
                 NavigationLink {
                     DiagnosticLogView()
                 } label: {
@@ -696,6 +672,19 @@ struct SettingsView: View {
             }
         }
 #endif
+        .navigationTitle("设置")
+#if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+#endif
+        .background(settingsPageFill)
+        .onAppear {
+            hideBottomChrome = true
+        }
+        .onDisappear {
+            hideBottomChrome = false
+            expandedSettings.removeAll()
+        }
+        .modifier(SettingsTabBarHidden())
         .sheet(isPresented: $showEqualizer) {
             EqualizerView()
         }
@@ -762,25 +751,26 @@ struct SettingsView: View {
         _ title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        let isExpanded = !collapsedSettings.contains(title) || !settingsQuery.isEmpty
+        let isExpanded = expandedSettings.contains(title) || !settingsQuery.isEmpty
         if isSettingsGroupVisible(title) {
         VStack(alignment: .leading, spacing: 0) {
             Button {
+                guard settingsQuery.isEmpty else { return }
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    if isExpanded {
-                        collapsedSettings.insert(title)
+                    if expandedSettings.contains(title) {
+                        expandedSettings.remove(title)
                     } else {
-                        collapsedSettings.remove(title)
+                        expandedSettings.insert(title)
                     }
                 }
             } label: {
                 HStack(spacing: 10) {
                     Label(title, systemImage: settingsIcon(for: title))
-                        .font(.headline.weight(.semibold))
+                        .font(.body.weight(.semibold))
                     Spacer(minLength: 0)
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
                 }
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
@@ -789,26 +779,36 @@ struct SettingsView: View {
 
             if isExpanded {
                 Divider()
-                    .padding(.horizontal, 2)
                 VStack(alignment: .leading, spacing: 10) {
                     content()
                 }
-                .padding(.top, 10)
-                .padding(.bottom, 4)
+                .padding(.top, 8)
+                .padding(.bottom, 6)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        // Non-interactive: an interactive glass container swallows taps meant
-        // for the header button inside it (intermittent missed taps).
-        .compatGlass(interactive: false, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(.primary.opacity(0.1), lineWidth: 0.8)
-                .allowsHitTesting(false)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 2)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(settingsCardFill)
         }
-        .shadow(color: .black.opacity(0.08), radius: 10, y: 4)
         }
+    }
+
+    private var settingsCardFill: Color {
+        #if os(iOS)
+        Color(uiColor: .secondarySystemGroupedBackground)
+        #else
+        Color.primary.opacity(0.05)
+        #endif
+    }
+
+    private var settingsPageFill: Color {
+        #if os(iOS)
+        Color(uiColor: .systemGroupedBackground)
+        #else
+        Color.clear
+        #endif
     }
 
     private var appVersion: String {
@@ -839,7 +839,7 @@ struct SettingsView: View {
             case .appearance: return "主题、播放器、动态壁纸、歌词显示、刷新率"
             case .playback: return "音源与音质、播放设置、LX 音源"
             case .accounts: return "账号登录、同步、哔哩哔哩"
-            case .about: return "缓存与备份、反馈、更新与诊断、关于"
+            case .about: return "缓存与备份、反馈、诊断、关于"
             }
         }
 
@@ -871,10 +871,10 @@ struct SettingsView: View {
         "歌词显示": "逐字 偏移 注音 翻译 同步",
         "存储与下载": "缓存 清理 下载 空间",
         "数据备份与恢复": "备份 导入 导出 恢复",
-        "更新": "检查更新 更新日志 诊断 日志 崩溃 卡死",
+        "诊断": "诊断 日志 崩溃 卡死",
         "显示与性能": "高刷新率 120hz 帧率 性能",
         "界面与颜色": "强调色 颜色 液态 玻璃 漂浮 特效 底栏 语言",
-        "关于与支持": "版本 更新 检查更新 日志 诊断 崩溃 卡死 反馈 工单 开发者工具",
+        "关于与支持": "版本 日志 诊断 崩溃 卡死 反馈 工单 开发者工具",
         "关于": "版本 免责声明 运行环境"
     ]
 
@@ -909,9 +909,9 @@ struct SettingsView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 14)
-        .frame(minHeight: 46)
-        .compatGlass(interactive: true, in: Capsule())
+        .padding(.horizontal, 12)
+        .frame(minHeight: 36)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 #endif
 #if os(iOS)

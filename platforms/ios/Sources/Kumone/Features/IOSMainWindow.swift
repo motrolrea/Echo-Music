@@ -9,8 +9,6 @@ public struct IOSMainWindow: View {
     @StateObject private var kugou = KugouSessionStore.shared
     @StateObject private var bilibili = BilibiliSessionStore.shared
     @StateObject private var toasts = ToastCenter.shared
-    @StateObject private var updater = IOSUpdater.shared
-    @StateObject private var updateLog = IOSUpdateLogStore.shared
     @StateObject private var startup = IOSStartupCoordinator.shared
     @StateObject private var backupStore = AppDataBackupManager.shared
     @ObservedObject private var deviceReporter = DeviceReporter.shared
@@ -82,7 +80,6 @@ public struct IOSMainWindow: View {
                     account: account,
                     settings: settings
                 )
-                updateLog.presentIfNeeded()
                 #if DEBUG
                 await DebugHarness.runIfRequested()
                 #endif
@@ -90,9 +87,6 @@ public struct IOSMainWindow: View {
                     player.togglePlayPause()
                 }
 
-                if settings.autoCheckUpdates {
-                    IOSUpdater.shared.check(interactive: false)
-                }
             }
             .onChange(of: selectedTab) { _ in Haptics.tap() }
             .onChange(of: player.pendingDestination) { destination in
@@ -115,12 +109,6 @@ public struct IOSMainWindow: View {
                 Button("退出应用", role: .destructive) { exit(0) }
             } message: {
                 Text("如有疑问请通过反馈联系开发者。")
-            }
-            .sheet(isPresented: $updater.showSheet) {
-                IOSUpdaterSheet()
-            }
-            .sheet(isPresented: $updateLog.isPresented) {
-                IOSUpdateLogSheet()
             }
             .task { QualitySupport.normalizeSelection() }
             .overlay(alignment: .top) {
@@ -312,7 +300,7 @@ public struct IOSMainWindow: View {
     @available(iOS 26.0, *)
     private var iOS26TabInterface: some View {
         iOS26TabView
-            .tabBarMinimizeBehavior(.never)
+            .tabBarMinimizeBehavior(tabBarMinimizes ? .onScrollDown : .never)
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
@@ -458,9 +446,8 @@ public struct IOSMainWindow: View {
         Self.tabItems.first { $0.tab == selectedTab }?.title ?? "推荐"
     }
 
-    /// 底栏折叠状态：「我的」页强制展开
     private var isBarCollapsed: Bool {
-        bottomCollapse.isCollapsed && selectedTab != .profile
+        tabBarMinimizes && bottomCollapse.isCollapsed
     }
 
     @ViewBuilder
@@ -714,7 +701,7 @@ struct IOSMiniPlayerBar: View {
     }
 
     private var content: some View {
-        HStack(spacing: presentation.isCompact ? 2 : 4) {
+        HStack(spacing: presentation.isInline ? 4 : 2) {
             Button(action: showNowPlaying) {
                 trackSummary
             }
@@ -727,7 +714,7 @@ struct IOSMiniPlayerBar: View {
                     Image(systemName: "backward.fill")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
+                        .frame(width: presentation.isInline || presentation.isCompact ? 44 : 38, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.pressable)
@@ -740,7 +727,7 @@ struct IOSMiniPlayerBar: View {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
+                    .frame(width: presentation.isInline || presentation.isCompact ? 44 : 38, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.pressable)
@@ -751,7 +738,7 @@ struct IOSMiniPlayerBar: View {
                     Image(systemName: "forward.fill")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
+                        .frame(width: presentation.isInline || presentation.isCompact ? 44 : 38, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.pressable)

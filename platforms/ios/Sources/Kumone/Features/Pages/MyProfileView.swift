@@ -49,10 +49,6 @@ struct MyProfileView: View {
         }
         .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
         .scrollIndicators(.hidden)
-        .onAppear {
-            // 「我的」页强制展开底栏
-            BottomBarCollapseStore.shared.expandByUser()
-        }
         .task {
             _ = await moumusicServer.start()
             await DeviceReporter.shared.reportHeartbeat()
@@ -676,31 +672,46 @@ struct MyProfileView: View {
     }
 
     private var quickLinks: some View {
-        MouGlassCard(padding: 8) {
-            VStack(spacing: 0) {
-                profileRow("红心歌曲", icon: "heart.fill", tint: .pink, destination: .likedSongs)
-                divider
-                profileRow("最近播放", icon: "clock.fill", tint: .orange, destination: .recents)
-                divider
-                NavigationLink {
-                    ListeningRankView()
-                } label: {
-                    rowLabel("听歌排行", icon: "chart.bar.fill", tint: .purple)
-                }
-                .buttonStyle(.plain)
-                .frame(minHeight: 52)
-                divider
-                profileRow("我的歌单", icon: "music.note.list", tint: Theme.accent, destination: .localPlaylists)
-                divider
-                profileRow("收藏的歌单与专辑", icon: "bookmark.fill", tint: .yellow, destination: .collections)
-                divider
-                Button { showDownloads = true } label: {
-                    rowLabel("下载管理", icon: "arrow.down.circle.fill", tint: .blue)
-                }
-                .buttonStyle(.plain)
-                .frame(minHeight: 52)
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+            profileTile("红心歌曲", icon: "heart.fill", tint: .pink, destination: .likedSongs)
+            profileTile("最近播放", icon: "clock.fill", tint: .orange, destination: .recents)
+            NavigationLink {
+                ListeningRankView()
+            } label: {
+                profileTileLabel("听歌排行", icon: "chart.bar.fill", tint: .purple)
             }
+            .buttonStyle(.plain)
+            profileTile("我的歌单", icon: "music.note.list", tint: Theme.accent, destination: .localPlaylists)
+            profileTile("收藏", icon: "bookmark.fill", tint: .yellow, destination: .collections)
+            Button { showDownloads = true } label: {
+                profileTileLabel("下载管理", icon: "arrow.down.circle.fill", tint: .blue)
+            }
+            .buttonStyle(.plain)
         }
+    }
+
+    private func profileTile(_ title: String, icon: String, tint: Color, destination: Destination) -> some View {
+        NavigationLink(value: destination) {
+            profileTileLabel(title, icon: icon, tint: tint)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func profileTileLabel(_ title: String, icon: String, tint: Color) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 36, height: 36)
+                .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, minHeight: 92)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var appearanceCard: some View {
@@ -753,34 +764,6 @@ struct MyProfileView: View {
                 .accessibilityLabel("复制原项目地址")
             }
         }
-    }
-
-    private func profileRow(_ title: String, icon: String, tint: Color, destination: Destination) -> some View {
-        NavigationLink(value: destination) {
-            rowLabel(title, icon: icon, tint: tint)
-        }
-        .buttonStyle(.plain)
-        .frame(minHeight: 52)
-    }
-
-    private func rowLabel(_ title: String, icon: String, tint: Color) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 28)
-            Text(title)
-                .font(.body.weight(.medium))
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.tertiary)
-        }
-        .contentShape(Rectangle())
-    }
-
-    private var divider: some View {
-        Divider().padding(.leading, 40)
     }
 }
 

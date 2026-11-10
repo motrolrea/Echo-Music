@@ -322,6 +322,23 @@ enum NeteaseAPI {
                         ["id": id, "n": 100_000, "s": 8])
     }
 
+    /// A few songs from a chart, enough for rotating cover art. Avoids the full
+    /// playlist payload used by playback.
+    static func playlistPreview(id: Int, limit: Int = 8) async throws -> [Track] {
+        let detail = try await weapi(PlaylistDetailResponse.self, "/v6/playlist/detail",
+                                     ["id": id, "n": limit, "s": 0])
+        var tracks = Array(detail.playlist.tracks.prefix(limit))
+        if tracks.count < limit {
+            let have = Set(tracks.map(\.id))
+            let missing = detail.playlist.trackIds.map(\.id).filter { !have.contains($0) }
+            if !missing.isEmpty {
+                let extra = (try? await songDetails(ids: Array(missing.prefix(limit - tracks.count))))?.songs ?? []
+                tracks.append(contentsOf: extra)
+            }
+        }
+        return Array(tracks.prefix(limit))
+    }
+
     struct PlaylistBrief: Decodable {
         struct Body: Decodable {
             let id: Int

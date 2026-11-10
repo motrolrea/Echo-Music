@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct EchoAvatarButton: View {
-    var size: CGFloat = 32
+    var size: CGFloat = 40
     @Environment(\.openProfile) private var openProfile
     @EnvironmentObject private var account: AccountStore
 #if os(iOS)
@@ -22,7 +22,7 @@ struct EchoAvatarButton: View {
                             startPoint: .top,
                             endPoint: .bottom
                         ),
-                        lineWidth: 1.1
+                        lineWidth: 1.6
                     )
                 }
         }

@@ -5,9 +5,17 @@ struct LocalPlaylistsView: View {
     @StateObject private var store = LocalPlaylistStore.shared
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var settings: SettingsManager
+    @EnvironmentObject private var player: PlayerService
     @State private var showImport = false
     @State private var showCreate = false
     @State private var newName = ""
+    @State private var chartTracks: [Track] = []
+    @State private var chartTitle = "热门歌曲"
+    @State private var chartLoading = false
+
+    private var chartPlatform: LXCatalogPlatform {
+        settings.homeRecommendationMode == .netease ? .wy : settings.homeRecommendationPlatform
+    }
 
     var body: some View {
         ScrollView {
@@ -20,6 +28,8 @@ struct LocalPlaylistsView: View {
                     likedSongsRow
                 }
                 .buttonStyle(.plain)
+
+                chartSection
 
                 if store.playlists.isEmpty {
                     VStack(spacing: 14) {
@@ -90,7 +100,7 @@ struct LocalPlaylistsView: View {
                             } label: {
                                 HStack(spacing: 8) {
                                     PlatformGlyph(platform: platform)
-                                        .frame(width: 22, height: 22)
+                                        .frame(width: 28, height: 28)
                                         .clipShape(Circle())
                                     Text(platform.displayName)
                                 }
@@ -117,6 +127,7 @@ struct LocalPlaylistsView: View {
         .sheet(isPresented: $showImport) {
             ImportPlaylistSheet()
         }
+        .task(id: chartPlatform.rawValue) { await loadChart() }
         .alert("新建本地歌单", isPresented: $showCreate) {
             TextField("歌单名称", text: $newName)
             Button("创建") {
@@ -124,6 +135,68 @@ struct LocalPlaylistsView: View {
                 newName = ""
             }
             Button("取消", role: .cancel) { newName = "" }
+        }
+    }
+
+    private var chartSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(chartTitle)
+                .font(.system(size: 18, weight: .bold))
+            if chartLoading && chartTracks.isEmpty {
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(Array(chartTracks.enumerated()), id: \.offset) { _, track in
+                        Button {
+                            player.play(tracks: chartTracks,
+                                        source: .playlist(chartPlatform == .wy ? 3_778_678 : 0),
+                                        startAt: track)
+                        } label: {
+                            chartRow(track)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, Theme.Layout.contentInset)
+    }
+
+    private func chartRow(_ track: Track) -> some View {
+        HStack(spacing: 12) {
+            CachedAsyncImage(url: track.album.picUrl?.resizedImageURL(160))
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.name)
+                    .font(.system(size: 15, weight: .medium))
+                    .lineLimit(1)
+                Text(track.artistNames)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "play.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func loadChart() async {
+        chartLoading = true
+        defer { chartLoading = false }
+        let platform = chartPlatform
+        if platform == .wy {
+            chartTitle = "热门歌曲"
+            chartTracks = (try? await NeteaseAPI.hotSongs(limit: 20)) ?? []
+        } else {
+            chartTitle = "\(platform.displayName)热门歌曲"
+            chartTracks = await LXCatalogService.recommendedContent(platform: platform, limit: 20).tracks
         }
     }
 

@@ -478,6 +478,8 @@ struct TrackListView: View {
     /// Optional selection binding used by local-playlist batch actions.
     /// Existing callers stay in the normal, non-selectable mode.
     var selectedTrackKeys: Binding<Set<String>>? = nil
+    /// Home and explore already show their own section title.
+    var showsSummary: Bool = true
 
     #if os(iOS)
     @State private var showBatchDownload = false
@@ -492,7 +494,7 @@ struct TrackListView: View {
     var body: some View {
         VStack(spacing: 4) {
             #if os(iOS)
-            if tracks.count > 1 {
+            if showsSummary, tracks.count > 1 {
                 HStack {
                     Text("\(tracks.count) 首歌曲")
                         .font(.footnote)
