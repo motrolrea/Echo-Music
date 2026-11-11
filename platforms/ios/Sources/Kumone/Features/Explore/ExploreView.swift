@@ -221,14 +221,13 @@ struct ExploreView: View {
     @State private var searchHistory = ExploreSearchHistory.load()
     @State private var songSearchTask: Task<Void, Never>?
     @FocusState private var searchFocused: Bool
-#if os(iOS)
-    @EnvironmentObject private var bilibili: BilibiliSessionStore
-    @State private var showBilibili = false
-#endif
 
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
+#if os(iOS)
+                exploreSearchBar
+#endif
 #if !os(iOS)
                 platformPicker
 #endif
@@ -337,7 +336,7 @@ struct ExploreView: View {
                                 settings.homeRecommendationPlatform = platform
                             } label: {
                                 HStack(spacing: 8) {
-                                    PlatformGlyph(platform: platform)
+                                    PlatformGlyph(platform: platform, contentMode: .fill)
                                         .frame(width: 28, height: 28)
                                         .clipShape(Circle())
                                     Text(platform.displayName)
@@ -350,33 +349,22 @@ struct ExploreView: View {
                     }
                     if settings.bilibiliMode != .disabled {
                         Section {
-                            Button { showBilibili = true } label: { Label("哔哩哔哩", systemImage: "play.rectangle.fill") }
+                            Button {
+                                UserDefaults.standard.set(true, forKey: "moumusic.home.bilibiliActive")
+                            } label: {
+                                HStack(spacing: 8) {
+                                    BrandIconView(name: "BrandBilibili", contentMode: .fill)
+                                        .frame(width: 28, height: 28)
+                                        .clipShape(Circle())
+                                    Text("哔哩哔哩")
+                                }
+                            }
                         }
                     }
                 } label: {
                     HomePlatformBadge(platform: barPlatform)
                 }
                 .accessibilityLabel("切换平台")
-            }
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    TextField("搜索歌曲、歌单", text: $playlistQuery)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 16))
-                        .submitLabel(.search)
-                        .focused($searchFocused)
-                        .onSubmit { rememberSearch() }
-                }
-                .padding(.horizontal, 14)
-                .frame(height: 42)
-                .frame(maxWidth: .infinity)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay { Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.8) }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("搜索歌曲和歌单")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 EchoAvatarButton()
@@ -401,14 +389,28 @@ struct ExploreView: View {
         }
         .onChange(of: playlistQuery) { _ in scheduleSongSearch() }
         .onChange(of: model.platform) { _ in scheduleSongSearch() }
-#if os(iOS)
-        .fullScreenCover(isPresented: $showBilibili) {
-            NavigationStack {
-                BilibiliContentView()
-                    .environmentObject(bilibili)
-            }
+    }
+
+    private var exploreSearchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.secondary)
+            TextField("搜索歌曲、歌单", text: $playlistQuery)
+                .textFieldStyle(.plain)
+                .font(.system(size: 16))
+                .submitLabel(.search)
+                .focused($searchFocused)
+                .onSubmit { rememberSearch() }
         }
-#endif
+        .padding(.horizontal, 16)
+        .frame(height: 44)
+        .frame(maxWidth: .infinity)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay { Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.8) }
+        .padding(.horizontal, Theme.Layout.contentInset)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("搜索歌曲和歌单")
     }
 
     private var barPlatform: LXCatalogPlatform {
@@ -508,9 +510,13 @@ struct ExploreView: View {
 #if os(iOS)
                     // Bilibili sits in the same chip row instead of floating at the far right.
                     if settings.bilibiliMode != .disabled {
-                        Button { showBilibili = true } label: {
+                        Button {
+                            UserDefaults.standard.set(true, forKey: "moumusic.home.bilibiliActive")
+                        } label: {
                             HStack(spacing: 5) {
-                                BrandIconView(name: "BrandBilibili").frame(width: 16, height: 16)
+                                BrandIconView(name: "BrandBilibili", contentMode: .fill)
+                                    .frame(width: 16, height: 16)
+                                    .clipShape(Circle())
                                 Text("哔哩哔哩")
                             }
                             .font(.system(size: 13, weight: .medium))

@@ -494,11 +494,13 @@ struct TrackListView: View {
     var body: some View {
         VStack(spacing: 4) {
             #if os(iOS)
-            if showsSummary, tracks.count > 1 {
+            if tracks.count > 1 {
                 HStack {
-                    Text("\(tracks.count) 首歌曲")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    if showsSummary {
+                        Text("\(tracks.count) 首歌曲")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     Spacer()
                     Button {
                         showBatchDownload = true

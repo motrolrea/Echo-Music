@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct EchoAvatarButton: View {
-    var size: CGFloat = 40
+    var size: CGFloat = 46
     @Environment(\.openProfile) private var openProfile
     @EnvironmentObject private var account: AccountStore
 #if os(iOS)
@@ -27,6 +27,7 @@ struct EchoAvatarButton: View {
                 }
         }
         .buttonStyle(.plain)
+        .fixedSize()
         .accessibilityLabel("个人信息")
     }
 

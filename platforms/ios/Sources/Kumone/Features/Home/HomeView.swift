@@ -348,14 +348,11 @@ struct HomeView: View {
     @EnvironmentObject private var player: PlayerService
     @EnvironmentObject private var settings: SettingsManager
 #if os(iOS)
-    @EnvironmentObject private var bilibili: BilibiliSessionStore
-    /// Bilibili is one more home platform: it replaces the feed in place.
+    /// Bilibili is one more home platform: the window swaps the bottom tabs while this is on.
     @AppStorage("moumusic.home.bilibiliActive") private var bilibiliActive = false
     @EnvironmentObject private var qqMusic: QQMusicSessionStore
     @EnvironmentObject private var kugou: KugouSessionStore
     @State private var showPlatformAccount = false
-    /// The Bilibili entry honours the 关闭 mode: nothing Bilibili is shown while it is off.
-    private var bilibiliShown: Bool { bilibiliActive && settings.bilibiliMode != .disabled }
 #endif
     @StateObject private var model = HomeViewModel.shared
 #if os(iOS)
@@ -372,32 +369,26 @@ struct HomeView: View {
     @State private var coverToken = UUID()
 
     var body: some View {
-        Group {
-            if bilibiliShown {
-                BilibiliContentView(embedded: true)
-                    .environmentObject(bilibili)
-            } else {
-                GeometryReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 14) {
-                            communityAnnouncement
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    communityAnnouncement
 
-                            standardHomeBody
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        // Blank space below short content belongs to the
-                        // scroll content too, so dragging there still scrolls
-                        // and pulls to refresh.
-                        .frame(minHeight: proxy.size.height, alignment: .top)
-                        .contentShape(Rectangle())
-                        .modifier(BeansScrollCollapseTracker())
-                    }
-                    .scrollBounceBehavior(.always)
-                    .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
+                    standardHomeBody
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // Blank space below short content belongs to the
+                // scroll content too, so dragging there still scrolls
+                // and pulls to refresh.
+                .frame(minHeight: proxy.size.height, alignment: .top)
+                .contentShape(Rectangle())
+                .modifier(BeansScrollCollapseTracker())
             }
+            .scrollBounceBehavior(.always)
+            .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
         }
         .navigationTitle("推荐")
+        .navigationBarTitleDisplayMode(.inline)
         #if os(iOS)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -408,7 +399,7 @@ struct HomeView: View {
                                 selectHomePlatform(platform)
                             } label: {
                                 HStack(spacing: 8) {
-                                    PlatformGlyph(platform: platform)
+                                    PlatformGlyph(platform: platform, contentMode: .fill)
                                         .frame(width: 28, height: 28)
                                         .clipShape(Circle())
                                     Text(platform.displayName)
@@ -424,22 +415,22 @@ struct HomeView: View {
                             Button {
                                 bilibiliActive = true
                             } label: {
-                                Label("哔哩哔哩", systemImage: "play.rectangle.fill")
+                                HStack(spacing: 8) {
+                                    BrandIconView(name: "BrandBilibili", contentMode: .fill)
+                                        .frame(width: 28, height: 28)
+                                        .clipShape(Circle())
+                                    Text("哔哩哔哩")
+                                }
                             }
                         }
                     }
                 } label: {
-                    if bilibiliShown {
-                        BrandIconView(name: "BrandBilibili")
-                            .frame(width: 34, height: 34)
-                    } else {
-                        HomePlatformBadge(platform: selectedHomePlatform)
-                    }
+                    HomePlatformBadge(platform: selectedHomePlatform)
                 }
                 .accessibilityLabel("当前首页平台：\(selectedHomePlatform.displayName)，点击切换")
                 .accessibilityHint("选择首页推荐平台或打开哔哩哔哩")
             }
-            if !bilibiliShown, selectedHomePlatform == .tx || selectedHomePlatform == .kg {
+            if selectedHomePlatform == .tx || selectedHomePlatform == .kg {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showPlatformAccount = true
@@ -801,7 +792,9 @@ struct HomeView: View {
     }
 
     private func selectHomePlatform(_ platform: LXCatalogPlatform) {
+#if os(iOS)
         bilibiliActive = false
+#endif
         // Set the mode first: .task(id:) reads both, and a half-updated pair would
         // start a load for the wrong source.
         settings.homeRecommendationMode = platform == .wy ? .netease : .lx
@@ -848,12 +841,11 @@ struct HomeView: View {
     }
 
     private var loadedBody: some View {
-        LazyVStack(alignment: .leading, spacing: 34) {
+        LazyVStack(alignment: .leading, spacing: 4) {
 #if os(macOS)
             homePlatformPicker
 #endif
             featureCards
-                .padding(.top, 8)
 
             if !model.toplists.isEmpty || !model.recommendTracks.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -911,7 +903,8 @@ struct HomeView: View {
 
             PlayerClearanceSpacer()
         }
-        .padding(.vertical, Theme.Layout.contentInset - 8)
+        .padding(.top, 0)
+        .padding(.bottom, Theme.Layout.contentInset - 8)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -1155,16 +1148,18 @@ struct FeatureCard: View {
 #if os(iOS)
 struct HomePlatformBadge: View {
     let platform: LXCatalogPlatform
+    var size: CGFloat = 46
 
     var body: some View {
-        PlatformGlyph(platform: platform)
-            .frame(width: 36, height: 36)
+        PlatformGlyph(platform: platform, contentMode: .fill)
+            .frame(width: size, height: size)
             .clipShape(Circle())
             .padding(2)
             .background { Circle().fill(.ultraThinMaterial) }
             .overlay {
                 Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1.5)
             }
+            .fixedSize()
     }
 
     private var iconName: String {

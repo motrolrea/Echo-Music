@@ -30,6 +30,8 @@ public struct IOSMainWindow: View {
     }
 
     @State private var selectedTab: IOSTab = .home
+    @AppStorage("moumusic.home.bilibiliActive") private var bilibiliActive = false
+    @AppStorage("moumusic.home.bilibiliSurface") private var bilibiliSurface = "videos"
     /// 「搜索」是独立小球：选中即弹出全屏搜索，再退回上一个功能页
     @State private var showSearch = false
     @State private var lastPrimaryTab: IOSTab = .home
@@ -89,6 +91,21 @@ public struct IOSMainWindow: View {
 
             }
             .onChange(of: selectedTab) { _ in Haptics.tap() }
+            .onChange(of: bilibiliActive) { active in
+                guard active, settings.bilibiliMode != .disabled else { return }
+                if selectedTab == .explore || selectedTab == .playlists {
+                    bilibiliSurface = "videos"
+                    selectedTab = .home
+                }
+            }
+            .onChange(of: bilibiliSurface) { value in
+                guard bilibiliActive, settings.bilibiliMode != .disabled else { return }
+                switch value {
+                case "live": selectedTab = .explore
+                case "dynamic": selectedTab = .playlists
+                default: selectedTab = .home
+                }
+            }
             .onChange(of: player.pendingDestination) { destination in
                 guard let destination else { return }
                 push(destination)
@@ -314,16 +331,34 @@ public struct IOSMainWindow: View {
     @available(iOS 26.0, *)
     private var iOS26TabView: some View {
         TabView(selection: $selectedTab) {
-            Tab("推荐", systemImage: "house", value: .home) {
-                tabStack(.home) { HomeView() }
+            Tab(bilibiliChrome ? "视频" : "推荐", systemImage: bilibiliChrome ? "play.rectangle" : "house", value: .home) {
+                tabStack(.home) {
+                    if bilibiliChrome {
+                        BilibiliContentView(locked: .videos, showsPlatformSwitcher: true)
+                    } else {
+                        HomeView()
+                    }
+                }
             }
 
-            Tab("精选", systemImage: "square.grid.2x2", value: .explore) {
-                tabStack(.explore) { ExploreView() }
+            Tab(bilibiliChrome ? "直播" : "精选", systemImage: bilibiliChrome ? "dot.radiowaves.left.and.right" : "square.grid.2x2", value: .explore) {
+                tabStack(.explore) {
+                    if bilibiliChrome {
+                        BilibiliContentView(locked: .live, showsPlatformSwitcher: true)
+                    } else {
+                        ExploreView()
+                    }
+                }
             }
 
-            Tab("歌单", systemImage: "music.note.list", value: .playlists) {
-                tabStack(.playlists) { LocalPlaylistsView() }
+            Tab(bilibiliChrome ? "动态" : "歌单", systemImage: bilibiliChrome ? "bolt.horizontal.circle" : "music.note.list", value: .playlists) {
+                tabStack(.playlists) {
+                    if bilibiliChrome {
+                        BilibiliContentView(locked: .dynamic, showsPlatformSwitcher: true)
+                    } else {
+                        LocalPlaylistsView()
+                    }
+                }
             }
 
             Tab("我的", systemImage: "person.crop.circle", value: .profile) {
@@ -386,7 +421,7 @@ public struct IOSMainWindow: View {
                 }
 
                 HStack(spacing: 10) {
-                    GlassTabBar(items: Self.tabItems, selection: $selectedTab) { tab in
+                    GlassTabBar(items: barItems, selection: $selectedTab) { tab in
                         popToRoot(tab)
                     }
                     searchBall(size: 52)
@@ -439,11 +474,11 @@ public struct IOSMainWindow: View {
     }
 
     private var currentTabIcon: String {
-        Self.tabItems.first { $0.tab == selectedTab }?.icon ?? "house"
+        barItems.first { $0.tab == selectedTab }?.icon ?? "house"
     }
 
     private var currentTabTitle: String {
-        Self.tabItems.first { $0.tab == selectedTab }?.title ?? "推荐"
+        barItems.first { $0.tab == selectedTab }?.title ?? "推荐"
     }
 
     private var isBarCollapsed: Bool {
@@ -454,13 +489,31 @@ public struct IOSMainWindow: View {
     private var selectedPage: some View {
         switch selectedTab {
         case .home:
-            tabStack(.home) { HomeView() }
+            tabStack(.home) {
+                if bilibiliChrome {
+                    BilibiliContentView(locked: .videos, showsPlatformSwitcher: true)
+                } else {
+                    HomeView()
+                }
+            }
         case .explore:
-            tabStack(.explore) { ExploreView() }
+            tabStack(.explore) {
+                if bilibiliChrome {
+                    BilibiliContentView(locked: .live, showsPlatformSwitcher: true)
+                } else {
+                    ExploreView()
+                }
+            }
         case .search:
             tabStack(.search) { SearchView(query: "") }
         case .playlists:
-            tabStack(.playlists) { LocalPlaylistsView() }
+            tabStack(.playlists) {
+                if bilibiliChrome {
+                    BilibiliContentView(locked: .dynamic, showsPlatformSwitcher: true)
+                } else {
+                    LocalPlaylistsView()
+                }
+            }
         case .profile:
             tabStack(.profile) { MyProfileView() }
         case .settings:
@@ -542,6 +595,18 @@ extension IOSMainWindow {
         .init(tab: .playlists, title: "歌单", icon: "music.note.list"),
         .init(tab: .profile, title: "我的", icon: "person.crop.circle"),
     ]
+
+    private var bilibiliChrome: Bool { bilibiliActive && settings.bilibiliMode != .disabled }
+
+    private var barItems: [GlassTabBar.Item] {
+        guard bilibiliChrome else { return Self.tabItems }
+        return [
+            .init(tab: .home, title: "视频", icon: "play.rectangle"),
+            .init(tab: .explore, title: "直播", icon: "dot.radiowaves.left.and.right"),
+            .init(tab: .playlists, title: "动态", icon: "bolt.horizontal.circle"),
+            .init(tab: .profile, title: "我的", icon: "person.crop.circle"),
+        ]
+    }
 }
 
 private enum NowPlayingTransitionID {

@@ -37,13 +37,6 @@ private final class BilibiliContentViewModel: ObservableObject {
         await loadCategory("推荐", cookie: cookie)
     }
 
-    func selectRecommendationSource(_ source: BilibiliRecommendationSource, cookie: String?) {
-        recommendationSource = source
-        Task { @MainActor [weak self] in
-            await self?.loadCategory("推荐", cookie: cookie)
-        }
-    }
-
     /// Pull to refresh: ask for a fresh batch of whatever is on screen.
     private var refreshIndex = 1
     func refresh(cookie: String?) async {
@@ -206,6 +199,10 @@ struct BilibiliContentView: View {
         var id: String { rawValue }
     }
 
+    enum LockedSurface {
+        case videos, live, dynamic
+    }
+
     @EnvironmentObject private var bilibili: BilibiliSessionStore
     @EnvironmentObject private var settings: SettingsManager
     @EnvironmentObject private var player: PlayerService
@@ -230,15 +227,37 @@ struct BilibiliContentView: View {
     @State private var accountError: String?
     @State private var accountStats = BilibiliAccountStats()
     @State private var showAccountDetail = false
+    @State private var presentsRecentPlayback = false
+    @State private var showBilibiliAccount = false
     @State private var showFilter = false
     @State private var showAppSettings = false
     @Environment(\.dismiss) private var dismiss
     /// Embedded in the Home tab (platform switcher) instead of presented on its own.
     var embedded = false
+    var locked: LockedSurface? = nil
+    var showsPlatformSwitcher = false
+    @AppStorage("moumusic.home.bilibiliActive") private var bilibiliActive = false
+
+    init(embedded: Bool = false, locked: LockedSurface? = nil, showsPlatformSwitcher: Bool = false) {
+        self.embedded = embedded
+        self.locked = locked
+        self.showsPlatformSwitcher = showsPlatformSwitcher
+        if let locked {
+            let initial: Surface
+            switch locked {
+            case .videos: initial = .videos
+            case .live: initial = .live
+            case .dynamic: initial = .dynamic
+            }
+            _surface = State(initialValue: initial)
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-        if embedded {
+        if locked != nil {
+            bilibiliSearchBar
+        } else if embedded {
             Picker("哔哩哔哩", selection: $surface) {
                 ForEach(Surface.allCases) { value in
                     Text(value.rawValue).tag(value)
@@ -250,7 +269,7 @@ struct BilibiliContentView: View {
         }
         ZStack {
             // Embedded in the home tab the page background (wallpaper) must show through.
-            if !embedded { Color(uiColor: .systemBackground).ignoresSafeArea() }
+            if !embedded && locked == nil { Color(uiColor: .systemBackground).ignoresSafeArea() }
             if surface == .live {
                 VStack(spacing: 0) {
                     // Keep live browsing inside the Bilibili surface instead
@@ -269,19 +288,26 @@ struct BilibiliContentView: View {
             }
         }
         }
-        .navigationTitle(embedded ? "推荐" : "哔哩哔哩")
-        .navigationBarTitleDisplayMode(embedded ? .automatic : .large)
+        .navigationTitle(locked != nil || embedded ? "" : "哔哩哔哩")
+        .navigationBarTitleDisplayMode(locked != nil || embedded ? .inline : .large)
         .toolbar {
-            if embedded {
-                // Bilibili-only search, right next to the account entry.
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSearch = true } label: { Image(systemName: "magnifyingglass") }
-                        .accessibilityLabel("搜索哔哩哔哩")
+            if locked != nil || embedded {
+                if showsPlatformSwitcher {
+                    ToolbarItem(placement: .topBarLeading) {
+                        bilibiliPlatformSwitcher
+                    }
                 }
-                // Account entry next to the platform switcher (like Beans' avatar button).
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.22)) { surface = .account }
+                        openAccountDetail(.history, asRecent: true)
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .accessibilityLabel("最近播放")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showBilibiliAccount = true
                     } label: {
                         bilibiliAvatarButton
                     }
@@ -289,7 +315,7 @@ struct BilibiliContentView: View {
                     .accessibilityLabel("哔哩哔哩账号")
                 }
             }
-            if !embedded {
+            if locked == nil && !embedded {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
                     dismiss()
@@ -348,7 +374,9 @@ struct BilibiliContentView: View {
         }
         .task {
             model.recommendationSource = settings.bilibiliRecommendationSource
-            if surface == .dynamic {
+            if surface == .live {
+                return
+            } else if surface == .dynamic {
                 await loadDynamic()
             } else if surface == .account {
                 await loadAccount()
@@ -387,6 +415,11 @@ struct BilibiliContentView: View {
             accountDetailSheet
                 .environmentObject(bilibili)
                 .environmentObject(settings)
+        }
+        .navigationDestination(isPresented: $showBilibiliAccount) {
+            accountSurface
+                .navigationTitle("我的")
+                .navigationBarTitleDisplayMode(.inline)
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack {
@@ -520,7 +553,12 @@ struct BilibiliContentView: View {
 
             BilibiliRowCard(title: "账号内容", rows: [
                 .init(icon: "sparkles", title: "动态") {
-                    withAnimation(.easeInOut(duration: 0.22)) { surface = .dynamic }
+                    if locked != nil {
+                        UserDefaults.standard.set("dynamic", forKey: "moumusic.home.bilibiliSurface")
+                        showBilibiliAccount = false
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.22)) { surface = .dynamic }
+                    }
                 },
                 .init(icon: "bell.badge", title: "账号消息", badge: unreadMessageCount) {
                     openAccountDetail(.messages)
@@ -578,7 +616,8 @@ struct BilibiliContentView: View {
         .padding(.horizontal, Theme.Layout.contentInset)
     }
 
-    private func openAccountDetail(_ tab: AccountTab) {
+    private func openAccountDetail(_ tab: AccountTab, asRecent: Bool = false) {
+        presentsRecentPlayback = asRecent && tab == .history
         accountTab = tab
         showAccountDetail = true
         Task { await loadAccount() }
@@ -603,7 +642,7 @@ struct BilibiliContentView: View {
                 .padding(.top, 12)
             }
             .scrollIndicators(.hidden)
-            .navigationTitle(accountTab.rawValue)
+            .navigationTitle(presentsRecentPlayback && accountTab == .history ? "最近播放" : accountTab.rawValue)
             .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $chatThread) { thread in
                 NavigationStack { BilibiliChatView(thread: thread) }
@@ -744,27 +783,72 @@ struct BilibiliContentView: View {
         }
     }
 
+    private var historyGroups: [(String, [BilibiliAPI.WatchHistoryItem])] {
+        let videos = watchHistory.filter { item in
+            let kind = item.kind
+            return !kind.contains("live") && !kind.contains("article") && !kind.contains("dynamic") && !kind.contains("opus")
+        }
+        let lives = watchHistory.filter { $0.kind.contains("live") }
+        let posts = watchHistory.filter { item in
+            let kind = item.kind
+            return kind.contains("article") || kind.contains("dynamic") || kind.contains("opus")
+        }
+        return [("视频", videos), ("直播", lives), ("动态", posts)].filter { !$0.1.isEmpty }
+    }
+
+    @ViewBuilder
+    private var bilibiliHistoryList: some View {
+        if watchHistory.isEmpty {
+            EmptyStateView(icon: "clock", title: presentsRecentPlayback ? "还没有最近播放" : "还没有观看记录")
+                .frame(maxWidth: .infinity, minHeight: 220)
+        } else {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                ForEach(Array(historyGroups.enumerated()), id: \.offset) { _, group in
+                    Text(group.0)
+                        .font(.headline)
+                    LazyVStack(spacing: 10) {
+                        ForEach(group.1) { item in
+                            Button {
+                                if let video = item.video { open(video) }
+                            } label: {
+                                BilibiliHistoryRow(item: item)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(item.video == nil)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, Theme.Layout.contentInset)
+        }
+    }
+
+    private var bilibiliSearchBar: some View {
+        Button { showSearch = true } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                Text("搜索")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+            .font(.system(size: 16, weight: .medium))
+            .padding(.horizontal, 14)
+            .frame(height: 40)
+            .frame(maxWidth: .infinity)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay { Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.8) }
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, Theme.Layout.contentInset)
+        .padding(.vertical, 8)
+        .accessibilityLabel("搜索哔哩哔哩")
+    }
+
     @ViewBuilder
     private var accountBody: some View {
         switch accountTab {
         case .history:
-            if watchHistory.isEmpty {
-                EmptyStateView(icon: "clock", title: "还没有观看记录")
-                    .frame(maxWidth: .infinity, minHeight: 220)
-            } else {
-                LazyVStack(spacing: 10) {
-                    ForEach(watchHistory) { item in
-                        Button {
-                            if let video = item.video { open(video) }
-                        } label: {
-                            BilibiliHistoryRow(item: item)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(item.video == nil)
-                    }
-                }
-                .padding(.horizontal, Theme.Layout.contentInset)
-            }
+            bilibiliHistoryList
         case .favorites:
             favoriteBody
         case .messages:
@@ -897,7 +981,6 @@ struct BilibiliContentView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
                 feedPicker
-                if model.feed == .recommend { recommendationSourcePicker }
                 model.feed == .ranking ? AnyView(rankingTabs) : AnyView(categoryTabs)
 
                 if model.isLoading && model.videos.isEmpty {
@@ -950,43 +1033,45 @@ struct BilibiliContentView: View {
         .padding(.horizontal, Theme.Layout.contentInset)
     }
 
-    private var recommendationSourcePicker: some View {
+    private var bilibiliPlatformSwitcher: some View {
         Menu {
-            ForEach(BilibiliRecommendationSource.allCases) { source in
-                Button {
-                    settings.bilibiliRecommendationSource = source
-                    model.selectRecommendationSource(source, cookie: bilibili.cookie)
-                } label: {
-                    Label {
-                        Text(source.displayName)
-                    } icon: {
-                        Image(systemName: source == model.recommendationSource
-                              ? "checkmark.circle.fill" : "circle")
+            Section("首页推荐平台") {
+                ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }) { platform in
+                    Button {
+                        bilibiliActive = false
+                        settings.homeRecommendationMode = platform == .wy ? .netease : .lx
+                        settings.homeRecommendationPlatform = platform
+                    } label: {
+                        HStack(spacing: 8) {
+                            PlatformGlyph(platform: platform, contentMode: .fill)
+                                .frame(width: 28, height: 28)
+                                .clipShape(Circle())
+                            Text(platform.displayName)
+                        }
+                    }
+                }
+            }
+            Section {
+                Button {} label: {
+                    HStack(spacing: 8) {
+                        BrandIconView(name: "BrandBilibili", contentMode: .fill)
+                            .frame(width: 28, height: 28)
+                            .clipShape(Circle())
+                        Text("哔哩哔哩")
+                        Image(systemName: "checkmark")
                     }
                 }
             }
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles.tv")
-                    .foregroundStyle(Theme.accent)
-                Text("推荐")
-                    .font(.subheadline.weight(.semibold))
-                Text(model.recommendationSource.displayName)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Theme.accent)
-                    .lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .frame(minHeight: 38)
-            .compatGlass(interactive: true, in: Capsule())
+            BrandIconView(name: "BrandBilibili", contentMode: .fill)
+                .frame(width: 46, height: 46)
+                .clipShape(Circle())
+                .padding(2)
+                .background { Circle().fill(.ultraThinMaterial) }
+                .overlay { Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1.5) }
+                .fixedSize()
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, Theme.Layout.contentInset)
-        .frame(maxWidth: .infinity, alignment: .trailing)
-        .accessibilityLabel("选择 B 站推荐客户端")
+        .accessibilityLabel("当前平台：哔哩哔哩，点击切换")
     }
 
     private var categoryTabs: some View {

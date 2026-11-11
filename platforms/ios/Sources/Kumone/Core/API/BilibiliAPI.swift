@@ -420,6 +420,8 @@ actor BilibiliAPI {
         let author: String
         let durationText: String
         let viewedAt: Date?
+        /// archive / pgc / live / article / dynamic，用来把最近播放分成视频、直播和动态。
+        let kind: String
         let video: Video?
 
         var id: String { historyID }
@@ -2406,6 +2408,7 @@ actor BilibiliAPI {
             ?? durationValue.map(formatDuration)
             ?? text(raw["duration"] ?? nested?["duration"])
             ?? ""
+        let kind = (text(raw["business"] ?? nested?["business"] ?? raw["type"]) ?? "archive").lowercased()
         var normalized = raw
         if let bvid { normalized["bvid"] = bvid }
         if let aid = integer(raw["aid"] ?? nested?["aid"]) { normalized["aid"] = aid }
@@ -2425,6 +2428,7 @@ actor BilibiliAPI {
             author: author,
             durationText: durationText,
             viewedAt: dateFromMilliseconds(raw["view_at"] ?? raw["watched_at"] ?? raw["viewed_at"]),
+            kind: kind,
             video: video
         )
     }

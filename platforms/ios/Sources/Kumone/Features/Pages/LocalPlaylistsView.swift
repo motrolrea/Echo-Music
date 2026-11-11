@@ -99,7 +99,7 @@ struct LocalPlaylistsView: View {
                                 settings.homeRecommendationPlatform = platform
                             } label: {
                                 HStack(spacing: 8) {
-                                    PlatformGlyph(platform: platform)
+                                    PlatformGlyph(platform: platform, contentMode: .fill)
                                         .frame(width: 28, height: 28)
                                         .clipShape(Circle())
                                     Text(platform.displayName)
@@ -107,6 +107,22 @@ struct LocalPlaylistsView: View {
                             }
                         }
                     }
+#if os(iOS)
+                    if settings.bilibiliMode != .disabled {
+                        Section {
+                            Button {
+                                UserDefaults.standard.set(true, forKey: "moumusic.home.bilibiliActive")
+                            } label: {
+                                HStack(spacing: 8) {
+                                    BrandIconView(name: "BrandBilibili", contentMode: .fill)
+                                        .frame(width: 28, height: 28)
+                                        .clipShape(Circle())
+                                    Text("哔哩哔哩")
+                                }
+                            }
+                        }
+                    }
+#endif
                 } label: {
                     HomePlatformBadge(
                         platform: settings.homeRecommendationMode == .netease ? .wy : settings.homeRecommendationPlatform
