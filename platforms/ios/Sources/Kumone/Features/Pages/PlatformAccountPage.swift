@@ -15,6 +15,7 @@ struct PlatformAccountPage: View {
     private var title: String { platform == .kg ? "酷狗音乐" : "QQ 音乐" }
     private var brand: String { platform == .kg ? "BrandKugou" : "BrandQQ" }
     private var isLoggedIn: Bool { platform == .kg ? kugou.isLoggedIn : qqMusic.isLoggedIn }
+    private var avatarURL: String? { platform == .kg ? kugou.avatarURL : qqMusic.avatarURL }
 
     private var statusText: String {
         guard isLoggedIn else { return "未登录 · 扫码 / 手机号 / 网页登录" }
@@ -32,7 +33,7 @@ struct PlatformAccountPage: View {
                     MouGlassCard {
                         VStack(alignment: .leading, spacing: 14) {
                             HStack(spacing: 14) {
-                                BrandIconView(name: brand).frame(width: 52, height: 52)
+                                accountAvatar
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(title).font(.title3.weight(.semibold))
                                     Text(statusText)
@@ -88,6 +89,19 @@ struct PlatformAccountPage: View {
                 }
                 Button("取消", role: .cancel) {}
             }
+        }
+    }
+
+    @ViewBuilder
+    private var accountAvatar: some View {
+        if isLoggedIn, let avatarURL {
+            CachedAsyncImage(url: avatarURL.resizedImageURL(160)) {
+                BrandIconView(name: brand)
+            }
+            .frame(width: 52, height: 52)
+            .clipShape(Circle())
+        } else {
+            BrandIconView(name: brand).frame(width: 52, height: 52)
         }
     }
 }

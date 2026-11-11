@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct EchoAvatarButton: View {
-    /// Fits the 44pt navigation bar so iOS cannot squash it into a wide oval.
-    var size: CGFloat = 36
+    /// Stays under the 44pt bar height, so iOS keeps the proposed square.
+    var size: CGFloat = 42
     @Environment(\.openProfile) private var openProfile
     @EnvironmentObject private var account: AccountStore
 #if os(iOS)

@@ -22,6 +22,7 @@ final class QQMusicSessionStore: ObservableObject {
 
     @Published private(set) var isLoggedIn = false
     @Published private(set) var profileName: String?
+    @Published private(set) var avatarURL: String?
     /// nil until the membership lookup finishes (or when QQ does not answer).
     @Published private(set) var isVIP: Bool?
     @Published private(set) var sessionRevision = 0
@@ -89,6 +90,7 @@ final class QQMusicSessionStore: ObservableObject {
             storedCookie = refreshedCookie
         }
         profileName = profile?.name ?? "QQ 音乐用户"
+        avatarURL = profile?.avatarURL
         isLoggedIn = true
         sessionRevision &+= 1
         refreshVIP()
@@ -119,6 +121,7 @@ final class QQMusicSessionStore: ObservableObject {
             return
         }
         profileName = profile.name
+        if let avatarURL = profile.avatarURL { self.avatarURL = avatarURL }
         isLoggedIn = true
         sessionRevision &+= 1
         refreshVIP()
@@ -132,6 +135,7 @@ final class QQMusicSessionStore: ObservableObject {
         ProviderSessionSupport.deleteCookie(service: keychainService)
         storedCookie = nil
         profileName = nil
+        avatarURL = nil
         isVIP = nil
         isLoggedIn = false
         sessionRevision &+= 1

@@ -1066,10 +1066,10 @@ struct BilibiliContentView: View {
             ZStack {
                 Circle().fill(.ultraThinMaterial)
                 BrandIconView(name: "BrandBilibili", contentMode: .fill)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 42, height: 42)
                     .clipShape(Circle())
             }
-            .frame(width: 36, height: 36)
+            .frame(width: 42, height: 42)
             .clipShape(Circle())
             .overlay { Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1.5) }
             .fixedSize()

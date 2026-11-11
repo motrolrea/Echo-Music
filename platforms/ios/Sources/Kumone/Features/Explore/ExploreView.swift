@@ -262,13 +262,13 @@ struct ExploreView: View {
                     }
 
                     if !playlistQueryTrimmed.isEmpty, !songResults.isEmpty {
-                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        HStack(alignment: .center, spacing: 10) {
                             Text("歌曲")
                                 .font(.title2.weight(.semibold))
+                            Spacer(minLength: 0)
                             #if os(iOS)
                             TrackBatchDownloadButton(tracks: songResults)
                             #endif
-                            Spacer(minLength: 0)
                         }
                         .padding(.horizontal, Theme.Layout.contentInset)
                         TrackListView(tracks: songResults, showsSummary: false, showsBatchDownload: false)
@@ -276,13 +276,13 @@ struct ExploreView: View {
                     }
 
                     if playlistQueryTrimmed.isEmpty, !model.tracks.isEmpty {
-                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        HStack(alignment: .center, spacing: 10) {
                             Text("\(model.platform.displayName) 热门歌曲")
                                 .font(.title2.weight(.semibold))
+                            Spacer(minLength: 0)
                             #if os(iOS)
                             TrackBatchDownloadButton(tracks: model.tracks)
                             #endif
-                            Spacer(minLength: 0)
                         }
                         .padding(.horizontal, Theme.Layout.contentInset)
                         TrackListView(tracks: model.tracks, showsSummary: false, showsBatchDownload: false)

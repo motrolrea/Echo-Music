@@ -478,6 +478,12 @@ struct TrackBatchDownloadButton: View {
             } label: {
                 Label("批量下载", systemImage: "arrow.down.circle")
                     .font(.footnote.weight(.medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(.primary.opacity(0.28), lineWidth: 1)
+                    }
             }
             .buttonStyle(.plain)
             .fixedSize()
@@ -533,6 +539,12 @@ struct TrackListView: View {
                         } label: {
                             Label("批量下载", systemImage: "arrow.down.circle")
                                 .font(.footnote.weight(.medium))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .strokeBorder(.primary.opacity(0.28), lineWidth: 1)
+                                }
                         }
                         .buttonStyle(.plain)
                     }

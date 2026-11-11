@@ -433,11 +433,12 @@ struct HomeView: View {
                     Button {
                         showPlatformAccount = true
                     } label: {
-                        Image(systemName: (selectedHomePlatform == .kg ? kugou.isLoggedIn : qqMusic.isLoggedIn)
-                              ? "person.crop.circle.fill" : "person.crop.circle.badge.plus")
+                        platformAccountMark
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel("\(selectedHomePlatform.displayName)账号")
                 }
+                .echoCircleItem()
             }
             ToolbarItem(placement: .topBarTrailing) {
                 EchoAvatarButton()
@@ -771,6 +772,32 @@ struct HomeView: View {
         settings.homeRecommendationMode == .netease ? .wy : settings.homeRecommendationPlatform
     }
 
+    private var platformAccountMark: some View {
+        let loggedIn = selectedHomePlatform == .kg ? kugou.isLoggedIn : qqMusic.isLoggedIn
+        let avatarURL = selectedHomePlatform == .kg ? kugou.avatarURL : qqMusic.avatarURL
+        return ZStack {
+            Circle().fill(.ultraThinMaterial)
+            if loggedIn, let avatarURL {
+                CachedAsyncImage(url: avatarURL.resizedImageURL(160)) {
+                    Image(systemName: "person.crop.circle.fill")
+                        .resizable().scaledToFit().foregroundStyle(.secondary)
+                }
+                .frame(width: 42, height: 42)
+                .clipShape(Circle())
+            } else {
+                Image(systemName: loggedIn ? "person.crop.circle.fill" : "person.crop.circle.badge.plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 42, height: 42)
+        .clipShape(Circle())
+        .overlay {
+            Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1.5)
+        }
+        .fixedSize()
+    }
+
     private func platformMenuIcon(_ platform: LXCatalogPlatform) -> String {
         switch platform {
         case .wy: return "cloud.fill"
@@ -860,13 +887,13 @@ struct HomeView: View {
                         .padding(.top, 16)
                     }
                     if !model.recommendTracks.isEmpty {
-                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        HStack(alignment: .center, spacing: 10) {
                             Text("热门歌曲")
                                 .font(.title2.weight(.semibold))
+                            Spacer(minLength: 0)
                             #if os(iOS)
                             TrackBatchDownloadButton(tracks: model.recommendTracks)
                             #endif
-                            Spacer(minLength: 0)
                         }
                         .padding(.horizontal, Theme.Layout.contentInset)
                         TrackListView(tracks: model.recommendTracks, showsSummary: false, showsBatchDownload: false)
@@ -1155,8 +1182,8 @@ struct FeatureCard: View {
 #if os(iOS)
 struct HomePlatformBadge: View {
     let platform: LXCatalogPlatform
-    /// Fits the 44pt navigation bar so the badge stays a circle.
-    var size: CGFloat = 36
+    /// Stays under the 44pt bar height, so the badge stays a circle.
+    var size: CGFloat = 42
 
     var body: some View {
         ZStack {
