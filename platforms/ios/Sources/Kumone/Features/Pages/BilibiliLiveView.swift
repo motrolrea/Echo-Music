@@ -98,9 +98,11 @@ struct BilibiliLiveView: View {
             if !embedded { Color(uiColor: .systemBackground).ignoresSafeArea() }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 18) {
-                    header
-                    searchField
-                    areaPicker
+                    if !embedded {
+                        header
+                        searchField
+                        areaPicker
+                    }
 
                     if model.isLoading && model.rooms.isEmpty {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 260)
@@ -113,8 +115,10 @@ struct BilibiliLiveView: View {
                         EmptyStateView(icon: "dot.radiowaves.left.and.right", title: "暂时没有直播")
                             .frame(maxWidth: .infinity, minHeight: 260)
                     } else {
-                        SectionHeader(title: LocalizedStringKey(model.query.isEmpty ? "热门直播" : "搜索结果"))
-                            .padding(.horizontal, Theme.Layout.contentInset)
+                        if !embedded {
+                            SectionHeader(title: LocalizedStringKey(model.query.isEmpty ? "热门直播" : "搜索结果"))
+                                .padding(.horizontal, Theme.Layout.contentInset)
+                        }
                         liveGrid
                     }
                     PlayerClearanceSpacer()
@@ -133,8 +137,8 @@ struct BilibiliLiveView: View {
                 }.value
             }
         }
-        .navigationTitle(embedded ? "哔哩哔哩 · 直播" : "B 站直播")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationTitle(embedded ? "" : "B 站直播")
+        .navigationBarTitleDisplayMode(embedded ? .inline : .large)
         .toolbar {
             if !embedded {
                 ToolbarItem(placement: .cancellationAction) {

@@ -5,17 +5,9 @@ struct LocalPlaylistsView: View {
     @StateObject private var store = LocalPlaylistStore.shared
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var settings: SettingsManager
-    @EnvironmentObject private var player: PlayerService
     @State private var showImport = false
     @State private var showCreate = false
     @State private var newName = ""
-    @State private var chartTracks: [Track] = []
-    @State private var chartTitle = "热门歌曲"
-    @State private var chartLoading = false
-
-    private var chartPlatform: LXCatalogPlatform {
-        settings.homeRecommendationMode == .netease ? .wy : settings.homeRecommendationPlatform
-    }
 
     var body: some View {
         ScrollView {
@@ -28,8 +20,6 @@ struct LocalPlaylistsView: View {
                     likedSongsRow
                 }
                 .buttonStyle(.plain)
-
-                chartSection
 
                 if store.playlists.isEmpty {
                     VStack(spacing: 14) {
@@ -106,10 +96,8 @@ struct LocalPlaylistsView: View {
                                 }
                             }
                         }
-                    }
 #if os(iOS)
-                    if settings.bilibiliMode != .disabled {
-                        Section {
+                        if settings.bilibiliMode != .disabled {
                             Button {
                                 UserDefaults.standard.set(true, forKey: "moumusic.home.bilibiliActive")
                             } label: {
@@ -121,8 +109,8 @@ struct LocalPlaylistsView: View {
                                 }
                             }
                         }
-                    }
 #endif
+                    }
                 } label: {
                     HomePlatformBadge(
                         platform: settings.homeRecommendationMode == .netease ? .wy : settings.homeRecommendationPlatform
@@ -130,6 +118,9 @@ struct LocalPlaylistsView: View {
                 }
                 .accessibilityLabel("切换平台")
             }
+#if os(iOS)
+            .echoCircleItem()
+#endif
             ToolbarItem(placement: .topBarTrailing) {
                 EchoPlaylistActions(
                     onImport: { showImport = true },
@@ -139,11 +130,13 @@ struct LocalPlaylistsView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 EchoAvatarButton()
             }
+#if os(iOS)
+            .echoCircleItem()
+#endif
         }
         .sheet(isPresented: $showImport) {
             ImportPlaylistSheet()
         }
-        .task(id: chartPlatform.rawValue) { await loadChart() }
         .alert("新建本地歌单", isPresented: $showCreate) {
             TextField("歌单名称", text: $newName)
             Button("创建") {
@@ -151,68 +144,6 @@ struct LocalPlaylistsView: View {
                 newName = ""
             }
             Button("取消", role: .cancel) { newName = "" }
-        }
-    }
-
-    private var chartSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(chartTitle)
-                .font(.system(size: 18, weight: .bold))
-            if chartLoading && chartTracks.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity, minHeight: 44)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(Array(chartTracks.enumerated()), id: \.offset) { _, track in
-                        Button {
-                            player.play(tracks: chartTracks,
-                                        source: .playlist(chartPlatform == .wy ? 3_778_678 : 0),
-                                        startAt: track)
-                        } label: {
-                            chartRow(track)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, Theme.Layout.contentInset)
-    }
-
-    private func chartRow(_ track: Track) -> some View {
-        HStack(spacing: 12) {
-            CachedAsyncImage(url: track.album.picUrl?.resizedImageURL(160))
-                .frame(width: 48, height: 48)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.name)
-                    .font(.system(size: 15, weight: .medium))
-                    .lineLimit(1)
-                Text(track.artistNames)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            Image(systemName: "play.fill")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    private func loadChart() async {
-        chartLoading = true
-        defer { chartLoading = false }
-        let platform = chartPlatform
-        if platform == .wy {
-            chartTitle = "热门歌曲"
-            chartTracks = (try? await NeteaseAPI.hotSongs(limit: 20)) ?? []
-        } else {
-            chartTitle = "\(platform.displayName)热门歌曲"
-            chartTracks = await LXCatalogService.recommendedContent(platform: platform, limit: 20).tracks
         }
     }
 
@@ -300,17 +231,21 @@ struct LocalPlaylistsView: View {
 
     private func playlistRow(_ playlist: LocalPlaylist) -> some View {
         HStack(spacing: 12) {
-            CachedAsyncImage(url: playlist.coverURL?.resizedImageURL(160), animated: false)
-                .frame(width: 68, height: 68)
-                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay {
-                    if playlist.coverURL == nil {
-                        Image(systemName: "music.note.list")
-                            .font(.title2)
-                            .foregroundStyle(Theme.accent)
+            if playlist.sourceName != nil || playlist.remoteSource != nil {
+                ImportedPlaylistCover(playlist: playlist)
+            } else {
+                CachedAsyncImage(url: playlist.coverURL?.resizedImageURL(160), animated: false)
+                    .frame(width: 68, height: 68)
+                    .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay {
+                        if playlist.coverURL == nil {
+                            Image(systemName: "music.note.list")
+                                .font(.title2)
+                                .foregroundStyle(Theme.accent)
+                        }
                     }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(playlist.name)
@@ -330,6 +265,100 @@ struct LocalPlaylistsView: View {
         .padding(12)
         .background(.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .contentShape(Rectangle())
+    }
+}
+
+/// Rotates an imported playlist through its own track covers and marks the source.
+private struct ImportedPlaylistCover: View {
+    let playlist: LocalPlaylist
+    @State private var index = 0
+
+    private var covers: [URL] {
+        var seen = Set<String>()
+        var urls: [URL] = []
+        for track in playlist.tracks {
+            guard let raw = track.album.picUrl, seen.insert(raw).inserted,
+                  let url = raw.resizedImageURL(160) else { continue }
+            urls.append(url)
+            if urls.count == 8 { break }
+        }
+        if urls.isEmpty, let fallback = playlist.coverURL?.resizedImageURL(160) {
+            urls.append(fallback)
+        }
+        return urls
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            CachedAsyncImage(url: covers.indices.contains(index) ? covers[index] : nil, animated: false)
+                .frame(width: 68, height: 68)
+                .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    if covers.isEmpty {
+                        Image(systemName: "music.note.list")
+                            .font(.title2)
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            if let badge = Self.badge(for: playlist) {
+                badgeView(badge)
+                    .frame(width: 18, height: 18)
+                    .clipShape(Circle())
+                    .overlay { Circle().strokeBorder(.white, lineWidth: 1) }
+                    .padding(4)
+            }
+        }
+        .frame(width: 68, height: 68)
+        .task(id: covers.map(\.absoluteString).joined(separator: "|")) {
+            guard covers.count > 1 else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(4))
+                guard !Task.isCancelled else { return }
+                index = (index + 1) % max(covers.count, 1)
+            }
+        }
+    }
+
+    private enum Badge {
+        case catalog(LXCatalogPlatform)
+        case bilibili
+    }
+
+    @ViewBuilder
+    private func badgeView(_ badge: Badge) -> some View {
+        switch badge {
+        case .catalog(let platform):
+            PlatformGlyph(platform: platform, contentMode: .fill)
+        case .bilibili:
+            BrandIconView(name: "BrandBilibili", contentMode: .fill)
+        }
+    }
+
+    private static func badge(for playlist: LocalPlaylist) -> Badge? {
+        let raw = (playlist.remoteSource ?? playlist.sourceName ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return nil }
+        let key = raw.lowercased()
+        if key.contains("bilibili") || raw.contains("哔哩") { return .bilibili }
+        let aliases: [String: LXCatalogPlatform] = [
+            "wy": .wy, "netease": .wy, "网易云": .wy, "网易云音乐": .wy,
+            "kw": .kw, "kuwo": .kw, "酷我": .kw, "酷我音乐": .kw,
+            "kg": .kg, "kugou": .kg, "酷狗": .kg, "酷狗音乐": .kg,
+            "tx": .tx, "qq": .tx, "qq音乐": .tx, "qq 音乐": .tx,
+            "mg": .mg, "migu": .mg, "咪咕": .mg, "咪咕音乐": .mg,
+            "sd": .sd, "qishui": .sd, "汽水": .sd, "汽水音乐": .sd
+        ]
+        if let platform = aliases[key] ?? aliases[raw] { return .catalog(platform) }
+        if raw == LXCatalogPlatform.sd.displayName || key == LXCatalogPlatform.sd.rawValue {
+            return .catalog(.sd)
+        }
+        if let platform = LXCatalogPlatform.catalogueCases.first(where: {
+            $0.displayName == raw || $0.rawValue == key
+        }) {
+            return .catalog(platform)
+        }
+        return nil
     }
 }
 

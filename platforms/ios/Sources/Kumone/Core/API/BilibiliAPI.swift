@@ -405,6 +405,7 @@ actor BilibiliAPI {
         let publishedAt: Date?
         let likeCount: Int
         let commentCount: Int
+        let repostCount: Int
         let video: Video?
     }
 
@@ -2361,7 +2362,7 @@ actor BilibiliAPI {
             return Self.video(normalized)
         }
         let id = text(raw["id_str"] ?? raw["id"] ?? raw["dyn_id_str"]) ?? UUID().uuidString
-        let textValue = stripHTML(text(dynamicModule?["desc"] ?? raw["content"] ?? raw["text"]) ?? "")
+        let textValue = dynamicPlainText(dynamicModule?["desc"] ?? raw["content"] ?? raw["text"])
         let author = stripHTML(text(authorModule?["name"] ?? raw["uname"]) ?? "B 站用户")
         let cover = imageURL(text(archive?["cover"] ?? raw["cover"]))
         guard !textValue.isEmpty || video != nil else { return nil }
@@ -2373,8 +2374,9 @@ actor BilibiliAPI {
             text: textValue,
             coverURL: cover,
             publishedAt: dateFromMilliseconds(authorModule?["pub_ts"] ?? raw["pub_ts"]),
-            likeCount: integer(stats?["like"] ?? raw["like"]) ?? 0,
-            commentCount: integer(stats?["comment"] ?? raw["comment"]) ?? 0,
+            likeCount: statCount(stats?["like"] ?? raw["like"]),
+            commentCount: statCount(stats?["reply"] ?? stats?["comment"] ?? raw["reply"] ?? raw["comment"]),
+            repostCount: statCount(stats?["forward"] ?? stats?["repost"] ?? stats?["share"] ?? raw["forward"]),
             video: video
         )
     }
@@ -2681,6 +2683,22 @@ actor BilibiliAPI {
         if let value = value as? String { return value.isEmpty ? nil : value }
         if let value = value as? NSNumber { return value.stringValue }
         return nil
+    }
+
+    /// Dynamic stats are often `{ "count": n }`, which `integer` does not unwrap.
+    private static func statCount(_ value: Any?) -> Int {
+        if let n = integer(value) { return n }
+        if let dict = value as? [String: Any], let n = integer(dict["count"]) { return n }
+        return 0
+    }
+
+    private static func dynamicPlainText(_ value: Any?) -> String {
+        if let text = text(value) { return stripHTML(text) }
+        if let dict = value as? [String: Any],
+           let nested = text(dict["text"] ?? dict["desc"] ?? dict["rich_text"]) {
+            return stripHTML(nested)
+        }
+        return ""
     }
 
     private static func integer(_ value: Any?) -> Int? {

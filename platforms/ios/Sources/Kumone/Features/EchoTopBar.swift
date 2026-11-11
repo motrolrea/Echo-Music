@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct EchoAvatarButton: View {
-    var size: CGFloat = 46
+    /// Fits the 44pt navigation bar so iOS cannot squash it into a wide oval.
+    var size: CGFloat = 36
     @Environment(\.openProfile) private var openProfile
     @EnvironmentObject private var account: AccountStore
 #if os(iOS)
@@ -10,23 +11,27 @@ struct EchoAvatarButton: View {
 
     var body: some View {
         Button(action: openProfile) {
-            avatar
-                .frame(width: size, height: size)
-                .clipShape(Circle())
-                .padding(2)
-                .background { Circle().fill(.ultraThinMaterial) }
-                .overlay {
-                    Circle().strokeBorder(
-                        LinearGradient(
-                            colors: [.white.opacity(0.75), .white.opacity(0.18)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ),
-                        lineWidth: 1.6
-                    )
-                }
+            ZStack {
+                Circle().fill(.ultraThinMaterial)
+                avatar
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+            }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .overlay {
+                Circle().strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.75), .white.opacity(0.18)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 1.6
+                )
+            }
         }
         .buttonStyle(.plain)
+        .frame(width: size, height: size)
         .fixedSize()
         .accessibilityLabel("个人信息")
     }
@@ -88,3 +93,17 @@ struct EchoPlaylistActions: View {
         .overlay { Capsule().strokeBorder(.white.opacity(0.32), lineWidth: 0.8) }
     }
 }
+
+#if os(iOS)
+extension ToolbarContent {
+    /// iOS 26 draws a shared capsule behind toolbar items and stretches circles.
+    @ToolbarContentBuilder
+    func echoCircleItem() -> some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            self.sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
+    }
+}
+#endif

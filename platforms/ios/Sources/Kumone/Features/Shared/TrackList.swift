@@ -466,6 +466,29 @@ final class SpectrumBarsView: PlatformView {
 
 // MARK: - Track list
 
+#if os(iOS)
+struct TrackBatchDownloadButton: View {
+    let tracks: [Track]
+    @State private var showBatchDownload = false
+
+    var body: some View {
+        if tracks.count > 1 {
+            Button {
+                showBatchDownload = true
+            } label: {
+                Label("批量下载", systemImage: "arrow.down.circle")
+                    .font(.footnote.weight(.medium))
+            }
+            .buttonStyle(.plain)
+            .fixedSize()
+            .sheet(isPresented: $showBatchDownload) {
+                DownloadOptionsSheet(tracks: tracks)
+            }
+        }
+    }
+}
+#endif
+
 struct TrackListView: View {
     let tracks: [Track]
     var style: TrackRowStyle = .full
@@ -480,6 +503,8 @@ struct TrackListView: View {
     var selectedTrackKeys: Binding<Set<String>>? = nil
     /// Home and explore already show their own section title.
     var showsSummary: Bool = true
+    /// Home and explore place the button on the section title row instead.
+    var showsBatchDownload: Bool = true
 
     #if os(iOS)
     @State private var showBatchDownload = false
@@ -494,24 +519,25 @@ struct TrackListView: View {
     var body: some View {
         VStack(spacing: 4) {
             #if os(iOS)
-            if tracks.count > 1 {
-                HStack {
+            if tracks.count > 1, showsSummary || showsBatchDownload {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     if showsSummary {
                         Text("\(tracks.count) 首歌曲")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    Spacer()
-                    Button {
-                        showBatchDownload = true
-                    } label: {
-                        Label("批量下载", systemImage: "arrow.down.circle")
-                            .font(.footnote.weight(.medium))
+                    Spacer(minLength: 0)
+                    if showsBatchDownload {
+                        Button {
+                            showBatchDownload = true
+                        } label: {
+                            Label("批量下载", systemImage: "arrow.down.circle")
+                                .font(.footnote.weight(.medium))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.bordered)
                 }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 4)
             }
             #endif
 

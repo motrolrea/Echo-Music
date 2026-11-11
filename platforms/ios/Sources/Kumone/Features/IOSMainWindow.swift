@@ -14,7 +14,6 @@ public struct IOSMainWindow: View {
     @ObservedObject private var deviceReporter = DeviceReporter.shared
     @StateObject private var bottomCollapse = BottomBarCollapseStore.shared
     @AppStorage("moumusic.tabBarMinimize") private var tabBarMinimizes = true
-    @AppStorage("moumusic.hideBottomChrome") private var hideBottomChrome = false
     @AppStorage(AppAppearanceKeys.floatingEffects) private var floatingEffects = false
     @ObservedObject private var backgroundStore = BackgroundImageStore.shared
     @ObservedObject private var dynamicWallpaper = DynamicWallpaperStore.shared
@@ -321,7 +320,7 @@ public struct IOSMainWindow: View {
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
-                isActive: player.hasCurrentTrack && !hideBottomChrome,
+                isActive: player.hasCurrentTrack,
                 transitionNamespace: nowPlayingTransition,
                 colorScheme: resolvedColorScheme
             ))
@@ -392,9 +391,7 @@ public struct IOSMainWindow: View {
     /// 胶囊底栏 + 迷你播放器 dock；滚动折叠后收成「当前页小球 + 迷你播放器 + 独立搜索小球」
     @ViewBuilder
     private var legacyBottomBar: some View {
-        if hideBottomChrome {
-            EmptyView()
-        } else if isBarCollapsed {
+        if isBarCollapsed {
             HStack(spacing: 10) {
                 collapsedTabBall
 

@@ -255,7 +255,7 @@ struct BilibiliContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-        if locked != nil {
+        if locked == .videos {
             bilibiliSearchBar
         } else if embedded {
             Picker("哔哩哔哩", selection: $surface) {
@@ -296,6 +296,7 @@ struct BilibiliContentView: View {
                     ToolbarItem(placement: .topBarLeading) {
                         bilibiliPlatformSwitcher
                     }
+                    .echoCircleItem()
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -314,6 +315,7 @@ struct BilibiliContentView: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("哔哩哔哩账号")
                 }
+                .echoCircleItem()
             }
             if locked == nil && !embedded {
             ToolbarItem(placement: .topBarLeading) {
@@ -1050,8 +1052,6 @@ struct BilibiliContentView: View {
                         }
                     }
                 }
-            }
-            Section {
                 Button {} label: {
                     HStack(spacing: 8) {
                         BrandIconView(name: "BrandBilibili", contentMode: .fill)
@@ -1063,13 +1063,16 @@ struct BilibiliContentView: View {
                 }
             }
         } label: {
-            BrandIconView(name: "BrandBilibili", contentMode: .fill)
-                .frame(width: 46, height: 46)
-                .clipShape(Circle())
-                .padding(2)
-                .background { Circle().fill(.ultraThinMaterial) }
-                .overlay { Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1.5) }
-                .fixedSize()
+            ZStack {
+                Circle().fill(.ultraThinMaterial)
+                BrandIconView(name: "BrandBilibili", contentMode: .fill)
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+            }
+            .frame(width: 36, height: 36)
+            .clipShape(Circle())
+            .overlay { Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1.5) }
+            .fixedSize()
         }
         .accessibilityLabel("当前平台：哔哩哔哩，点击切换")
     }
@@ -1459,7 +1462,14 @@ private struct BilibiliDynamicCard: View {
                             .foregroundStyle(Theme.accent)
                     }
                 }
-                if !item.text.isEmpty {
+                if let title = item.video?.title, !title.isEmpty {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if !item.text.isEmpty, item.text != item.video?.title {
                     Text(item.text).font(.body).foregroundStyle(.primary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -1468,11 +1478,14 @@ private struct BilibiliDynamicCard: View {
                         .frame(maxWidth: .infinity).aspectRatio(16 / 9, contentMode: .fill)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
-                HStack(spacing: 16) {
+                HStack(spacing: 26) {
                     Label(Formatters.playCount(item.likeCount), systemImage: "hand.thumbsup")
                     Label(Formatters.playCount(item.commentCount), systemImage: "bubble.left")
+                    Label(Formatters.playCount(item.repostCount), systemImage: "arrowshape.turn.up.right")
                 }
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)

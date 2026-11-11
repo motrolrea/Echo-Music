@@ -388,7 +388,6 @@ struct HomeView: View {
             .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
         }
         .navigationTitle("推荐")
-        .navigationBarTitleDisplayMode(.inline)
         #if os(iOS)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -409,9 +408,7 @@ struct HomeView: View {
                                 }
                             }
                         }
-                    }
-                    if settings.bilibiliMode != .disabled {
-                        Section {
+                        if settings.bilibiliMode != .disabled {
                             Button {
                                 bilibiliActive = true
                             } label: {
@@ -430,6 +427,7 @@ struct HomeView: View {
                 .accessibilityLabel("当前首页平台：\(selectedHomePlatform.displayName)，点击切换")
                 .accessibilityHint("选择首页推荐平台或打开哔哩哔哩")
             }
+            .echoCircleItem()
             if selectedHomePlatform == .tx || selectedHomePlatform == .kg {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -444,6 +442,7 @@ struct HomeView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 EchoAvatarButton()
             }
+            .echoCircleItem()
         }
         #endif
         .task(id: homeTaskID) {
@@ -858,11 +857,19 @@ struct HomeView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                        .padding(.top, 16)
                     }
                     if !model.recommendTracks.isEmpty {
-                        SectionHeader(title: "热门歌曲")
-                            .padding(.horizontal, Theme.Layout.contentInset)
-                        TrackListView(tracks: model.recommendTracks, showsSummary: false)
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text("热门歌曲")
+                                .font(.title2.weight(.semibold))
+                            #if os(iOS)
+                            TrackBatchDownloadButton(tracks: model.recommendTracks)
+                            #endif
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                        TrackListView(tracks: model.recommendTracks, showsSummary: false, showsBatchDownload: false)
                             .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }
                 }
@@ -1148,18 +1155,22 @@ struct FeatureCard: View {
 #if os(iOS)
 struct HomePlatformBadge: View {
     let platform: LXCatalogPlatform
-    var size: CGFloat = 46
+    /// Fits the 44pt navigation bar so the badge stays a circle.
+    var size: CGFloat = 36
 
     var body: some View {
-        PlatformGlyph(platform: platform, contentMode: .fill)
-            .frame(width: size, height: size)
-            .clipShape(Circle())
-            .padding(2)
-            .background { Circle().fill(.ultraThinMaterial) }
-            .overlay {
-                Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1.5)
-            }
-            .fixedSize()
+        ZStack {
+            Circle().fill(.ultraThinMaterial)
+            PlatformGlyph(platform: platform, contentMode: .fill)
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay {
+            Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1.5)
+        }
+        .fixedSize()
     }
 
     private var iconName: String {

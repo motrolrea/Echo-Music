@@ -5,22 +5,6 @@ import AVFoundation
 import PhotosUI
 #endif
 
-/// `.toolbar(.hidden, for: .tabBar)` is iOS 16+. The compat target still builds for iOS 15.
-private struct SettingsTabBarHidden: ViewModifier {
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        #if os(iOS)
-        if #available(iOS 16.0, *) {
-            content.toolbar(.hidden, for: .tabBar)
-        } else {
-            content
-        }
-        #else
-        content
-        #endif
-    }
-}
-
 struct SettingsView: View {
     @EnvironmentObject private var settings: SettingsManager
 #if os(iOS)
@@ -69,7 +53,6 @@ struct SettingsView: View {
     /// Expanded groups live only in this visit. Leaving Settings collapses them again.
     @State private var expandedSettings = Set<String>()
 
-    @AppStorage("moumusic.hideBottomChrome") private var hideBottomChrome = false
     @AppStorage("moumusic.miniPlayerSecondLine") private var miniPlayerSecondLine = "lyric"
     @State private var settingsQuery = ""
     @State private var settingsPage: SettingsCategory?
@@ -677,14 +660,9 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
 #endif
         .background(settingsPageFill)
-        .onAppear {
-            hideBottomChrome = true
-        }
         .onDisappear {
-            hideBottomChrome = false
             expandedSettings.removeAll()
         }
-        .modifier(SettingsTabBarHidden())
         .sheet(isPresented: $showEqualizer) {
             EqualizerView()
         }

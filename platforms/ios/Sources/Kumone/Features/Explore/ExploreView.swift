@@ -225,9 +225,6 @@ struct ExploreView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
-#if os(iOS)
-                exploreSearchBar
-#endif
 #if !os(iOS)
                 platformPicker
 #endif
@@ -265,16 +262,30 @@ struct ExploreView: View {
                     }
 
                     if !playlistQueryTrimmed.isEmpty, !songResults.isEmpty {
-                        SectionHeader(title: "歌曲")
-                            .padding(.horizontal, Theme.Layout.contentInset)
-                        TrackListView(tracks: songResults, showsSummary: false)
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text("歌曲")
+                                .font(.title2.weight(.semibold))
+                            #if os(iOS)
+                            TrackBatchDownloadButton(tracks: songResults)
+                            #endif
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                        TrackListView(tracks: songResults, showsSummary: false, showsBatchDownload: false)
                             .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }
 
                     if playlistQueryTrimmed.isEmpty, !model.tracks.isEmpty {
-                        SectionHeader(title: "\(model.platform.displayName) 热门歌曲")
-                            .padding(.horizontal, Theme.Layout.contentInset)
-                        TrackListView(tracks: model.tracks, showsSummary: false)
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text("\(model.platform.displayName) 热门歌曲")
+                                .font(.title2.weight(.semibold))
+                            #if os(iOS)
+                            TrackBatchDownloadButton(tracks: model.tracks)
+                            #endif
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                        TrackListView(tracks: model.tracks, showsSummary: false, showsBatchDownload: false)
                             .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }
                         }
@@ -346,9 +357,7 @@ struct ExploreView: View {
                                 }
                             }
                         }
-                    }
-                    if settings.bilibiliMode != .disabled {
-                        Section {
+                        if settings.bilibiliMode != .disabled {
                             Button {
                                 UserDefaults.standard.set(true, forKey: "moumusic.home.bilibiliActive")
                             } label: {
@@ -366,9 +375,15 @@ struct ExploreView: View {
                 }
                 .accessibilityLabel("切换平台")
             }
+            .echoCircleItem()
+            ToolbarItem(placement: .principal) {
+                exploreSearchBar
+            }
+            .echoCircleItem()
             ToolbarItem(placement: .topBarTrailing) {
                 EchoAvatarButton()
             }
+            .echoCircleItem()
         }
 #endif
         .task(id: "\(settings.homeRecommendationMode.rawValue)-\(settings.homeRecommendationPlatform.rawValue)") {
@@ -403,12 +418,11 @@ struct ExploreView: View {
                 .focused($searchFocused)
                 .onSubmit { rememberSearch() }
         }
-        .padding(.horizontal, 16)
-        .frame(height: 44)
+        .padding(.horizontal, 12)
+        .frame(height: 36)
         .frame(maxWidth: .infinity)
         .background(.ultraThinMaterial, in: Capsule())
         .overlay { Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.8) }
-        .padding(.horizontal, Theme.Layout.contentInset)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("搜索歌曲和歌单")
     }
