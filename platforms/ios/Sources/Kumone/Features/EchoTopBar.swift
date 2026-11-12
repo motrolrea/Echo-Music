@@ -26,7 +26,7 @@ struct EchoAvatarButton: View {
                         startPoint: .top,
                         endPoint: .bottom
                     ),
-                    lineWidth: 1.6
+                    lineWidth: 2.4
                 )
             }
         }
@@ -90,7 +90,7 @@ struct EchoPlaylistActions: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 2)
         .background(.ultraThinMaterial, in: Capsule())
-        .overlay { Capsule().strokeBorder(.white.opacity(0.32), lineWidth: 0.8) }
+        .overlay { Capsule().strokeBorder(.white.opacity(0.32), lineWidth: 1.6) }
     }
 }
 

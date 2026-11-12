@@ -459,10 +459,9 @@ public struct IOSMainWindow: View {
                 .font(.system(size: size > 52 ? 20 : 18, weight: .semibold))
                 .foregroundStyle(.primary.opacity(0.85))
                 .frame(width: size, height: size)
-                .mouMaterialBackground(.regularMaterial, in: Circle())
+                .background { Circle().fill(.regularMaterial) }
                 .clipShape(Circle())
                 .contentShape(Circle())
-                .compositingGroup()
                 .overlay { Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5) }
                 .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
         }
@@ -866,7 +865,9 @@ struct IOSMiniPlayerBar: View {
     }
 
     private var metadataSpacing: CGFloat {
-        presentation.isInline ? 2 : 3
+        if presentation.isInline { return 2 }
+        if presentation.isCompact { return 7 }
+        return 3
     }
 
     private var nowPlayingAccessibilityLabel: String {

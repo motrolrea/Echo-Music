@@ -711,16 +711,20 @@ struct BiliPlayerLayerView: UIViewRepresentable {
 }
 
 struct BiliRoutePicker: UIViewRepresentable {
+    var tint: UIColor = .white
+
     func makeUIView(context: Context) -> AVRoutePickerView {
         let view = AVRoutePickerView()
-        view.tintColor = .white
+        view.tintColor = tint
         view.activeTintColor = .systemPink
         view.prioritizesVideoDevices = true
         view.backgroundColor = .clear
         return view
     }
 
-    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
+        uiView.tintColor = tint
+    }
 }
 
 // MARK: - Player view
@@ -746,6 +750,9 @@ struct BiliNativePlayer: View {
     var onClose: (() -> Void)? = nil
     /// Sends one danmaku; returns true when it was accepted. nil hides the 发弹幕 button.
     var onSendDanmaku: ((BiliDanmakuDraft) async -> Bool)? = nil
+    /// Detail page keeps the transport under the picture so it never covers the video.
+    var docksControlsBelow = false
+    var pictureAspect: CGFloat = 16.0 / 9.0
 
     @State private var showComposer = false
     @State private var composerText = ""
@@ -771,6 +778,61 @@ struct BiliNativePlayer: View {
     }
 
     var body: some View {
+        chrome
+            .sheet(isPresented: $showComposer, onDismiss: { scheduleHide() }) {
+                danmakuComposer
+                    .presentationDetents([.height(250), .medium])
+                    .presentationDragIndicator(.visible)
+            }
+            .onAppear {
+                UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+                showDanmaku = danmakuEnabled
+                model.setDanmaku(danmaku)
+                scheduleHide()
+                if isFullscreen { Self.rotateReliably(landscape: rotatesInFullscreen) }
+            }
+            .onDisappear {
+                hideTask?.cancel()
+                if isFullscreen { Self.rotate(landscape: false) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
+                handleDeviceRotation()
+            }
+            .onChange(of: danmakuKey) { _ in model.setDanmaku(danmaku) }
+            .onChange(of: danmakuEnabled) { showDanmaku = $0 }
+            .onChange(of: model.isPlaying) { playing in
+                if playing { scheduleHide() } else { revealControls() }
+            }
+            .statusBarHidden(isFullscreen)
+    }
+
+    @ViewBuilder
+    private var chrome: some View {
+        if docksControlsBelow {
+            VStack(spacing: 8) {
+                stage
+                    .aspectRatio(pictureAspect, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .frame(maxHeight: pictureAspect < 1 ? UIScreen.main.bounds.height * 0.6 : nil)
+                    .clipped()
+                dockedTransport
+            }
+        } else {
+            stage
+                .overlay {
+                    if controlsVisible {
+                        controls
+                            .padding(.horizontal, isFullscreen ? (rotatesInFullscreen ? 56 : 8) : 0)
+                            .padding(.bottom, isFullscreen ? (rotatesInFullscreen ? 26 : 10) : 0)
+                            .padding(.top, isFullscreen ? (rotatesInFullscreen ? 10 : 44) : 0)
+                            .transition(.opacity)
+                    }
+                }
+                .clipped()
+        }
+    }
+
+    private var stage: some View {
         ZStack {
             Color.black
             BiliPlayerLayerView(model: model, isFullscreen: isFullscreen)
@@ -793,7 +855,7 @@ struct BiliNativePlayer: View {
                         .padding(.vertical, 6)
                         .background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .padding(.horizontal, 24)
-                        .padding(.bottom, controlsVisible ? 78 : 16)
+                        .padding(.bottom, docksControlsBelow ? 16 : (controlsVisible ? 78 : 16))
                 }
                 .allowsHitTesting(false)
             }
@@ -828,49 +890,6 @@ struct BiliNativePlayer: View {
             }
             gestureLayer
         }
-        // An overlay, not a ZStack sibling: on narrow screens the controls row is wider than it wants to
-        // be, and as a sibling it resized the picture every time the controls appeared.
-        .overlay {
-            if controlsVisible {
-                // Full screen runs under the home indicator / rounded corners: keep the buttons
-                // and the progress slider well inside the screen so they are easy to hit.
-                controls
-                    // Landscape: clear the rounded corners; portrait (vertical videos): clear the
-                    // status bar / Dynamic Island and the home indicator instead.
-                    .padding(.horizontal, isFullscreen ? (rotatesInFullscreen ? 56 : 8) : 0)
-                    .padding(.bottom, isFullscreen ? (rotatesInFullscreen ? 26 : 10) : 0)
-                    .padding(.top, isFullscreen ? (rotatesInFullscreen ? 10 : 44) : 0)
-                    .transition(.opacity)
-            }
-        }
-        .clipped()
-        // A sheet, not an overlay: the player frame clips anything taller than the picture, which hid
-        // the position / size / colour options while typing.
-        .sheet(isPresented: $showComposer, onDismiss: { scheduleHide() }) {
-            danmakuComposer
-                .presentationDetents([.height(250), .medium])
-                .presentationDragIndicator(.visible)
-        }
-        .onAppear {
-            UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-            showDanmaku = danmakuEnabled
-            model.setDanmaku(danmaku)
-            scheduleHide()
-            if isFullscreen { Self.rotateReliably(landscape: rotatesInFullscreen) }
-        }
-        .onDisappear {
-            hideTask?.cancel()
-            if isFullscreen { Self.rotate(landscape: false) }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
-            handleDeviceRotation()
-        }
-        .onChange(of: danmakuKey) { _ in model.setDanmaku(danmaku) }
-        .onChange(of: danmakuEnabled) { showDanmaku = $0 }
-        .onChange(of: model.isPlaying) { playing in
-            if playing { scheduleHide() } else { revealControls() }
-        }
-        .statusBarHidden(isFullscreen)
     }
 
     /// Turning the phone sideways opens the full screen by itself; turning it back closes it.
@@ -901,7 +920,7 @@ struct BiliNativePlayer: View {
     }
 
     private var danmakuCanvas: some View {
-        BiliDanmakuView(model: model, isFullscreen: isFullscreen, bottomInset: controlsVisible ? 70 : 12)
+        BiliDanmakuView(model: model, isFullscreen: isFullscreen, bottomInset: docksControlsBelow ? 12 : (controlsVisible ? 70 : 12))
             .allowsHitTesting(false)
     }
 
@@ -958,6 +977,41 @@ struct BiliNativePlayer: View {
             )
     }
 
+    private var dockedTransport: some View {
+        VStack(spacing: 2) {
+            progressSlider
+            ViewThatFits(in: .horizontal) {
+                controlRow(compact: false)
+                controlRow(compact: true)
+            }
+            .foregroundStyle(Color.primary)
+            .padding(.horizontal, 4)
+            .padding(.bottom, 4)
+        }
+        .padding(.horizontal, 8)
+    }
+
+    private var progressSlider: some View {
+        Slider(
+            value: Binding(
+                get: { model.currentTime },
+                set: { model.scrub(to: $0) }
+            ),
+            in: 0...max(model.duration, 1),
+            onEditingChanged: { editing in
+                model.isScrubbing = editing
+                if editing {
+                    hideTask?.cancel()
+                } else {
+                    model.seek(to: model.currentTime)
+                    scheduleHide()
+                }
+            }
+        )
+        .tint(Theme.accent)
+        .padding(.horizontal, 12)
+    }
+
     private var controls: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -983,27 +1037,7 @@ struct BiliNativePlayer: View {
             Spacer(minLength: 0)
 
             VStack(spacing: 2) {
-                Slider(
-                    value: Binding(
-                        get: { model.currentTime },
-                        set: { model.scrub(to: $0) }
-                    ),
-                    in: 0...max(model.duration, 1),
-                    onEditingChanged: { editing in
-                        model.isScrubbing = editing
-                        if editing {
-                            hideTask?.cancel()
-                        } else {
-                            model.seek(to: model.currentTime)
-                            scheduleHide()
-                        }
-                    }
-                )
-                .tint(Theme.accent)
-                .padding(.horizontal, 12)
-
-                // Wide players show every button; narrow ones (vertical videos, small inline
-                // players) keep the essentials and move speed / PiP / AirPlay into 更多.
+                progressSlider
                 ViewThatFits(in: .horizontal) {
                     controlRow(compact: false)
                     controlRow(compact: true)
@@ -1029,7 +1063,7 @@ struct BiliNativePlayer: View {
 
             Text("\(Self.format(model.currentTime)) / \(Self.format(model.duration))")
                 .font(.system(size: 11, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(docksControlsBelow ? Color.secondary : Color.white.opacity(0.85))
                 .lineLimit(1)
                 .fixedSize()
 
@@ -1041,7 +1075,7 @@ struct BiliNativePlayer: View {
             if onSendDanmaku != nil, showDanmaku { sendDanmakuButton }
             if !compact {
                 if model.canPiP { pipButton }
-                BiliRoutePicker().frame(width: 32, height: 32)
+                BiliRoutePicker(tint: docksControlsBelow ? .label : .white).frame(width: 32, height: 32)
             } else {
                 Menu {
                     Section("倍速") {

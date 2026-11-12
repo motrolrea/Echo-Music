@@ -141,6 +141,29 @@ struct SettingsView: View {
                     }
                 }
                 .frame(minHeight: 44)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 10) {
+                        Text("左")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Slider(
+                            value: Binding(
+                                get: { equalizer.balance },
+                                set: { equalizer.setBalance($0) }
+                            ),
+                            in: -1...1
+                        )
+                        Text("右")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(equalizer.balance > 0.02 ? "偏右" : (equalizer.balance < -0.02 ? "偏左" : "居中"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(minHeight: 44)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("左右声道平衡")
                 Text("音频会按播放来源设置选择账号音源或已导入的 LX 音源；歌词、封面和评论仍按歌曲平台获取。")
                     .font(.caption)
                     .foregroundStyle(.secondary)

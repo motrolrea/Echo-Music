@@ -373,6 +373,13 @@ actor BilibiliAPI {
         let likeCount: Int
         let publishedAt: Date?
         let replyCount: Int
+        var emotes: [CommentEmote] = []
+    }
+
+    struct CommentEmote: Hashable, Sendable {
+        let token: String
+        let url: String
+        let large: Bool
     }
 
     struct CommentPage: Sendable {
@@ -2504,8 +2511,34 @@ actor BilibiliAPI {
             message: message,
             likeCount: integer(raw["like"]) ?? 0,
             publishedAt: integer(raw["ctime"]).map { Date(timeIntervalSince1970: TimeInterval($0)) },
-            replyCount: integer(raw["rcount"]) ?? 0
+            replyCount: integer(raw["rcount"]) ?? 0,
+            emotes: commentEmotes(content?["emote"])
         )
+    }
+
+    private static func commentEmotes(_ raw: Any?) -> [CommentEmote] {
+        guard let map = raw as? [String: Any] else { return [] }
+        return map.compactMap { token, value in
+            guard let item = value as? [String: Any], !token.isEmpty else { return nil }
+            let url = imageURL(text(item["url"])) ?? imageURL(text(item["gif_url"]))
+            guard let url else { return nil }
+            let meta = item["meta"] as? [String: Any]
+            let size = integer(meta?["size"]) ?? 1
+            return CommentEmote(token: token, url: url, large: size >= 2)
+        }
+    }
+
+    func creatorStats(mid: Int) async -> (followers: Int, videos: Int) {
+        guard mid > 0,
+              var components = URLComponents(string: "https://api.bilibili.com/x/web-interface/card") else { return (0, 0) }
+        components.queryItems = [URLQueryItem(name: "mid", value: String(mid))]
+        guard let url = components.url,
+              let root = try? await requestObject(url, cookie: nil),
+              let data = root["data"] as? [String: Any] else { return (0, 0) }
+        let card = data["card"] as? [String: Any]
+        let followers = Self.integer(data["follower"] ?? card?["fans"]) ?? 0
+        let videos = Self.integer(data["archive_count"] ?? card?["archive_count"]) ?? 0
+        return (followers, videos)
     }
 
     private func cookieHeader() -> String {

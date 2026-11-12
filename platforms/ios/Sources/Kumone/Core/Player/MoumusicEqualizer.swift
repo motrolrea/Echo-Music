@@ -76,12 +76,15 @@ final class MoumusicEqualizer: ObservableObject {
     @Published private(set) var selectedPreset: MoumusicEqualizerPreset
     @Published private(set) var selectedCustomPresetName: String?
     @Published private(set) var preampGain: Double
+    /// -1 is full left, 0 is centered, 1 is full right. Independent of the EQ preset.
+    @Published private(set) var balance: Double
     @Published private(set) var customPresets: [MoumusicEqualizerCustomPreset]
 
     private let defaults = UserDefaults.standard
     private let lock = NSLock()
     private var processingEnabled = false
     private var processingPreampLinear: Float = 1
+    private var processingBalance: Float = 0
     private var processingFormatIsFloat32 = false
     private var sampleRate: Double = 44_100
     private var coefficients: [MoumusicBiquad] = Array(repeating: .identity, count: 10)
@@ -94,6 +97,7 @@ final class MoumusicEqualizer: ObservableObject {
     private static let customPresetNameKey = "moumusic.equalizer.customPresetName"
     private static let customPresetsKey = "moumusic.equalizer.customPresets"
     private static let preampKey = "moumusic.equalizer.preampGain"
+    private static let balanceKey = "moumusic.equalizer.balance"
     private static let maximumChannels = 8
 
     private init() {
@@ -109,6 +113,7 @@ final class MoumusicEqualizer: ObservableObject {
         selectedPreset = storedPreset
         selectedCustomPresetName = defaults.string(forKey: Self.customPresetNameKey)
         preampGain = Self.normalizedGain((defaults.object(forKey: Self.preampKey) as? NSNumber)?.doubleValue ?? 0)
+        balance = min(1, max(-1, (defaults.object(forKey: Self.balanceKey) as? NSNumber)?.doubleValue ?? 0))
         customPresets = storedCustom.compactMap { preset in
             let name = preset.name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return nil }
@@ -121,6 +126,7 @@ final class MoumusicEqualizer: ObservableObject {
         }
         processingEnabled = isEnabled
         processingPreampLinear = Self.linearGain(for: preampGain)
+        processingBalance = Float(balance)
         rebuildCoefficientsLocked(using: normalizedGains)
     }
 
@@ -224,11 +230,29 @@ final class MoumusicEqualizer: ObservableObject {
         lock.unlock()
     }
 
+    func setBalance(_ value: Double) {
+        let clamped = min(1, max(-1, value))
+        let snapped = abs(clamped) < 0.02 ? 0 : clamped
+        guard abs(balance - snapped) > 0.0001 else { return }
+        balance = snapped
+        lock.lock()
+        processingBalance = Float(snapped)
+        lock.unlock()
+        defaults.set(snapped, forKey: Self.balanceKey)
+    }
+
+    private static func channelGain(_ channel: Int, balance: Float) -> Float {
+        if channel == 0 { return balance > 0 ? 1 - balance : 1 }
+        if channel == 1 { return balance < 0 ? 1 + balance : 1 }
+        return 1
+    }
+
     func process(bufferList: UnsafeMutablePointer<AudioBufferList>, frameCount: Int) {
         guard frameCount > 0 else { return }
         lock.lock()
         defer { lock.unlock() }
-        guard processingEnabled, processingFormatIsFloat32 else { return }
+        let balanceActive = abs(processingBalance) > 0.001
+        guard processingFormatIsFloat32, processingEnabled || balanceActive else { return }
 
         let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
         var firstChannelIndex = 0
@@ -242,21 +266,27 @@ final class MoumusicEqualizer: ObservableObject {
             guard framesToProcess > 0 else { continue }
 
             for channelOffset in 0..<channelCount {
-                let channel = min(firstChannelIndex + channelOffset, Self.maximumChannels - 1)
+                let speaker = firstChannelIndex + channelOffset
+                let channel = min(speaker, Self.maximumChannels - 1)
                 let stateOffset = channel * Self.bandFrequencies.count
+                let gain = Self.channelGain(speaker, balance: processingBalance)
                 for frame in 0..<framesToProcess {
                     let sampleIndex = frame * channelCount + channelOffset
-                    var sample = samples[sampleIndex] * processingPreampLinear
-                    for bandIndex in coefficients.indices {
-                        let stateIndex = stateOffset + bandIndex
-                        let coefficient = coefficients[bandIndex]
-                        var state = filterStates[stateIndex]
-                        let filtered = coefficient.b0 * sample + state.z1
-                        state.z1 = coefficient.b1 * sample - coefficient.a1 * filtered + state.z2
-                        state.z2 = coefficient.b2 * sample - coefficient.a2 * filtered
-                        filterStates[stateIndex] = state
-                        sample = filtered
+                    var sample = samples[sampleIndex]
+                    if processingEnabled {
+                        sample *= processingPreampLinear
+                        for bandIndex in coefficients.indices {
+                            let stateIndex = stateOffset + bandIndex
+                            let coefficient = coefficients[bandIndex]
+                            var state = filterStates[stateIndex]
+                            let filtered = coefficient.b0 * sample + state.z1
+                            state.z1 = coefficient.b1 * sample - coefficient.a1 * filtered + state.z2
+                            state.z2 = coefficient.b2 * sample - coefficient.a2 * filtered
+                            filterStates[stateIndex] = state
+                            sample = filtered
+                        }
                     }
+                    if gain != 1 { sample *= gain }
                     samples[sampleIndex] = sample.isFinite ? min(max(sample, -4), 4) : 0
                 }
             }

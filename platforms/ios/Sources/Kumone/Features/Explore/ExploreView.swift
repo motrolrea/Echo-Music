@@ -285,6 +285,7 @@ struct ExploreView: View {
                             #endif
                         }
                         .padding(.horizontal, Theme.Layout.contentInset)
+                        .padding(.top, 20)
                         TrackListView(tracks: model.tracks, showsSummary: false, showsBatchDownload: false)
                             .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }

@@ -1608,6 +1608,8 @@ struct BilibiliVideoDetailContent: View {
     @State private var playbackAudioURL: URL?
     @State private var playbackDash: BiliDashSource?
     @State private var related: [BilibiliAPI.Video] = []
+    @State private var authorFollowers = 0
+    @State private var authorVideos = 0
     @State private var relatedSelection: BilibiliAPI.Video?
     @State private var triedMuxedFallback = false
     @State private var qualityFallbackDepth = 0
@@ -1690,7 +1692,9 @@ struct BilibiliVideoDetailContent: View {
                             audioOnly: listenOnly,
                             title: activeVideo.title,
                             onFullscreen: { showFullScreen = true },
-                            onSendDanmaku: (bilibili.isLoggedIn && !listenOnly) ? { await sendDanmaku($0) } : nil
+                            onSendDanmaku: (bilibili.isLoggedIn && !listenOnly) ? { await sendDanmaku($0) } : nil,
+                            docksControlsBelow: true,
+                            pictureAspect: activeVideo.displayAspectRatio
                         )
                         if isLoading {
                             VStack(spacing: 8) {
@@ -1707,9 +1711,8 @@ struct BilibiliVideoDetailContent: View {
                     }
                     .id(playerToken)
                     .frame(maxWidth: .infinity)
-                    .aspectRatio(activeVideo.displayAspectRatio, contentMode: .fit)
-                    .frame(maxHeight: activeVideo.displayAspectRatio < 1 ? UIScreen.main.bounds.height * 0.6 : nil)
                     playerOptions
+                    authorHeader
                     Picker("视频内容", selection: $selectedTab) {
                         Text("简介").tag(0)
                         Text("评论").tag(1)
@@ -1864,29 +1867,66 @@ struct BilibiliVideoDetailContent: View {
         }
     }
 
-    private var playerOptions: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private var authorHeader: some View {
+        Button {
+            playerModel.pause()
+            showUploader = true
+        } label: {
             HStack(spacing: 10) {
-                Label(
-                    settings.bilibiliMode == .listen ? "听哔哩哔哩" : "看哔哩哔哩",
-                    systemImage: settings.bilibiliMode == .listen ? "headphones" : "play.rectangle"
-                )
-                if settings.bilibiliMode != .listen && activePlaybackURL != nil {
-                    Button { showFullScreen = true } label: {
-                        Label("全屏", systemImage: "arrow.up.left.and.arrow.down.right")
-                    }.buttonStyle(.bordered)
+                CachedAsyncImage(url: activeVideo.authorAvatarURL?.resizedImageURL(160))
+                    .frame(width: 40, height: 40)
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(activeVideo.author)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text("\(Formatters.playCount(authorFollowers)) 粉丝 · \(Formatters.playCount(authorVideos)) 作品")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(activeVideo.authorID <= 0)
+        .padding(.horizontal, 18)
+    }
+
+    private var playerOptions: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 16) {
                 Button { showDownloadSheet = true } label: {
                     Label("下载", systemImage: "arrow.down.circle")
                 }
-                .buttonStyle(.bordered)
-                Spacer(minLength: 0)
-                Link(destination: URL(string: "https://www.bilibili.com/video/\(activeVideo.bvid)")!) {
-                    Image(systemName: "safari")
-                }.accessibilityLabel("在 B 站打开")
-            }
-            HStack(spacing: 10) {
-                if settings.bilibiliMode != .listen && !qualities.isEmpty {
+                .buttonStyle(.plain)
+                if settings.bilibiliMode == .listen {
+                    if !audioQualities.isEmpty {
+                        Menu {
+                            ForEach(audioQualities) { quality in
+                                Button {
+                                    Task { await loadAudioPlayback(quality: quality.code) }
+                                } label: {
+                                    if quality.code == selectedAudioQuality {
+                                        Label(quality.displayTitle, systemImage: "checkmark")
+                                    } else {
+                                        Text(quality.displayTitle)
+                                    }
+                                }
+                                .disabled((quality.requiresVIP && !bilibili.isVIP) ||
+                                          (quality.requiresLogin && !bilibili.isLoggedIn))
+                            }
+                        } label: {
+                            Label(audioLoading ? "正在读取音轨" : currentAudioQualityTitle, systemImage: "waveform")
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(audioLoading)
+                    }
+                } else if !qualities.isEmpty {
                     Menu {
                         ForEach(qualities) { quality in
                             Button {
@@ -1894,117 +1934,156 @@ struct BilibiliVideoDetailContent: View {
                                 triedMuxedFallback = false
                                 Task { await loadPlayback(quality: quality.code) }
                             } label: {
-                                quality.code == selectedQuality ? AnyView(Label(quality.displayTitle, systemImage: "checkmark")) : AnyView(Text(quality.displayTitle))
-                            }
-                            .disabled((quality.requiresVIP && !bilibili.isVIP) ||
-                                      (quality.requiresLogin && !bilibili.isLoggedIn))
-                        }
-                    } label: { Label(currentQualityTitle, systemImage: "rectangle.inset.filled") }
-                        .buttonStyle(.bordered)
-                }
-                if let pages = detail?.pages, pages.count > 1 {
-                    Menu {
-                        ForEach(pages) { page in
-                            Button {
-                                Task { await switchPage(page) }
-                            } label: {
-                                if page.cid == activeVideo.cid {
-                                    Label(page.title, systemImage: "checkmark")
+                                if quality.code == selectedQuality {
+                                    Label(quality.displayTitle, systemImage: "checkmark")
                                 } else {
-                                    Text(page.title)
+                                    Text(quality.displayTitle)
                                 }
                             }
-                        }
-                    } label: {
-                        Label("分P \(pages.first(where: { $0.cid == activeVideo.cid })?.page ?? 1)/\(pages.count)",
-                              systemImage: "list.number")
-                    }
-                    .buttonStyle(.bordered)
-                }
-                if !allSubtitles.isEmpty {
-                    Menu {
-                        Button("关闭字幕") { selectedSubtitle = nil; subtitleCues = [] }
-                        Divider()
-                        ForEach(allSubtitles) { subtitle in
-                            Button {
-                                Task { await loadSubtitle(subtitle) }
-                            } label: {
-                                subtitle.id == selectedSubtitle?.id ? AnyView(Label(subtitle.displayTitle, systemImage: "checkmark")) : AnyView(Text(subtitle.displayTitle))
-                            }
-                        }
-                    } label: {
-                        Label(subtitleLoading ? "加载字幕" : (selectedSubtitle?.displayTitle ?? "字幕"), systemImage: "captions.bubble")
-                    }
-                    .buttonStyle(.bordered).disabled(subtitleLoading)
-                }
-                if settings.bilibiliMode == .listen && !audioQualities.isEmpty {
-                    Menu {
-                        ForEach(audioQualities) { quality in
-                            Button {
-                                Task { await loadAudioPlayback(quality: quality.code) }
-                            } label: {
-                                quality.code == selectedAudioQuality
-                                    ? AnyView(Label(quality.displayTitle, systemImage: "checkmark"))
-                                    : AnyView(Text(quality.displayTitle))
-                            }
                             .disabled((quality.requiresVIP && !bilibili.isVIP) ||
                                       (quality.requiresLogin && !bilibili.isLoggedIn))
                         }
                     } label: {
-                        Label(audioLoading ? "正在读取音轨" : currentAudioQualityTitle,
-                              systemImage: "waveform")
+                        Label(currentQualityTitle, systemImage: "rectangle.inset.filled")
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(audioLoading)
+                    .buttonStyle(.plain)
+                }
+                Spacer(minLength: 8)
+                if settings.bilibiliMode != .listen && activePlaybackURL != nil {
+                    Button { showFullScreen = true } label: {
+                        Image(systemName: "play.rectangle")
+                            .font(.body.weight(.semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("应用内播放")
+                }
+            }
+            if showsPartOrSubtitleRow {
+                HStack(spacing: 16) {
+                    if let pages = detail?.pages, pages.count > 1 {
+                        Menu {
+                            ForEach(pages) { page in
+                                Button {
+                                    Task { await switchPage(page) }
+                                } label: {
+                                    if page.cid == activeVideo.cid {
+                                        Label(page.title, systemImage: "checkmark")
+                                    } else {
+                                        Text(page.title)
+                                    }
+                                }
+                            }
+                        } label: {
+                            Label("分P \(pages.first(where: { $0.cid == activeVideo.cid })?.page ?? 1)/\(pages.count)",
+                                  systemImage: "list.number")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if !allSubtitles.isEmpty {
+                        Menu {
+                            Button("关闭字幕") { selectedSubtitle = nil; subtitleCues = [] }
+                            Divider()
+                            ForEach(allSubtitles) { subtitle in
+                                Button {
+                                    Task { await loadSubtitle(subtitle) }
+                                } label: {
+                                    if subtitle.id == selectedSubtitle?.id {
+                                        Label(subtitle.displayTitle, systemImage: "checkmark")
+                                    } else {
+                                        Text(subtitle.displayTitle)
+                                    }
+                                }
+                            }
+                        } label: {
+                            Label(subtitleLoading ? "加载字幕" : (selectedSubtitle?.displayTitle ?? "字幕"), systemImage: "captions.bubble")
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(subtitleLoading)
+                    }
+                    Spacer(minLength: 0)
                 }
             }
         }
-        .font(.subheadline.weight(.medium)).foregroundStyle(Theme.accent).padding(.horizontal, 18)
+        .font(.subheadline.weight(.medium))
+        .foregroundStyle(Theme.accent)
+        .padding(.horizontal, 18)
+    }
+
+    private var showsPartOrSubtitleRow: Bool {
+        (detail?.pages.count ?? 0) > 1 || !allSubtitles.isEmpty
     }
 
     private var interactionBar: some View {
-        HStack(spacing: 10) {
-            Button {
-                Task { await toggleLike() }
-            } label: {
-                Label(interaction?.isLiked == true ? "已点赞" : "点赞",
-                      systemImage: interaction?.isLiked == true ? "hand.thumbsup.fill" : "hand.thumbsup")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 0) {
+                biliAction(
+                    title: interaction?.isLiked == true ? "已点赞" : "点赞",
+                    kind: .like,
+                    active: interaction?.isLiked == true,
+                    enabled: bilibili.isLoggedIn && !interactionLoading
+                ) { Task { await toggleLike() } }
+                biliAction(
+                    title: (interaction?.coinCount ?? 0) > 0 ? "已投币" : "投币",
+                    kind: .coin,
+                    active: (interaction?.coinCount ?? 0) > 0,
+                    enabled: bilibili.isLoggedIn && !interactionLoading
+                ) { Task { await addCoin() } }
+                biliAction(
+                    title: interaction?.isFavorited == true ? "已收藏" : "收藏",
+                    kind: .favorite,
+                    active: interaction?.isFavorited == true,
+                    enabled: bilibili.isLoggedIn && !interactionLoading
+                ) { Task { await toggleFavorite() } }
+                biliAction(
+                    title: "三连",
+                    kind: .triple,
+                    active: false,
+                    enabled: bilibili.isLoggedIn && !interactionLoading
+                ) { Task { await oneClickTriple() } }
+                biliAction(
+                    title: "稍后",
+                    kind: .later,
+                    active: false,
+                    enabled: bilibili.isLoggedIn
+                ) { Task { await addWatchLater() } }
             }
-            .buttonStyle(.bordered)
-            .disabled(!bilibili.isLoggedIn || interactionLoading)
-
-            Button {
-                Task { await addCoin() }
-            } label: {
-                Label((interaction?.coinCount ?? 0) > 0 ? "已投币" : "投币",
-                      systemImage: (interaction?.coinCount ?? 0) > 0 ? "circle.fill" : "circle")
-            }
-            .buttonStyle(.bordered)
-            .disabled(!bilibili.isLoggedIn || interactionLoading)
-
-            Button {
-                Task { await toggleFavorite() }
-            } label: {
-                Label(interaction?.isFavorited == true ? "已收藏" : "收藏",
-                      systemImage: interaction?.isFavorited == true ? "star.fill" : "star")
-            }
-            .buttonStyle(.bordered)
-            .disabled(!bilibili.isLoggedIn || interactionLoading)
-
             if interactionLoading {
                 ProgressView().controlSize(.small)
             } else if let interactionMessage {
                 Text(interactionMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
             } else if !bilibili.isLoggedIn {
                 Text("登录后互动")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
-        .font(.subheadline.weight(.medium))
+    }
+
+    private func biliAction(
+        title: String,
+        kind: BiliActionGlyph.Kind,
+        active: Bool,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                BiliActionGlyph(kind: kind, active: active)
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            .frame(maxWidth: .infinity)
+            .foregroundStyle(active ? Theme.accent : .primary)
+            .opacity(enabled ? 1 : 0.38)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .accessibilityLabel(title)
     }
 
     private var commentComposer: some View {
@@ -2028,39 +2107,13 @@ struct BilibiliVideoDetailContent: View {
     private var introduction: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(activeVideo.title).font(.title3.weight(.semibold))
-            HStack(spacing: 4) {
-                Text("\(Formatters.playCount(activeVideo.playCount)) 次播放 ·").foregroundStyle(.secondary)
-                // Tap the uploader to open their page (videos, follow).
-                Button {
-                    playerModel.pause()
-                    showUploader = true
-                } label: {
-                    HStack(spacing: 2) {
-                        Text(activeVideo.author)
-                        Image(systemName: "chevron.right").font(.caption2.weight(.bold))
-                    }
-                    .foregroundStyle(Theme.accent)
-                }
-                .buttonStyle(.plain)
-                .disabled(activeVideo.authorID <= 0)
-            }
-            .font(.subheadline)
+            Text("\(Formatters.playCount(activeVideo.playCount)) 次播放")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             if !activeVideo.description.isEmpty {
-                Text(activeVideo.description).font(.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(activeVideo.description).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             interactionBar
-            HStack(spacing: 10) {
-                Button { Task { await oneClickTriple() } } label: {
-                    Label("一键三连", systemImage: "heart.circle")
-                }
-                .buttonStyle(.bordered)
-                .disabled(!bilibili.isLoggedIn || interactionLoading)
-                Button { Task { await addWatchLater() } } label: {
-                    Label("稍后再看", systemImage: "clock.badge.plus")
-                }
-                .buttonStyle(.bordered)
-                .disabled(!bilibili.isLoggedIn)
-            }
             if !allSubtitles.isEmpty {
                 Label("已发现 \(allSubtitles.count) 条字幕轨道（含中文与 AI 字幕），可在播放器里选择", systemImage: "captions.bubble")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -2116,6 +2169,17 @@ struct BilibiliVideoDetailContent: View {
                     HStack(spacing: 10) {
                         CachedAsyncImage(url: item.coverURL?.resizedImageURL(320), animated: false)
                             .frame(width: 120, height: 68)
+                            .overlay(alignment: .bottomTrailing) {
+                                if !item.durationText.isEmpty {
+                                    Text(item.durationText)
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                                        .padding(4)
+                                }
+                            }
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         VStack(alignment: .leading, spacing: 4) {
                             Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(2)
@@ -2184,6 +2248,10 @@ struct BilibiliVideoDetailContent: View {
         do {
             let loaded = try await BilibiliAPI.shared.videoDetail(bvid: video.bvid, cookie: bilibili.cookie)
             detail = loaded
+            authorFollowers = 0
+            authorVideos = 0
+            let authorID = loaded.authorID
+            Task { await loadAuthorStats(authorID) }
             if settings.bilibiliMode == .listen {
                 listenOnly = true
                 playbackURL = nil
@@ -2246,6 +2314,13 @@ struct BilibiliVideoDetailContent: View {
             qualities = []
             audioQualities = []
         }
+    }
+
+    @MainActor private func loadAuthorStats(_ mid: Int) async {
+        guard mid > 0 else { return }
+        let stats = await BilibiliAPI.shared.creatorStats(mid: mid)
+        authorFollowers = stats.followers
+        authorVideos = stats.videos
     }
 
     @MainActor private func loadInteractionState() async {
@@ -2464,7 +2539,7 @@ private struct BilibiliCommentRow: View {
                     Spacer()
                     Text(comment.publishedAt.map { Self.dateFormatter.string(from: $0) } ?? "").font(.caption2).foregroundStyle(.tertiary)
                 }
-                Text(comment.message).font(.body).fixedSize(horizontal: false, vertical: true)
+                BilibiliEmoteText(message: comment.message, emotes: comment.emotes)
                 Label("\(comment.likeCount)", systemImage: "hand.thumbsup").font(.caption).foregroundStyle(.secondary)
             }
         }.padding(.vertical, 8)
@@ -2472,5 +2547,193 @@ private struct BilibiliCommentRow: View {
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd HH:mm"; return formatter
     }()
+}
+
+private struct BiliActionGlyph: View {
+    enum Kind { case like, coin, favorite, triple, later }
+    var kind: Kind
+    var active: Bool
+
+    var body: some View {
+        Canvas { context, size in
+            let shading = GraphicsContext.Shading.color(active ? Theme.accent : Color.primary.opacity(0.86))
+            let stroke = StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round)
+            switch kind {
+            case .like:
+                let path = Self.thumb(in: size)
+                if active { context.fill(path, with: shading) }
+                context.stroke(path, with: shading, style: stroke)
+            case .coin:
+                context.fill(Self.coin(in: size), with: shading, style: FillStyle(eoFill: true))
+            case .favorite:
+                let path = Self.star(in: size)
+                if active { context.fill(path, with: shading) }
+                context.stroke(path, with: shading, style: stroke)
+            case .triple:
+                context.fill(Self.heart(in: size), with: shading)
+            case .later:
+                context.stroke(Self.clock(in: size), with: shading, style: stroke)
+            }
+        }
+        .frame(width: 26, height: 26)
+    }
+
+    private static func thumb(in size: CGSize) -> Path {
+        var path = Path()
+        let width = size.width
+        let height = size.height
+        path.addRoundedRect(
+            in: CGRect(x: width * 0.34, y: height * 0.40, width: width * 0.50, height: height * 0.46),
+            cornerSize: CGSize(width: 3, height: 3)
+        )
+        path.addRoundedRect(
+            in: CGRect(x: width * 0.12, y: height * 0.10, width: width * 0.28, height: height * 0.54),
+            cornerSize: CGSize(width: width * 0.14, height: width * 0.14)
+        )
+        return path
+    }
+
+    private static func coin(in size: CGSize) -> Path {
+        var path = Path()
+        let outer = CGRect(origin: .zero, size: size).insetBy(dx: 2.2, dy: 2.2)
+        path.addEllipse(in: outer)
+        path.addEllipse(in: outer.insetBy(dx: outer.width * 0.24, dy: outer.height * 0.24))
+        return path
+    }
+
+    private static func star(in size: CGSize) -> Path {
+        let rect = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let outer = min(rect.width, rect.height) / 2
+        let inner = outer * 0.42
+        var path = Path()
+        for index in 0..<10 {
+            let radius = index.isMultiple(of: 2) ? outer : inner
+            let angle = -CGFloat.pi / 2 + CGFloat(index) * .pi / 5
+            let point = CGPoint(x: center.x + cos(angle) * radius, y: center.y + sin(angle) * radius)
+            if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        path.closeSubpath()
+        return path
+    }
+
+    private static func heart(in size: CGSize) -> Path {
+        var path = Path()
+        let width = size.width
+        let height = size.height
+        path.move(to: CGPoint(x: width * 0.50, y: height * 0.86))
+        path.addCurve(
+            to: CGPoint(x: width * 0.08, y: height * 0.36),
+            control1: CGPoint(x: width * 0.18, y: height * 0.68),
+            control2: CGPoint(x: width * 0.08, y: height * 0.52)
+        )
+        path.addCurve(
+            to: CGPoint(x: width * 0.50, y: height * 0.30),
+            control1: CGPoint(x: width * 0.08, y: height * 0.14),
+            control2: CGPoint(x: width * 0.32, y: height * 0.12)
+        )
+        path.addCurve(
+            to: CGPoint(x: width * 0.92, y: height * 0.36),
+            control1: CGPoint(x: width * 0.68, y: height * 0.12),
+            control2: CGPoint(x: width * 0.92, y: height * 0.14)
+        )
+        path.addCurve(
+            to: CGPoint(x: width * 0.50, y: height * 0.86),
+            control1: CGPoint(x: width * 0.92, y: height * 0.52),
+            control2: CGPoint(x: width * 0.82, y: height * 0.68)
+        )
+        path.closeSubpath()
+        return path
+    }
+
+    private static func clock(in size: CGSize) -> Path {
+        var path = Path()
+        let rect = CGRect(origin: .zero, size: size).insetBy(dx: 2.4, dy: 2.4)
+        path.addEllipse(in: rect)
+        path.move(to: CGPoint(x: rect.midX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.minY + rect.height * 0.28))
+        path.move(to: CGPoint(x: rect.midX, y: rect.midY))
+        path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.28, y: rect.midY))
+        return path
+    }
+}
+
+private struct BilibiliEmoteText: View {
+    let message: String
+    let emotes: [BilibiliAPI.CommentEmote]
+    @State private var images: [String: UIImage] = [:]
+
+    var body: some View {
+        rendered
+            .font(.subheadline)
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+            .task(id: emotes.map(\.url).joined(separator: "|")) { await loadImages() }
+    }
+
+    private var rendered: Text {
+        var text = Text("")
+        for part in Self.parts(message: message, emotes: emotes) {
+            switch part {
+            case .plain(let value):
+                text = text + Text(value)
+            case .emote(let emote):
+                if let image = images[emote.url] {
+                    text = text + Text(Image(uiImage: Self.fitted(image, large: emote.large)))
+                        .baselineOffset(emote.large ? -10 : -4)
+                } else {
+                    text = text + Text(emote.token)
+                }
+            }
+        }
+        return text
+    }
+
+    private func loadImages() async {
+        var loaded: [String: UIImage] = [:]
+        for emote in emotes {
+            guard let url = URL(string: emote.url),
+                  let image = await ImageCache.shared.image(for: url) else { continue }
+            loaded[emote.url] = image
+        }
+        images = loaded
+    }
+
+    private static func fitted(_ image: UIImage, large: Bool) -> UIImage {
+        let side: CGFloat = large ? 42 : 20
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = UIScreen.main.scale
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { _ in
+            image.draw(in: CGRect(x: 0, y: 0, width: side, height: side))
+        }
+    }
+
+    private enum Part {
+        case plain(String)
+        case emote(BilibiliAPI.CommentEmote)
+    }
+
+    private static func parts(message: String, emotes: [BilibiliAPI.CommentEmote]) -> [Part] {
+        let tokens = emotes.sorted { $0.token.count > $1.token.count }
+        guard !tokens.isEmpty else { return [.plain(message)] }
+        var result: [Part] = []
+        var buffer = ""
+        var index = message.startIndex
+        while index < message.endIndex {
+            if let emote = tokens.first(where: { message[index...].hasPrefix($0.token) }) {
+                if !buffer.isEmpty {
+                    result.append(.plain(buffer))
+                    buffer = ""
+                }
+                result.append(.emote(emote))
+                index = message.index(index, offsetBy: emote.token.count)
+            } else {
+                buffer.append(message[index])
+                index = message.index(after: index)
+            }
+        }
+        if !buffer.isEmpty { result.append(.plain(buffer)) }
+        return result
+    }
 }
 #endif
