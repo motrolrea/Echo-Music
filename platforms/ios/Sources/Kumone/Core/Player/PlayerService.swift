@@ -170,7 +170,10 @@ final class PlayerService: ObservableObject {
             WidgetPlaybackBridge.publish(
                 title: currentTrack?.name ?? "",
                 artist: currentTrack?.artistNames ?? "",
-                playing: isPlaying
+                playing: isPlaying,
+                coverURL: currentTrack?.album.picUrl,
+                elapsed: progress,
+                duration: duration
             )
         }
     }

@@ -189,8 +189,16 @@ final class NowPlayingManager {
         WidgetPlaybackBridge.publish(
             title: track.name,
             artist: track.artistNames,
-            playing: player?.isPlaying == true
+            playing: player?.isPlaying == true,
+            coverURL: track.album.picUrl,
+            elapsed: 0,
+            duration: duration
         )
+        if let pic = track.album.picUrl, let url = pic.resizedImageURL(360) {
+            Task { await WidgetPlaybackBridge.storeCover(from: url) }
+        } else {
+            WidgetPlaybackBridge.publishCover(nil)
+        }
     }
 
     /// Rebuilds the artwork object without resetting playback position or

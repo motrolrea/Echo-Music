@@ -119,6 +119,17 @@ public struct IOSMainWindow: View {
             }
             .onOpenURL { url in
                 guard url.scheme?.lowercased() == "moumusic" else { return }
+                let host = url.host?.lowercased() ?? ""
+                switch host {
+                case "toggle":
+                    player.togglePlayPause()
+                case "next":
+                    player.next()
+                case "previous":
+                    player.previous()
+                default:
+                    break
+                }
                 player.showNowPlaying = true
             }
             .alert("当前设备已被禁止使用 Echo Music。", isPresented: .constant(deviceReporter.isBlocked)) {

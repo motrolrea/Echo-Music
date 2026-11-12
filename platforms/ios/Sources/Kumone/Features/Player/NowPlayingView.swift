@@ -78,9 +78,9 @@ struct NowPlayingView: View {
                     } label: {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.85))
+                            .foregroundStyle(.white.opacity(0.92))
                             .frame(width: 36, height: 36)
-                            .background(.white.opacity(0.12), in: Circle())
+                            .liquidGlassCircle()
                     }
                     .buttonStyle(.pressable)
                     .padding(.top, 20)
@@ -97,9 +97,9 @@ struct NowPlayingView: View {
                         } label: {
                             Image(systemName: showLyricsOnMobile ? "music.note" : "quote.bubble")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(showLyricsOnMobile ? Theme.accent : .white.opacity(0.85))
+                                .foregroundStyle(showLyricsOnMobile ? Theme.accent : .white.opacity(0.92))
                                 .frame(width: 36, height: 36)
-                                .background(.white.opacity(0.12), in: Circle())
+                                .liquidGlassCircle()
                         }
                         .buttonStyle(.pressable)
                     }
@@ -923,23 +923,27 @@ struct NowPlayingView: View {
     /// line.  The source is still shown in the quality sheet, while the
     /// player keeps one stable large title + artist header in every mode.
     private var compactTrackMetaView: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
+        let classic = settings.nowPlayingMode == .classic
+        return HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: classic ? .center : .leading, spacing: 3) {
                 HStack(spacing: 8) {
-                    Text(player.currentTrack?.name ?? "")
-                        .font(.system(size: 21, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
+                    PlayerMarqueeText(
+                        player.currentTrack?.name ?? "",
+                        font: .system(size: 21, weight: .bold),
+                        color: .white,
+                        centered: classic,
+                        uiFont: .boldSystemFont(ofSize: 21)
+                    )
                     if player.currentTrack?.isVIP == true {
                         VIPBadge()
                     }
                 }
-                PlayerArtistLink(font: .system(size: 13.5), opacity: 0.65)
+                PlayerArtistLink(font: .system(size: 13.5), opacity: 0.65, centered: classic)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: classic ? .center : .leading)
 
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: classic ? .center : .leading)
         #if os(iOS)
         .moumusicPlayerLayout(playerLayout.entry(for: .metadata, mode: settings.nowPlayingMode))
         #endif
@@ -1068,9 +1072,9 @@ struct NowPlayingView: View {
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.9))
+                .foregroundStyle(.white.opacity(0.92))
                 .frame(width: 44, height: 44)
-                .background(.white.opacity(0.12), in: Circle())
+                .liquidGlassCircle(diameter: 44)
                 .contentShape(Circle())
         }
         .buttonStyle(.pressable)
@@ -3455,17 +3459,63 @@ struct MiniLyricsView: View {
 }
 
 /// The artist line of the player: one tap opens the artist page (a menu when there are several).
+private struct PlayerMarqueeText: View {
+    let text: String
+    let font: Font
+    let color: Color
+    var centered = false
+    var uiFont: UIFont = .boldSystemFont(ofSize: 21)
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let needed = (text as NSString).size(withAttributes: [.font: uiFont]).width
+            let overflows = centered && needed > width + 2
+            Group {
+                if overflows {
+                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                        let travel = needed - width + 28
+                        let duration = max(3.4, Double(travel) / 28)
+                        let phase = timeline.date.timeIntervalSinceReferenceDate
+                            .truncatingRemainder(dividingBy: duration * 2)
+                        let progress = phase < duration ? phase / duration : (duration * 2 - phase) / duration
+                        Text(text)
+                            .font(font)
+                            .foregroundStyle(color)
+                            .lineLimit(1)
+                            .fixedSize()
+                            .offset(x: -CGFloat(progress) * travel)
+                    }
+                } else {
+                    Text(text)
+                        .font(font)
+                        .foregroundStyle(color)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
+                }
+            }
+            .frame(width: width, height: geo.size.height, alignment: .leading)
+            .clipped()
+        }
+        .frame(height: ceil(uiFont.lineHeight))
+    }
+}
+
 struct PlayerArtistLink: View {
     @EnvironmentObject private var player: PlayerService
     let font: Font
     let opacity: Double
+    var centered = false
 
     var body: some View {
         if let track = player.currentTrack, !track.artists.isEmpty {
-            let label = Text(track.artistNames)
-                .font(font)
-                .foregroundStyle(.white.opacity(opacity))
-                .lineLimit(1)
+            let label = PlayerMarqueeText(
+                track.artistNames,
+                font: font,
+                color: .white.opacity(opacity),
+                centered: centered,
+                uiFont: centered ? .systemFont(ofSize: 13.5) : .systemFont(ofSize: 15)
+            )
             if track.artists.count == 1 {
                 Button { player.openArtist(track.artists[0], for: track) } label: { label }
                     .buttonStyle(.plain)

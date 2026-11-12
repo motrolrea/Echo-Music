@@ -22,13 +22,19 @@ struct EchoAvatarButton: View {
             .overlay {
                 Circle().strokeBorder(
                     LinearGradient(
-                        colors: [.white.opacity(0.75), .white.opacity(0.18)],
-                        startPoint: .top,
-                        endPoint: .bottom
+                        colors: [
+                            .white.opacity(0.95),
+                            .white.opacity(0.28),
+                            .white.opacity(0.08),
+                            .white.opacity(0.42)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
                     ),
-                    lineWidth: 2.4
+                    lineWidth: 2.8
                 )
             }
+            .shadow(color: .white.opacity(0.28), radius: 3, y: 0)
         }
         .buttonStyle(.plain)
         .frame(width: size, height: size)
@@ -90,7 +96,17 @@ struct EchoPlaylistActions: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 2)
         .background(.ultraThinMaterial, in: Capsule())
-        .overlay { Capsule().strokeBorder(.white.opacity(0.32), lineWidth: 1.6) }
+        .overlay {
+            Capsule().strokeBorder(
+                LinearGradient(
+                    colors: [.white.opacity(0.82), .white.opacity(0.16), .white.opacity(0.48)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 2.0
+            )
+        }
+        .shadow(color: .white.opacity(0.18), radius: 2, y: 0)
     }
 }
 

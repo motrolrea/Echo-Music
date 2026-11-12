@@ -2155,12 +2155,18 @@ struct BilibiliVideoDetailContent: View {
     private var introduction: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(activeVideo.title).font(.subheadline.weight(.semibold))
-            HStack(spacing: 8) {
+            HStack(spacing: 4) {
                 Text("\(Formatters.playCount(activeVideo.playCount)) 次播放")
-                Spacer(minLength: 8)
                 if let publishedAt = activeVideo.publishedAt {
+                    Text("·")
                     Text(Self.publishFormatter.string(from: publishedAt))
                 }
+                if let watchingCount, watchingCount > 0 {
+                    Text("·")
+                    Text("\(Formatters.playCount(watchingCount))人正在看")
+                }
+                Spacer(minLength: 0)
+            }
                 if let watchingCount, watchingCount > 0 {
                     Text("\(Formatters.playCount(watchingCount))人正在看")
                 }
@@ -2428,7 +2434,7 @@ struct BilibiliVideoDetailContent: View {
 
     private static let publishFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter
     }()
 
@@ -2695,16 +2701,17 @@ private struct BiliActionGlyph: View {
             CGPoint(x: rect.minX + rect.width * x, y: rect.minY + rect.height * y)
         }
         var path = Path()
-        path.move(to: p(0.30, 0.96))
-        path.addLine(to: p(0.30, 0.50))
-        path.addQuadCurve(to: p(0.26, 0.32), control: p(0.24, 0.44))
-        path.addQuadCurve(to: p(0.42, 0.05), control: p(0.18, 0.14))
-        path.addQuadCurve(to: p(0.60, 0.14), control: p(0.62, 0.00))
-        path.addQuadCurve(to: p(0.54, 0.36), control: p(0.74, 0.20))
-        path.addQuadCurve(to: p(0.72, 0.40), control: p(0.60, 0.50))
-        path.addQuadCurve(to: p(0.96, 0.52), control: p(1.02, 0.34))
-        path.addLine(to: p(0.88, 0.86))
-        path.addQuadCurve(to: p(0.66, 0.98), control: p(0.90, 1.02))
+        path.move(to: p(0.16, 0.96))
+        path.addLine(to: p(0.16, 0.50))
+        path.addQuadCurve(to: p(0.28, 0.42), control: p(0.16, 0.44))
+        path.addLine(to: p(0.28, 0.20))
+        path.addQuadCurve(to: p(0.46, 0.04), control: p(0.28, 0.06))
+        path.addQuadCurve(to: p(0.62, 0.18), control: p(0.64, 0.02))
+        path.addLine(to: p(0.62, 0.40))
+        path.addQuadCurve(to: p(0.86, 0.50), control: p(0.78, 0.36))
+        path.addQuadCurve(to: p(0.90, 0.70), control: p(0.98, 0.56))
+        path.addLine(to: p(0.84, 0.90))
+        path.addQuadCurve(to: p(0.62, 0.98), control: p(0.82, 1.00))
         path.closeSubpath()
         if filled {
             context.fill(path, with: shading)
