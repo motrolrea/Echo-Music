@@ -439,6 +439,8 @@ struct NowPlayingView: View {
         return VStack(spacing: 20) {
             compactTrackMetaView
                 .padding(.top, compactTitleTopPadding)
+                .padding(.leading, 72)
+                .padding(.trailing, 120)
             if showLyricsOnMobile {
                 // NetEase-style: a small cover on the lyric page returns to the cover page.
                 Button {
@@ -500,7 +502,6 @@ struct NowPlayingView: View {
             }
             .padding(.bottom, 12)
         }
-        .padding(.horizontal, 64)
     }
 
     private func lyricsCompactLayout(size: CGSize) -> some View {

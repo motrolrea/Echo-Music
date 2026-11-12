@@ -1186,7 +1186,7 @@ private struct MiniMarqueeLine: View {
                     TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
                         let gap = max(18, width * 0.28)
                         let travel = needed + gap
-                        let duration = max(4.0, Double(travel) / 28)
+                        let duration = max(4.8, Double(travel) / 24)
                         let phase = timeline.date.timeIntervalSinceReferenceDate
                             .truncatingRemainder(dividingBy: duration)
                         let shift = CGFloat(phase / duration) * travel
