@@ -974,100 +974,10 @@ struct NowPlayingView: View {
     private var nowPlayingMoreMenu: some View {
         Menu {
             if let track = player.currentTrack {
-                let liked = favorites.contains(track)
-                Button {
-                    let isLiked = favorites.toggle(track)
-                    ToastCenter.shared.show(isLiked ? "已加入本地收藏" : "已取消本地收藏")
-                } label: {
-                    Label(liked ? "取消收藏" : "收藏歌曲", systemImage: liked ? "heart.fill" : "heart")
-                }
-
-                Button {
-                    player.addToPlayNext(track)
-                } label: {
-                    Label("下一首播放", systemImage: "text.line.first.and.arrowtriangle.forward")
-                }
-
-                Button {
-                    activeSheet = .addToPlaylist
-                } label: {
-                    Label("加入歌单…", systemImage: "music.note.list")
-                }
-
-                Button {
-                    activeSheet = .comments
-                } label: {
-                    Label("查看评论", systemImage: "text.bubble")
-                }
-
-#if os(iOS)
-                Button {
-                    activeSheet = .lyricPoster
-                } label: {
-                    Label("分享歌词海报", systemImage: "text.quote")
-                }
-                Button {
-                    activeSheet = .customCover
-                } label: {
-                    Label("自定义封面…", systemImage: "photo")
-                }
-#endif
-
-                PlayerPlaybackModeMenu()
-
-                Button {
-                    airPlayRequest += 1
-                } label: {
-                    Label("AirPlay", systemImage: "airplayaudio")
-                }
-
-                Menu {
-                    ForEach(LyricsDisplayStyle.allCases) { style in
-                        Button {
-                            withAnimation(AppAnimation.standard) {
-                                settings.lyricsDisplayStyle = style
-                            }
-                        } label: {
-                            HStack {
-                                Text(style.displayName)
-                                if style == settings.lyricsDisplayStyle {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    Label("歌词样式：\(settings.lyricsDisplayStyle.displayName)", systemImage: "textformat")
-                }
-
-                Button {
-                    activeSheet = .lyricsOptions
-                } label: {
-                    Label("歌词设置…", systemImage: "slider.horizontal.3")
-                }
-                Toggle("逐字歌词", isOn: $settings.verbatimLyrics)
-
-#if os(iOS)
-                Button {
-                    activeSheet = .downloads
-                } label: {
-                    Label("下载歌曲", systemImage: "arrow.down.circle")
-                }
-#endif
-
-                Button { player.queueSimilarSongs() } label: { Label("播放相似歌曲", systemImage: "wand.and.stars") }
-                SleepTimerMenu(player: player)
-
-                Divider()
-
-                Button {
-                    Platform.copyToPasteboard(
-                        string: "https://music.163.com/#/song?id=\(track.id)"
-                    )
-                    ToastCenter.shared.show(String(localized: "链接已复制"))
-                } label: {
-                    Label("复制链接", systemImage: "link")
-                }
+                nowPlayingLibraryActions(track)
+                nowPlayingPlaybackActions
+                nowPlayingLyricsActions
+                nowPlayingUtilityActions(track)
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -1086,6 +996,116 @@ struct NowPlayingView: View {
                 tint: .clear, background: .clear
             )
             .opacity(0.01)
+        }
+    }
+
+    @ViewBuilder
+    private func nowPlayingLibraryActions(_ track: Track) -> some View {
+        let liked = favorites.contains(track)
+        Button {
+            let isLiked = favorites.toggle(track)
+            ToastCenter.shared.show(isLiked ? "已加入本地收藏" : "已取消本地收藏")
+        } label: {
+            Label(liked ? "取消收藏" : "收藏歌曲", systemImage: liked ? "heart.fill" : "heart")
+        }
+
+        Button {
+            player.addToPlayNext(track)
+        } label: {
+            Label("下一首播放", systemImage: "text.line.first.and.arrowtriangle.forward")
+        }
+
+        Button {
+            activeSheet = .addToPlaylist
+        } label: {
+            Label("加入歌单…", systemImage: "music.note.list")
+        }
+
+        Button {
+            activeSheet = .comments
+        } label: {
+            Label("查看评论", systemImage: "text.bubble")
+        }
+
+#if os(iOS)
+        Button {
+            activeSheet = .lyricPoster
+        } label: {
+            Label("分享歌词海报", systemImage: "text.quote")
+        }
+        Button {
+            activeSheet = .customCover
+        } label: {
+            Label("自定义封面…", systemImage: "photo")
+        }
+#endif
+    }
+
+    @ViewBuilder
+    private var nowPlayingPlaybackActions: some View {
+        PlayerPlaybackModeMenu()
+        Button {
+            airPlayRequest += 1
+        } label: {
+            Label("AirPlay", systemImage: "airplayaudio")
+        }
+    }
+
+    private var lyricsStyleMenu: some View {
+        Menu {
+            ForEach(LyricsDisplayStyle.allCases) { style in
+                Button {
+                    withAnimation(AppAnimation.standard) {
+                        settings.lyricsDisplayStyle = style
+                    }
+                } label: {
+                    lyricsStyleRow(style)
+                }
+            }
+        } label: {
+            Label("歌词样式：\(settings.lyricsDisplayStyle.displayName)", systemImage: "textformat")
+        }
+    }
+
+    private func lyricsStyleRow(_ style: LyricsDisplayStyle) -> some View {
+        HStack {
+            Text(style.displayName)
+            if style == settings.lyricsDisplayStyle {
+                Image(systemName: "checkmark")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var nowPlayingLyricsActions: some View {
+        lyricsStyleMenu
+        Button {
+            activeSheet = .lyricsOptions
+        } label: {
+            Label("歌词设置…", systemImage: "slider.horizontal.3")
+        }
+        Toggle("逐字歌词", isOn: $settings.verbatimLyrics)
+    }
+
+    @ViewBuilder
+    private func nowPlayingUtilityActions(_ track: Track) -> some View {
+#if os(iOS)
+        Button {
+            activeSheet = .downloads
+        } label: {
+            Label("下载歌曲", systemImage: "arrow.down.circle")
+        }
+#endif
+        Button { player.queueSimilarSongs() } label: { Label("播放相似歌曲", systemImage: "wand.and.stars") }
+        SleepTimerMenu(player: player)
+        Divider()
+        Button {
+            Platform.copyToPasteboard(
+                string: "https://music.163.com/#/song?id=\(track.id)"
+            )
+            ToastCenter.shared.show(String(localized: "链接已复制"))
+        } label: {
+            Label("复制链接", systemImage: "link")
         }
     }
 
@@ -3466,6 +3486,20 @@ private struct PlayerMarqueeText: View {
     var centered = false
     var uiFont: UIFont = .boldSystemFont(ofSize: 21)
 
+    init(
+        _ text: String,
+        font: Font,
+        color: Color,
+        centered: Bool = false,
+        uiFont: UIFont = .boldSystemFont(ofSize: 21)
+    ) {
+        self.text = text
+        self.font = font
+        self.color = color
+        self.centered = centered
+        self.uiFont = uiFont
+    }
+
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
@@ -3531,5 +3565,28 @@ struct PlayerArtistLink: View {
         } else {
             Text("")
         }
+    }
+}
+
+fileprivate extension View {
+    func liquidGlassCircle(diameter: CGFloat = 36) -> some View {
+        self
+            .frame(width: diameter, height: diameter)
+            .background(.ultraThinMaterial, in: Circle())
+            .overlay {
+                Circle().strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            .white.opacity(0.95),
+                            .white.opacity(0.28),
+                            .white.opacity(0.08),
+                            .white.opacity(0.42)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 2.4
+                )
+            }
     }
 }
