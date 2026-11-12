@@ -3,6 +3,13 @@ import Foundation
 import WidgetKit
 #endif
 
+struct WidgetQueueItem: Codable {
+    let title: String
+    let artist: String
+    let index: Int
+    let current: Bool
+}
+
 enum WidgetPlaybackBridge {
     static let suiteName = "group.com.jiajia2222.moumusic"
     private static let coverName = "echo-widget-cover.jpg"
@@ -10,7 +17,8 @@ enum WidgetPlaybackBridge {
     /// Writes the desktop-widget snapshot. Unsigned builds have no App Group,
     /// so a missing suite leaves the widget on its placeholder.
     static func publish(title: String, artist: String, playing: Bool, coverURL: String? = nil,
-                        elapsed: Double? = nil, duration: Double? = nil) {
+                        elapsed: Double? = nil, duration: Double? = nil,
+                        queue: [WidgetQueueItem] = []) {
         guard let defaults = UserDefaults(suiteName: suiteName) else { return }
         defaults.set(title, forKey: "echo.widget.title")
         defaults.set(artist, forKey: "echo.widget.artist")
@@ -18,6 +26,9 @@ enum WidgetPlaybackBridge {
         if let coverURL { defaults.set(coverURL, forKey: "echo.widget.coverURL") }
         if let elapsed { defaults.set(elapsed, forKey: "echo.widget.elapsed") }
         if let duration { defaults.set(duration, forKey: "echo.widget.duration") }
+        if let data = try? JSONEncoder().encode(queue) {
+            defaults.set(data, forKey: "echo.widget.queue")
+        }
         #if os(iOS)
         DispatchQueue.main.async {
             WidgetCenter.shared.reloadAllTimelines()

@@ -186,14 +186,18 @@ final class NowPlayingManager {
         refreshLikeState()
 
         refreshArtworkMode()
-        WidgetPlaybackBridge.publish(
-            title: track.name,
-            artist: track.artistNames,
-            playing: player?.isPlaying == true,
-            coverURL: track.album.picUrl,
-            elapsed: 0,
-            duration: duration
-        )
+        if let player {
+            player.publishWidgetSnapshot(elapsed: 0, duration: duration)
+        } else {
+            WidgetPlaybackBridge.publish(
+                title: track.name,
+                artist: track.artistNames,
+                playing: false,
+                coverURL: track.album.picUrl,
+                elapsed: 0,
+                duration: duration
+            )
+        }
         if let pic = track.album.picUrl, let url = pic.resizedImageURL(360) {
             Task { await WidgetPlaybackBridge.storeCover(from: url) }
         } else {

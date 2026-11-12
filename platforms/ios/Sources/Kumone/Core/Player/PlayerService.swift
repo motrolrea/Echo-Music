@@ -167,14 +167,7 @@ final class PlayerService: ObservableObject {
     @Published private(set) var isPlaying = false {
         didSet {
             guard oldValue != isPlaying else { return }
-            WidgetPlaybackBridge.publish(
-                title: currentTrack?.name ?? "",
-                artist: currentTrack?.artistNames ?? "",
-                playing: isPlaying,
-                coverURL: currentTrack?.album.picUrl,
-                elapsed: progress,
-                duration: duration
-            )
+            publishWidgetSnapshot()
         }
     }
     @Published private(set) var isBuffering = false
@@ -295,6 +288,65 @@ final class PlayerService: ObservableObject {
         guard !activeQueue.isEmpty, currentIndex >= 0 else { return playNextList }
         let rest = activeQueue.suffix(from: min(currentIndex + 1, activeQueue.count))
         return playNextList + Array(rest.prefix(200))
+    }
+
+    func publishWidgetSnapshot(elapsed: Double? = nil, duration: Double? = nil) {
+        WidgetPlaybackBridge.publish(
+            title: currentTrack?.name ?? "",
+            artist: currentTrack?.artistNames ?? "",
+            playing: isPlaying,
+            coverURL: currentTrack?.album.picUrl,
+            elapsed: elapsed ?? progress,
+            duration: duration ?? self.duration,
+            queue: widgetQueueItems()
+        )
+    }
+
+    func playQueueIndex(_ index: Int) {
+        let list = activeQueue
+        guard index >= 0, index < list.count else { return }
+        if index == currentIndex {
+            if !isPlaying { togglePlayPause() }
+            return
+        }
+        currentIndex = index
+        startPlaying(list[index])
+    }
+
+    private func widgetQueueItems() -> [WidgetQueueItem] {
+        var items: [WidgetQueueItem] = []
+        if let track = currentTrack {
+            items.append(WidgetQueueItem(
+                title: track.name,
+                artist: track.artistNames,
+                index: max(currentIndex, 0),
+                current: true
+            ))
+        }
+        for (offset, track) in playNextList.prefix(3).enumerated() {
+            items.append(WidgetQueueItem(
+                title: track.name,
+                artist: track.artistNames,
+                index: -(offset + 1),
+                current: false
+            ))
+        }
+        if currentIndex >= 0 {
+            let list = activeQueue
+            let end = min(list.count, currentIndex + 1 + 6)
+            if currentIndex + 1 < end {
+                for idx in (currentIndex + 1)..<end {
+                    let track = list[idx]
+                    items.append(WidgetQueueItem(
+                        title: track.name,
+                        artist: track.artistNames,
+                        index: idx,
+                        current: false
+                    ))
+                }
+            }
+        }
+        return Array(items.prefix(7))
     }
 
     var hasCurrentTrack: Bool { currentTrack != nil }
@@ -726,6 +778,7 @@ final class PlayerService: ObservableObject {
             advanceToNext(userInitiated: true)
         } else {
             ToastCenter.shared.show(String(localized: "已添加到下一首播放"))
+            publishWidgetSnapshot()
         }
     }
 

@@ -127,6 +127,13 @@ public struct IOSMainWindow: View {
                     player.next()
                 case "previous":
                     player.previous()
+                case "play":
+                    if let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                        .queryItems?
+                        .first(where: { $0.name == "index" })?.value,
+                       let index = Int(raw) {
+                        player.playQueueIndex(index)
+                    }
                 default:
                     break
                 }

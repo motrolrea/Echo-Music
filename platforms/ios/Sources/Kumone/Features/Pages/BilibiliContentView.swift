@@ -2167,10 +2167,6 @@ struct BilibiliVideoDetailContent: View {
                 }
                 Spacer(minLength: 0)
             }
-                if let watchingCount, watchingCount > 0 {
-                    Text("\(Formatters.playCount(watchingCount))人正在看")
-                }
-            }
             .font(.caption)
             .foregroundStyle(.secondary)
             if !activeVideo.description.isEmpty {
