@@ -14,8 +14,7 @@ enum WidgetPlaybackBridge {
     static let suiteName = "group.com.jiajia2222.moumusic"
     private static let coverName = "echo-widget-cover.jpg"
 
-    /// Writes the desktop-widget snapshot. Unsigned builds have no App Group,
-    /// so a missing suite leaves the widget on its placeholder.
+    /// Writes the desktop-widget snapshot into the shared App Group.
     static func publish(title: String, artist: String, playing: Bool, coverURL: String? = nil,
                         elapsed: Double? = nil, duration: Double? = nil,
                         queue: [WidgetQueueItem] = []) {

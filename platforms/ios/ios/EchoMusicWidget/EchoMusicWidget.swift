@@ -16,17 +16,13 @@ private enum EchoWidgetStore {
     static func entry(at date: Date = Date()) -> EchoPlayEntry {
         let defaults = UserDefaults(suiteName: suiteName)
         let title = defaults?.string(forKey: "echo.widget.title") ?? ""
-        let artist = defaults?.string(forKey: "echo.widget.artist") ?? ""
-        let playing = defaults?.bool(forKey: "echo.widget.playing") ?? false
-        let elapsed = defaults?.double(forKey: "echo.widget.elapsed") ?? 0
-        let duration = defaults?.double(forKey: "echo.widget.duration") ?? 0
         return EchoPlayEntry(
             date: date,
             title: title,
-            artist: artist,
-            playing: playing,
-            elapsed: elapsed,
-            duration: duration,
+            artist: defaults?.string(forKey: "echo.widget.artist") ?? "",
+            playing: defaults?.bool(forKey: "echo.widget.playing") ?? false,
+            elapsed: defaults?.double(forKey: "echo.widget.elapsed") ?? 0,
+            duration: defaults?.double(forKey: "echo.widget.duration") ?? 0,
             cover: coverImage(),
             queue: queue(from: defaults)
         )
@@ -79,7 +75,7 @@ struct EchoPlayProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<EchoPlayEntry>) -> Void) {
         let entry = EchoWidgetStore.entry()
-        let next = Calendar.current.date(byAdding: .minute, value: 30, to: Date()) ?? Date().addingTimeInterval(1800)
+        let next = Date().addingTimeInterval(15 * 60)
         completion(Timeline(entries: [entry], policy: .after(next)))
     }
 

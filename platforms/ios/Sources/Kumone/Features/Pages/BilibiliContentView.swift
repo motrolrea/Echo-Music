@@ -2677,18 +2677,41 @@ private struct BiliActionGlyph: View {
             case .favorite:
                 Self.drawStar(&context, in: bounds.insetBy(dx: 1.5, dy: 1.5), shading: shading, width: 1.6, filled: active)
             case .triple:
-                let gap: CGFloat = 1.1
-                let item = (size.width - gap * 2) / 3
-                let y = size.height * 0.16
-                let height = size.height * 0.72
-                Self.drawThumb(&context, in: CGRect(x: 0, y: y, width: item, height: height), shading: shading, width: 1.15, filled: active)
-                Self.drawCoin(&context, in: CGRect(x: item + gap, y: y, width: item, height: height), shading: shading, width: 1.05)
-                Self.drawStar(&context, in: CGRect(x: (item + gap) * 2, y: y, width: item, height: height), shading: shading, width: 1.05, filled: active)
+                Self.drawTriple(&context, in: bounds.insetBy(dx: 1.2, dy: 1.2), shading: shading, width: 1.7)
             case .later:
                 Self.drawClock(&context, in: bounds.insetBy(dx: 1.6, dy: 1.6), shading: shading, width: 1.6)
             }
         }
         .frame(width: 26, height: 26)
+    }
+
+    private static func drawTriple(_ context: inout GraphicsContext, in rect: CGRect,
+                                   shading: GraphicsContext.Shading, width: CGFloat) {
+        let style = StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + rect.width * x, y: rect.minY + rect.height * y)
+        }
+        var one = Path()
+        one.move(to: p(0.18, 0.78))
+        one.addLine(to: p(0.34, 0.78))
+        one.addLine(to: p(0.34, 0.22))
+        one.addLine(to: p(0.18, 0.38))
+        context.stroke(one, with: shading, style: style)
+        var two = Path()
+        two.move(to: p(0.46, 0.22))
+        two.addQuadCurve(to: p(0.62, 0.22), control: p(0.54, 0.08))
+        two.addLine(to: p(0.62, 0.50))
+        two.addQuadCurve(to: p(0.46, 0.50), control: p(0.54, 0.64))
+        two.addLine(to: p(0.46, 0.78))
+        two.addLine(to: p(0.62, 0.78))
+        context.stroke(two, with: shading, style: style)
+        var three = Path()
+        three.move(to: p(0.70, 0.24))
+        three.addQuadCurve(to: p(0.90, 0.24), control: p(0.80, 0.08))
+        three.addQuadCurve(to: p(0.74, 0.48), control: p(0.98, 0.34))
+        three.addQuadCurve(to: p(0.92, 0.72), control: p(0.98, 0.60))
+        three.addQuadCurve(to: p(0.70, 0.78), control: p(0.84, 0.92))
+        context.stroke(three, with: shading, style: style)
     }
 
     private static func drawThumb(_ context: inout GraphicsContext, in rect: CGRect,

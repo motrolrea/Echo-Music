@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 #if os(iOS)
 public struct IOSMainWindow: View {
@@ -854,15 +857,18 @@ struct IOSMiniPlayerBar: View {
                 .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
 
             VStack(alignment: .leading, spacing: metadataSpacing) {
-                Text(player.currentTrack?.name ?? "")
-                    .font(titleFont)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                Text(miniPlayerSecondLine)
-                    .font(artistFont)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                MiniMarqueeLine(
+                    text: player.currentTrack?.name ?? "",
+                    font: titleFont,
+                    color: .primary,
+                    uiFont: .systemFont(ofSize: presentation.isInline ? 10 : (presentation.isCompact ? 12 : 13), weight: .semibold)
+                )
+                MiniMarqueeLine(
+                    text: miniPlayerSecondLine,
+                    font: artistFont,
+                    color: .secondary,
+                    uiFont: .systemFont(ofSize: presentation.isInline ? 8 : (presentation.isCompact ? 9 : 10))
+                )
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
@@ -1164,3 +1170,49 @@ struct IOSLibraryView: View {
 }
 #endif
 #endif
+
+private struct MiniMarqueeLine: View {
+    let text: String
+    let font: Font
+    let color: Color
+    let uiFont: UIFont
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let needed = (text as NSString).size(withAttributes: [.font: uiFont]).width
+            ZStack(alignment: .leading) {
+                if needed > width + 2 {
+                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                        let gap = max(18, width * 0.28)
+                        let travel = needed + gap
+                        let duration = max(4.0, Double(travel) / 28)
+                        let phase = timeline.date.timeIntervalSinceReferenceDate
+                            .truncatingRemainder(dividingBy: duration)
+                        let shift = CGFloat(phase / duration) * travel
+                        HStack(spacing: gap) {
+                            label
+                            label
+                        }
+                        .offset(x: -shift)
+                    }
+                } else {
+                    label
+                        .frame(width: width, alignment: .leading)
+                }
+            }
+            .frame(width: width, height: geo.size.height, alignment: .leading)
+            .clipped()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: ceil(uiFont.lineHeight))
+    }
+
+    private var label: some View {
+        Text(text)
+            .font(font)
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+}

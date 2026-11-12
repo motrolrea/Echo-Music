@@ -78,9 +78,9 @@ struct NowPlayingView: View {
                     } label: {
                         Image(systemName: "chevron.down")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.92))
+                            .foregroundStyle(.white)
                             .frame(width: 36, height: 36)
-                            .liquidGlassCircle()
+                            .background(.white.opacity(0.14), in: Circle())
                     }
                     .buttonStyle(.pressable)
                     .padding(.top, 20)
@@ -97,9 +97,9 @@ struct NowPlayingView: View {
                         } label: {
                             Image(systemName: showLyricsOnMobile ? "music.note" : "quote.bubble")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(showLyricsOnMobile ? Theme.accent : .white.opacity(0.92))
+                                .foregroundStyle(showLyricsOnMobile ? Theme.accent : .white)
                                 .frame(width: 36, height: 36)
-                                .liquidGlassCircle()
+                                .background(.white.opacity(0.14), in: Circle())
                         }
                         .buttonStyle(.pressable)
                     }
@@ -500,7 +500,7 @@ struct NowPlayingView: View {
             }
             .padding(.bottom, 12)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 64)
     }
 
     private func lyricsCompactLayout(size: CGSize) -> some View {
@@ -982,9 +982,9 @@ struct NowPlayingView: View {
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
+                .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
-                .liquidGlassCircle(diameter: 44)
+                .background(.white.opacity(0.14), in: Circle())
                 .contentShape(Circle())
         }
         .buttonStyle(.pressable)
@@ -3504,34 +3504,40 @@ private struct PlayerMarqueeText: View {
         GeometryReader { geo in
             let width = geo.size.width
             let needed = (text as NSString).size(withAttributes: [.font: uiFont]).width
-            let overflows = centered && needed > width + 2
-            Group {
+            let overflows = needed > width + 2
+            ZStack(alignment: .leading) {
                 if overflows {
                     TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                        let travel = needed - width + 28
-                        let duration = max(3.4, Double(travel) / 28)
+                        let gap = width * 0.28
+                        let travel = needed + gap
+                        let duration = max(4.0, Double(travel) / 32)
                         let phase = timeline.date.timeIntervalSinceReferenceDate
-                            .truncatingRemainder(dividingBy: duration * 2)
-                        let progress = phase < duration ? phase / duration : (duration * 2 - phase) / duration
-                        Text(text)
-                            .font(font)
-                            .foregroundStyle(color)
-                            .lineLimit(1)
-                            .fixedSize()
-                            .offset(x: -CGFloat(progress) * travel)
+                            .truncatingRemainder(dividingBy: duration)
+                        let shift = CGFloat(phase / duration) * travel
+                        HStack(spacing: gap) {
+                            marqueeLabel
+                            marqueeLabel
+                        }
+                        .offset(x: -shift)
                     }
                 } else {
-                    Text(text)
-                        .font(font)
-                        .foregroundStyle(color)
-                        .lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
+                    marqueeLabel
+                        .frame(width: width, alignment: centered ? .center : .leading)
                 }
             }
             .frame(width: width, height: geo.size.height, alignment: .leading)
             .clipped()
         }
+        .frame(maxWidth: .infinity)
         .frame(height: ceil(uiFont.lineHeight))
+    }
+
+    private var marqueeLabel: some View {
+        Text(text)
+            .font(font)
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
     }
 }
 
@@ -3565,28 +3571,5 @@ struct PlayerArtistLink: View {
         } else {
             Text("")
         }
-    }
-}
-
-fileprivate extension View {
-    func liquidGlassCircle(diameter: CGFloat = 36) -> some View {
-        self
-            .frame(width: diameter, height: diameter)
-            .background(.ultraThinMaterial, in: Circle())
-            .overlay {
-                Circle().strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            .white.opacity(0.95),
-                            .white.opacity(0.28),
-                            .white.opacity(0.08),
-                            .white.opacity(0.42)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 2.4
-                )
-            }
     }
 }
