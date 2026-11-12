@@ -164,7 +164,16 @@ final class PlayerService: ObservableObject {
     @Published private(set) var currentIndex = -1
     @Published private(set) var currentTrack: Track?
     @Published private(set) var source: PlaySource = .none
-    @Published private(set) var isPlaying = false
+    @Published private(set) var isPlaying = false {
+        didSet {
+            guard oldValue != isPlaying else { return }
+            WidgetPlaybackBridge.publish(
+                title: currentTrack?.name ?? "",
+                artist: currentTrack?.artistNames ?? "",
+                playing: isPlaying
+            )
+        }
+    }
     @Published private(set) var isBuffering = false
     @Published private(set) var duration: TimeInterval = 0
     /// True when the shown tier was checked against the audio file itself (not just the source's label).

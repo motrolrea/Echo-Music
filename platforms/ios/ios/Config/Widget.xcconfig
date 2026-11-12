@@ -1,0 +1,12 @@
+// Widget extension. Kept off Shared.xcconfig so it does not inherit the app bundle id.
+PRODUCT_BUNDLE_IDENTIFIER = com.motrolrea.echomusic.ios.widget
+PRODUCT_NAME = EchoMusicWidget
+MARKETING_VERSION = 1.5.0
+CURRENT_PROJECT_VERSION = 1
+GENERATE_INFOPLIST_FILE = NO
+INFOPLIST_FILE = EchoMusicWidget/Info.plist
+CODE_SIGN_ENTITLEMENTS = EchoMusicWidget/EchoMusicWidget.entitlements
+CODE_SIGN_STYLE = Automatic
+SKIP_INSTALL = YES
+TARGETED_DEVICE_FAMILY = 1,2
+APPLICATION_EXTENSION_API_ONLY = YES

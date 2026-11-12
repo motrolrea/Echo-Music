@@ -186,6 +186,11 @@ final class NowPlayingManager {
         refreshLikeState()
 
         refreshArtworkMode()
+        WidgetPlaybackBridge.publish(
+            title: track.name,
+            artist: track.artistNames,
+            playing: player?.isPlaying == true
+        )
     }
 
     /// Rebuilds the artwork object without resetting playback position or

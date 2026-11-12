@@ -23,6 +23,9 @@ targets:
     dependencies:
       - package: KumoneIOSPackage
         product: KumoneIOSFeature
+      - target: EchoMusicWidget
+        embed: true
+        codeSign: false
     settings:
       base:
         CODE_SIGN_ENTITLEMENTS: Config/KumoneIOS.entitlements
@@ -30,6 +33,31 @@ targets:
         # without modifying the generated project or the tracked manifest.
         PROVISIONING_PROFILE_SPECIFIER: $(MOU_APP_PROVISIONING_PROFILE)
         ENABLE_PREVIEWS: YES
+  EchoMusicWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: EchoMusicWidget
+        excludes:
+          - Info.plist
+          - "*.entitlements"
+    configFiles:
+      Debug: Config/Widget.xcconfig
+      Release: Config/Widget.xcconfig
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: EchoMusicWidget/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.motrolrea.echomusic.ios.widget
+        PRODUCT_NAME: EchoMusicWidget
+        MARKETING_VERSION: "1.5.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_ENTITLEMENTS: EchoMusicWidget/EchoMusicWidget.entitlements
+        CODE_SIGNING_ALLOWED: NO
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGN_IDENTITY: ""
+        SKIP_INSTALL: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
   KumoneIOSUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -45,6 +73,7 @@ schemes:
     build:
       targets:
         KumoneIOS: all
+        EchoMusicWidget: all
     run:
       config: Debug
     test:

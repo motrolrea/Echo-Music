@@ -1474,9 +1474,16 @@ private struct BilibiliDynamicCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if let cover = item.coverURL ?? item.video?.coverURL {
-                    CachedAsyncImage(url: cover.resizedImageURL(640))
-                        .frame(maxWidth: .infinity).aspectRatio(16 / 9, contentMode: .fill)
+                    Color.clear
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                        .overlay {
+                            CachedAsyncImage(url: cover.resizedImageURL(640))
+                                .scaledToFill()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                        .frame(maxWidth: .infinity)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .clipped()
                 }
                 HStack(spacing: 26) {
                     Label(Formatters.playCount(item.likeCount), systemImage: "hand.thumbsup")
@@ -1490,6 +1497,7 @@ private struct BilibiliDynamicCard: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .mouMaterialBackground(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .clipped()
         }
         .buttonStyle(.plain)
     }
@@ -2683,27 +2691,26 @@ private struct BiliActionGlyph: View {
 
     private static func drawThumb(_ context: inout GraphicsContext, in rect: CGRect,
                                   shading: GraphicsContext.Shading, width: CGFloat, filled: Bool) {
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + rect.width * x, y: rect.minY + rect.height * y)
+        }
         var path = Path()
-        let x = rect.minX, y = rect.minY, w = rect.width, h = rect.height
-        path.move(to: CGPoint(x: x + w * 0.40, y: y + h * 0.98))
-        path.addLine(to: CGPoint(x: x + w * 0.40, y: y + h * 0.44))
-        path.addQuadCurve(to: CGPoint(x: x + w * 0.22, y: y + h * 0.30),
-                          control: CGPoint(x: x + w * 0.22, y: y + h * 0.44))
-        path.addQuadCurve(to: CGPoint(x: x + w * 0.36, y: y + h * 0.04),
-                          control: CGPoint(x: x + w * 0.04, y: y + h * 0.18))
-        path.addQuadCurve(to: CGPoint(x: x + w * 0.60, y: y + h * 0.18),
-                          control: CGPoint(x: x + w * 0.64, y: y))
-        path.addQuadCurve(to: CGPoint(x: x + w * 0.64, y: y + h * 0.40),
-                          control: CGPoint(x: x + w * 0.72, y: y + h * 0.26))
-        path.addLine(to: CGPoint(x: x + w * 0.86, y: y + h * 0.40))
-        path.addQuadCurve(to: CGPoint(x: x + w * 0.97, y: y + h * 0.52),
-                          control: CGPoint(x: x + w, y: y + h * 0.40))
-        path.addLine(to: CGPoint(x: x + w * 0.90, y: y + h * 0.84))
-        path.addQuadCurve(to: CGPoint(x: x + w * 0.74, y: y + h * 0.98),
-                          control: CGPoint(x: x + w * 0.90, y: y + h))
+        path.move(to: p(0.30, 0.96))
+        path.addLine(to: p(0.30, 0.50))
+        path.addQuadCurve(to: p(0.26, 0.32), control: p(0.24, 0.44))
+        path.addQuadCurve(to: p(0.42, 0.05), control: p(0.18, 0.14))
+        path.addQuadCurve(to: p(0.60, 0.14), control: p(0.62, 0.00))
+        path.addQuadCurve(to: p(0.54, 0.36), control: p(0.74, 0.20))
+        path.addQuadCurve(to: p(0.72, 0.40), control: p(0.60, 0.50))
+        path.addQuadCurve(to: p(0.96, 0.52), control: p(1.02, 0.34))
+        path.addLine(to: p(0.88, 0.86))
+        path.addQuadCurve(to: p(0.66, 0.98), control: p(0.90, 1.02))
         path.closeSubpath()
-        if filled { context.fill(path, with: shading) }
-        context.stroke(path, with: shading, style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
+        if filled {
+            context.fill(path, with: shading)
+        } else {
+            context.stroke(path, with: shading, style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
+        }
     }
 
     private static func drawCoin(_ context: inout GraphicsContext, in rect: CGRect,

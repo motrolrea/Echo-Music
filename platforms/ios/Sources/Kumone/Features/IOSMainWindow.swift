@@ -867,7 +867,7 @@ struct IOSMiniPlayerBar: View {
     private var metadataSpacing: CGFloat {
         if presentation.isInline { return 6 }
         if presentation.isCompact { return 12 }
-        return 11
+        return 3
     }
 
     private var nowPlayingAccessibilityLabel: String {
