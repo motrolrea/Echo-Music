@@ -1426,6 +1426,7 @@ final class BiliDanmakuUIView: UIView {
     private var scrollSpeed: Double = 90
     private var hideTop = false
     private var hideBottom = false
+    private var lastBoundsSize = CGSize.zero
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -1442,12 +1443,25 @@ final class BiliDanmakuUIView: UIView {
         if window == nil { stop() } else { start() }
     }
 
+    /// Inline (detail page) the view is inserted before SwiftUI has given it a size, so the first
+    /// frames are skipped; the display link is (re)started here once a real size arrives.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard window != nil, bounds.width > 0, bounds.height > 0 else { return }
+        start()
+        if lastBoundsSize != bounds.size {
+            lastBoundsSize = bounds.size
+            clearLayersOnly()
+        }
+    }
+
     func setItems(_ newItems: [PlacedDanmaku]) {
         let signature = "\(newItems.count)-\(newItems.first?.start ?? 0)-\(newItems.last?.text ?? "")"
         guard signature != itemsSignature else { return }
         itemsSignature = signature
         items = newItems
         clearAll()
+        if window != nil, bounds.width > 0, bounds.height > 0 { start() }
     }
 
     func start() {

@@ -1660,6 +1660,7 @@ struct BilibiliVideoDetailContent: View {
     @State private var interaction: BilibiliAPI.InteractionState?
     @State private var interactionLoading = false
     @State private var interactionMessage: String?
+    @State private var watchLaterAid = 0
     @State private var commentText = ""
     @State private var commentPosting = false
 
@@ -2089,9 +2090,9 @@ struct BilibiliVideoDetailContent: View {
                     enabled: bilibili.isLoggedIn && !interactionLoading
                 ) { Task { await oneClickTriple() } }
                 biliAction(
-                    title: "稍后",
+                    title: isInWatchLater ? "已加入" : "稍后",
                     kind: .later,
-                    active: false,
+                    active: isInWatchLater,
                     enabled: bilibili.isLoggedIn
                 ) { Task { await addWatchLater() } }
             }
@@ -2260,11 +2261,20 @@ struct BilibiliVideoDetailContent: View {
         if interaction?.isFavorited != true { await toggleFavorite() }
     }
 
+    private var isInWatchLater: Bool {
+        watchLaterAid == activeVideo.aid && activeVideo.aid > 0
+    }
+
     @MainActor private func addWatchLater() async {
+        let aid = activeVideo.aid
         do {
-            try await BilibiliAPI.shared.addToWatchLater(aid: activeVideo.aid, cookie: bilibili.cookie)
+            try await BilibiliAPI.shared.addToWatchLater(aid: aid, cookie: bilibili.cookie)
+            withAnimation(.easeOut(duration: 0.18)) { watchLaterAid = aid }
+            interactionMessage = "已加入稍后再看"
             ToastCenter.shared.show("已加入稍后再看")
         } catch {
+            if watchLaterAid == aid { watchLaterAid = 0 }
+            interactionMessage = "加入稍后再看失败"
             ToastCenter.shared.show("加入稍后再看失败")
         }
     }
