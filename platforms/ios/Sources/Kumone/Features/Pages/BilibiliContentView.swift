@@ -1778,7 +1778,7 @@ struct BilibiliVideoDetailContent: View {
                     avatarURL: activeVideo.authorAvatarURL, signature: "", followerCount: 0))
                     .environmentObject(bilibili)
                     .environmentObject(settings)
-                    .environmentObject(player)
+                    .environmentObject(PlayerService.shared)
             }
         }
         .sheet(isPresented: $showMessageComposer) {

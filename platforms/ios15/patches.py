@@ -224,19 +224,8 @@ assert marker in text, "DynamicWallpaperStore: end of shader switch not found"
 text = text.replace(marker, marker + "        } else {\n            Color.black\n        }\n", 1)
 write(os.path.join(IOS, "Sources", "Kumone", "Core/Storage/DynamicWallpaperStore.swift"), text)
 
-# Bilibili player: no ViewThatFits / requestGeometryUpdate on iOS 15.
+# Bilibili player: no requestGeometryUpdate on iOS 15.
 patch("Features/Pages/BilibiliNativePlayer.swift", [
-    ("""                ViewThatFits(in: .horizontal) {
-                    controlRow(compact: false)
-                    controlRow(compact: true)
-                }""", """                GeometryReader { proxy in
-                    if proxy.size.width > 440 {
-                        controlRow(compact: false)
-                    } else {
-                        controlRow(compact: true)
-                    }
-                }
-                .frame(height: 40)"""),
     ("""        let mask: UIInterfaceOrientationMask = landscape ? .landscape : .portrait
         scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { _ in }""",
      """        let mask: UIInterfaceOrientationMask = landscape ? .landscape : .portrait
@@ -247,6 +236,55 @@ patch("Features/Pages/BilibiliNativePlayer.swift", [
             UIDevice.current.setValue(value, forKey: "orientation")
             UIViewController.attemptRotationToDeviceOrientation()
         }"""),
+])
+
+# ViewThatFits shows up in two overlays at different indentations; replace every occurrence.
+player_path = os.path.join(IOS, "Sources", "Kumone", "Features/Pages/BilibiliNativePlayer.swift")
+player = read(player_path)
+player_crlf = "\r\n" in player
+if player_crlf:
+    player = player.replace("\r\n", "\n")
+fits = re.compile(
+    r"[ \t]*ViewThatFits\(in: \.horizontal\) \{\n"
+    r"[ \t]*controlRow\(compact: false\)\n"
+    r"[ \t]*controlRow\(compact: true\)\n"
+    r"[ \t]*\}"
+)
+
+
+def fits_replacement(match):
+    indent = re.match(r"[ \t]*", match.group(0)).group(0)
+    return (
+        indent + "GeometryReader { proxy in\n"
+        + indent + "    if proxy.size.width > 440 {\n"
+        + indent + "        controlRow(compact: false)\n"
+        + indent + "    } else {\n"
+        + indent + "        controlRow(compact: true)\n"
+        + indent + "    }\n"
+        + indent + "}\n"
+        + indent + ".frame(height: 40)"
+    )
+
+
+player, replaced = fits.subn(fits_replacement, player)
+assert replaced >= 2, f"BilibiliNativePlayer: expected 2 ViewThatFits, found {replaced}"
+if player_crlf:
+    player = player.replace("\n", "\r\n")
+write(player_path, player)
+
+# iOS 15 predates ToolbarContentBuilder conditionals, and has no iOS 26 shared background to hide.
+patch("Features/EchoTopBar.swift", [
+    ("""    @ToolbarContentBuilder
+    func echoCircleItem() -> some ToolbarContent {
+        if #available(iOS 26.0, *) {
+            self.sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
+    }""", """    @ToolbarContentBuilder
+    func echoCircleItem() -> some ToolbarContent {
+        self
+    }"""),
 ])
 
 # Ruby text: the Layout protocol is iOS 16; size the canvas from the proposed width instead.
