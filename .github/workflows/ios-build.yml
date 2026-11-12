@@ -63,6 +63,16 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= \
             build 2>&1 | tee build.log | tail -n 400
 
+      - name: Surface compile errors
+        if: failure()
+        working-directory: platforms/ios/ios
+        run: |
+          if [ -f build.log ]; then
+            grep -m 10 -E "error:|fatal error:" build.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+
       - name: Package IPA
         working-directory: platforms/ios/ios
         run: |
@@ -133,6 +143,16 @@ jobs:
             CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= \
             build 2>&1 | tee build.log | tail -n 400
+
+      - name: Surface compile errors
+        if: failure()
+        working-directory: platforms/ios/ios
+        run: |
+          if [ -f build.log ]; then
+            grep -m 10 -E "error:|fatal error:" build.log | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
 
       - name: Package IPA
         working-directory: platforms/ios/ios
