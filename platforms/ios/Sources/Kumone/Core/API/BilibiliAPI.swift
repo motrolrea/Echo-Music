@@ -1049,6 +1049,62 @@ actor BilibiliAPI {
         ], cookie: cookie, referer: "https://space.bilibili.com/\(mid)")
     }
 
+    /// People currently watching. Hidden when Bilibili turns the counter off or the request fails.
+    func onlineViewerCount(bvid: String, cid: Int?) async -> Int? {
+        var components = URLComponents(string: "https://api.bilibili.com/x/player/online/total")!
+        var items = [URLQueryItem(name: "bvid", value: bvid)]
+        if let cid, cid > 0 {
+            items.append(URLQueryItem(name: "cid", value: "\(cid)"))
+        }
+        components.queryItems = items
+        guard let url = components.url,
+              let root = try? await requestObject(url, cookie: nil),
+              let payload = root["data"] as? [String: Any] else { return nil }
+        if let switches = payload["show_switch"] as? [String: Any] {
+            let flag = switches["total"]
+            if let number = flag as? NSNumber, number.boolValue == false { return nil }
+            if let text = flag as? String, text == "false" || text == "0" { return nil }
+        }
+        let count = Self.integer(payload["total"] ?? payload["count"]) ?? 0
+        return count > 0 ? count : nil
+    }
+
+    func sendPrivateMessage(to receiverID: Int, text: String, cookie: String?) async throws {
+        let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard receiverID > 0, !message.isEmpty,
+              let cookie,
+              let csrf = Self.cookieValue("bili_jct", from: cookie), !csrf.isEmpty,
+              let sender = Self.cookieValue("DedeUserID", from: cookie), !sender.isEmpty else {
+            throw APIError.unavailable
+        }
+        let content = try JSONSerialization.data(withJSONObject: ["content": message])
+        guard let contentText = String(data: content, encoding: .utf8) else { throw APIError.unavailable }
+        let defaults = UserDefaults.standard
+        let deviceKey = "moumusic.bili.im.device"
+        let device = defaults.string(forKey: deviceKey) ?? UUID().uuidString
+        if defaults.string(forKey: deviceKey) == nil { defaults.set(device, forKey: deviceKey) }
+        let timestamp = String(Int(Date().timeIntervalSince1970))
+        _ = try await postFormObject(
+            URL(string: "https://api.vc.bilibili.com/web_im/v1/web_im/send_msg")!,
+            fields: [
+                "msg[sender_uid]": sender,
+                "msg[receiver_id]": "\(receiverID)",
+                "msg[receiver_type]": "1",
+                "msg[msg_type]": "1",
+                "msg[msg_status]": "0",
+                "msg[content]": contentText,
+                "msg[timestamp]": timestamp,
+                "msg[dev_id]": device,
+                "csrf": csrf,
+                "csrf_token": csrf,
+                "build": "0",
+                "mobi_app": "web"
+            ],
+            cookie: cookie,
+            referer: "https://message.bilibili.com/"
+        )
+    }
+
     func suggestKeywords(_ keyword: String) async -> [String] {
         var components = URLComponents(string: "https://s.search.bilibili.com/main/suggest")!
         components.queryItems = [
@@ -2102,7 +2158,8 @@ actor BilibiliAPI {
         let owner = raw["owner"] as? [String: Any]
         let stat = raw["stat"] as? [String: Any]
         let firstPage = (raw["pages"] as? [[String: Any]])?.first
-        let durationText = text(raw["duration"] ?? firstPage?["duration"]) ?? ""
+        let rawDuration = text(raw["duration"] ?? firstPage?["duration"]) ?? ""
+        let durationText = clockDuration(rawDuration)
         let subtitleRows = ((raw["subtitle"] as? [String: Any])?["list"] as? [[String: Any]]) ?? []
         let dimensions = displayDimensions(raw["dimension"] as? [String: Any] ?? firstPage?["dimension"] as? [String: Any])
         return Video(
@@ -2115,7 +2172,7 @@ actor BilibiliAPI {
             authorID: integer(raw["mid"] ?? owner?["mid"]) ?? 0,
             authorAvatarURL: imageURL(text(raw["face"]) ?? text(owner?["face"])),
             description: stripHTML(text(raw["description"]) ?? text(raw["desc"]) ?? ""),
-            duration: parseDuration(durationText),
+            duration: parseDuration(rawDuration),
             durationText: durationText,
             playCount: count(raw["play"] ?? stat?["view"] ?? raw["cover_left_text_1"]) ?? 0,
             commentCount: count(raw["review"] ?? stat?["reply"] ?? raw["cover_left_text_2"]) ?? 0,
@@ -2804,6 +2861,14 @@ actor BilibiliAPI {
         return parts.reversed().enumerated().reduce(0) { result, item in
             result + item.element * pow(60, Double(item.offset))
         }
+    }
+
+    /// Keep an existing clock string. Bare second counts become m:ss, or h:mm:ss past an hour.
+    private static func clockDuration(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        if trimmed.contains(":") { return trimmed }
+        return formatDuration(Int(parseDuration(trimmed)))
     }
 
     private static func formatDuration(_ seconds: Int) -> String {

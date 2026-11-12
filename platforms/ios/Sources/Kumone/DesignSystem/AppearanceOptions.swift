@@ -112,6 +112,11 @@ enum Haptics {
         guard isEnabled else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
+
+    static func tick() {
+        guard isEnabled else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
 }
 #endif
 

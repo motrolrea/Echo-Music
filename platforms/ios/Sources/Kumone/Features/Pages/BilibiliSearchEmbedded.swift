@@ -131,7 +131,7 @@ struct BilibiliSearchResults: View {
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                Text("\(video.author) · \(video.durationText)")
+                Text("\(video.author) · \(BilibiliDurationText.display(video.durationText))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -190,6 +190,7 @@ struct BilibiliUserVideosView: View {
     @State private var selectedUser: BilibiliAPI.User?
     @State private var following: Bool?
     @State private var followBusy = false
+    @State private var showMessage = false
 
     var body: some View {
         ScrollView {
@@ -205,17 +206,29 @@ struct BilibiliUserVideosView: View {
                         }
                     }
                     Spacer(minLength: 0)
-                    if bilibili.isLoggedIn, let following {
+                    VStack(spacing: 8) {
                         Button { toggleFollow() } label: {
-                            Text(following ? "已关注" : "+ 关注")
-                                .font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 7)
-                                .foregroundStyle(following ? Color.secondary : Color.white)
-                                .background(following ? Color.secondary.opacity(0.18) : Theme.accent, in: Capsule())
+                            Text(following == true ? "已关注" : "+ 关注")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .foregroundStyle(following == true ? Color.secondary : Color.white)
+                                .background(following == true ? Color.secondary.opacity(0.18) : Theme.accent, in: Capsule())
                         }
                         .buttonStyle(.plain)
-                        .disabled(followBusy)
+                        .disabled(followBusy || (bilibili.isLoggedIn && following == nil))
+                        Button {
+                            if bilibili.isLoggedIn { showMessage = true }
+                            else { ToastCenter.shared.show("请先登录哔哩哔哩") }
+                        } label: {
+                            Text("私信")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .foregroundStyle(Theme.accent)
+                                .overlay(Capsule().stroke(Theme.accent.opacity(0.7), lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 if isLoading {
@@ -238,7 +251,7 @@ struct BilibiliUserVideosView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(video.title).font(.subheadline.weight(.semibold)).lineLimit(2)
                                         .multilineTextAlignment(.leading)
-                                    Text("\(Formatters.playCount(video.playCount)) 播放 · \(video.durationText)")
+                                    Text("\(Formatters.playCount(video.playCount)) 播放 · \(BilibiliDurationText.display(video.durationText))")
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer(minLength: 0)
@@ -269,10 +282,19 @@ struct BilibiliUserVideosView: View {
                     .environmentObject(settings)
             }
         }
+        .sheet(isPresented: $showMessage) {
+            BilibiliMessageComposer(mid: user.mid, name: user.name)
+                .environmentObject(bilibili)
+        }
     }
 
     private func toggleFollow() {
-        guard let current = following, !followBusy else { return }
+        guard !followBusy else { return }
+        guard bilibili.isLoggedIn else {
+            ToastCenter.shared.show("请先登录哔哩哔哩")
+            return
+        }
+        guard let current = following else { return }
         followBusy = true
         Task { @MainActor in
             do {
@@ -344,7 +366,7 @@ struct BilibiliCollectionVideosView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(video.title).font(.subheadline.weight(.semibold)).lineLimit(2)
                                         .multilineTextAlignment(.leading)
-                                    Text("\(Formatters.playCount(video.playCount)) 播放 · \(video.durationText)")
+                                    Text("\(Formatters.playCount(video.playCount)) 播放 · \(BilibiliDurationText.display(video.durationText))")
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer(minLength: 0)

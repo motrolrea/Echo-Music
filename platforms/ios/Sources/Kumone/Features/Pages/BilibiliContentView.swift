@@ -1610,6 +1610,10 @@ struct BilibiliVideoDetailContent: View {
     @State private var related: [BilibiliAPI.Video] = []
     @State private var authorFollowers = 0
     @State private var authorVideos = 0
+    @State private var authorFollowing: Bool?
+    @State private var followBusy = false
+    @State private var showMessageComposer = false
+    @State private var watchingCount: Int?
     @State private var relatedSelection: BilibiliAPI.Video?
     @State private var triedMuxedFallback = false
     @State private var qualityFallbackDepth = 0
@@ -1774,7 +1778,12 @@ struct BilibiliVideoDetailContent: View {
                     avatarURL: activeVideo.authorAvatarURL, signature: "", followerCount: 0))
                     .environmentObject(bilibili)
                     .environmentObject(settings)
+                    .environmentObject(player)
             }
+        }
+        .sheet(isPresented: $showMessageComposer) {
+            BilibiliMessageComposer(mid: activeVideo.authorID, name: activeVideo.author)
+                .environmentObject(bilibili)
         }
         .onChange(of: settings.bilibiliMode) { _ in
             Task { await reloadForCurrentMode() }
@@ -1868,40 +1877,64 @@ struct BilibiliVideoDetailContent: View {
     }
 
     private var authorHeader: some View {
-        Button {
-            playerModel.pause()
-            showUploader = true
-        } label: {
-            HStack(spacing: 10) {
-                CachedAsyncImage(url: activeVideo.authorAvatarURL?.resizedImageURL(160))
-                    .frame(width: 40, height: 40)
-                    .clipShape(Circle())
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(activeVideo.author)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                    Text("\(Formatters.playCount(authorFollowers)) 粉丝 · \(Formatters.playCount(authorVideos)) 作品")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+        HStack(spacing: 8) {
+            Button {
+                playerModel.pause()
+                showUploader = true
+            } label: {
+                HStack(spacing: 10) {
+                    CachedAsyncImage(url: activeVideo.authorAvatarURL?.resizedImageURL(160))
+                        .frame(width: 40, height: 40)
+                        .clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(activeVideo.author)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Text("\(Formatters.playCount(authorFollowers)) 粉丝 · \(Formatters.playCount(authorVideos)) 作品")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.tertiary)
                 }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .disabled(activeVideo.authorID <= 0)
+            if activeVideo.authorID > 0 {
+                Button { toggleAuthorFollow() } label: {
+                    Text(authorFollowing == true ? "已关注" : "+ 关注")
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(authorFollowing == true ? Color.secondary : Color.white)
+                        .background(authorFollowing == true ? Color.secondary.opacity(0.16) : Theme.accent, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .disabled(followBusy || (bilibili.isLoggedIn && authorFollowing == nil))
+                Button { openAuthorMessage() } label: {
+                    Text("私信")
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .foregroundStyle(Theme.accent)
+                        .overlay(Capsule().stroke(Theme.accent.opacity(0.7), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
             }
         }
-        .buttonStyle(.plain)
-        .disabled(activeVideo.authorID <= 0)
         .padding(.horizontal, 18)
     }
 
     private var playerOptions: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 16) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
                 Button { showDownloadSheet = true } label: {
-                    Label("下载", systemImage: "arrow.down.circle")
+                    optionChip("下载", systemImage: "arrow.down.circle")
                 }
                 .buttonStyle(.plain)
                 if settings.bilibiliMode == .listen {
@@ -1921,9 +1954,8 @@ struct BilibiliVideoDetailContent: View {
                                           (quality.requiresLogin && !bilibili.isLoggedIn))
                             }
                         } label: {
-                            Label(audioLoading ? "正在读取音轨" : currentAudioQualityTitle, systemImage: "waveform")
+                            optionChip(audioLoading ? "正在读取音轨" : currentAudioQualityTitle, systemImage: "waveform")
                         }
-                        .buttonStyle(.plain)
                         .disabled(audioLoading)
                     }
                 } else if !qualities.isEmpty {
@@ -1944,73 +1976,81 @@ struct BilibiliVideoDetailContent: View {
                                       (quality.requiresLogin && !bilibili.isLoggedIn))
                         }
                     } label: {
-                        Label(currentQualityTitle, systemImage: "rectangle.inset.filled")
+                        optionChip(currentQualityTitle, systemImage: "rectangle.inset.filled")
                     }
-                    .buttonStyle(.plain)
                 }
-                Spacer(minLength: 8)
+                if let pages = detail?.pages, pages.count > 1 {
+                    Menu {
+                        ForEach(pages) { page in
+                            Button {
+                                Task { await switchPage(page) }
+                            } label: {
+                                if page.cid == activeVideo.cid {
+                                    Label(page.title, systemImage: "checkmark")
+                                } else {
+                                    Text(page.title)
+                                }
+                            }
+                        }
+                    } label: {
+                        optionChip("分P \(pages.first(where: { $0.cid == activeVideo.cid })?.page ?? 1)/\(pages.count)",
+                                   systemImage: "list.number")
+                    }
+                }
+                if !allSubtitles.isEmpty {
+                    Menu {
+                        Button("关闭字幕") { selectedSubtitle = nil; subtitleCues = [] }
+                        Divider()
+                        ForEach(allSubtitles) { subtitle in
+                            Button {
+                                Task { await loadSubtitle(subtitle) }
+                            } label: {
+                                if subtitle.id == selectedSubtitle?.id {
+                                    Label(subtitle.displayTitle, systemImage: "checkmark")
+                                } else {
+                                    Text(subtitle.displayTitle)
+                                }
+                            }
+                        }
+                    } label: {
+                        optionChip(subtitleChipTitle, systemImage: "captions.bubble")
+                    }
+                    .disabled(subtitleLoading)
+                }
                 if settings.bilibiliMode != .listen && activePlaybackURL != nil {
                     Button { showFullScreen = true } label: {
-                        Image(systemName: "play.rectangle")
-                            .font(.body.weight(.semibold))
+                        optionChip("播放", systemImage: "play.rectangle")
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("应用内播放")
                 }
             }
-            if showsPartOrSubtitleRow {
-                HStack(spacing: 16) {
-                    if let pages = detail?.pages, pages.count > 1 {
-                        Menu {
-                            ForEach(pages) { page in
-                                Button {
-                                    Task { await switchPage(page) }
-                                } label: {
-                                    if page.cid == activeVideo.cid {
-                                        Label(page.title, systemImage: "checkmark")
-                                    } else {
-                                        Text(page.title)
-                                    }
-                                }
-                            }
-                        } label: {
-                            Label("分P \(pages.first(where: { $0.cid == activeVideo.cid })?.page ?? 1)/\(pages.count)",
-                                  systemImage: "list.number")
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    if !allSubtitles.isEmpty {
-                        Menu {
-                            Button("关闭字幕") { selectedSubtitle = nil; subtitleCues = [] }
-                            Divider()
-                            ForEach(allSubtitles) { subtitle in
-                                Button {
-                                    Task { await loadSubtitle(subtitle) }
-                                } label: {
-                                    if subtitle.id == selectedSubtitle?.id {
-                                        Label(subtitle.displayTitle, systemImage: "checkmark")
-                                    } else {
-                                        Text(subtitle.displayTitle)
-                                    }
-                                }
-                            }
-                        } label: {
-                            Label(subtitleLoading ? "加载字幕" : (selectedSubtitle?.displayTitle ?? "字幕"), systemImage: "captions.bubble")
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(subtitleLoading)
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
+            .padding(.horizontal, 18)
         }
-        .font(.subheadline.weight(.medium))
-        .foregroundStyle(Theme.accent)
-        .padding(.horizontal, 18)
     }
 
-    private var showsPartOrSubtitleRow: Bool {
-        (detail?.pages.count ?? 0) > 1 || !allSubtitles.isEmpty
+    private func optionChip(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Theme.accent)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .overlay {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .stroke(Theme.accent.opacity(0.7), lineWidth: 1)
+            }
+    }
+
+    private var subtitleChipTitle: String {
+        if subtitleLoading { return "加载字幕" }
+        if selectedSubtitle?.isAIGenerated == true || selectedSubtitle?.title.contains("AI") == true {
+            return "AI字幕"
+        }
+        if allSubtitles.contains(where: { $0.isAIGenerated || $0.title.contains("AI") }) {
+            return "AI字幕"
+        }
+        return "字幕"
     }
 
     private var interactionBar: some View {
@@ -2105,13 +2145,22 @@ struct BilibiliVideoDetailContent: View {
         }
     }
     private var introduction: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(activeVideo.title).font(.title3.weight(.semibold))
-            Text("\(Formatters.playCount(activeVideo.playCount)) 次播放")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(activeVideo.title).font(.subheadline.weight(.semibold))
+            HStack(spacing: 8) {
+                Text("\(Formatters.playCount(activeVideo.playCount)) 次播放")
+                Spacer(minLength: 8)
+                if let publishedAt = activeVideo.publishedAt {
+                    Text(Self.publishFormatter.string(from: publishedAt))
+                }
+                if let watchingCount, watchingCount > 0 {
+                    Text("\(Formatters.playCount(watchingCount))人正在看")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
             if !activeVideo.description.isEmpty {
-                Text(activeVideo.description).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(activeVideo.description).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             interactionBar
             if !allSubtitles.isEmpty {
@@ -2171,7 +2220,7 @@ struct BilibiliVideoDetailContent: View {
                             .frame(width: 120, height: 68)
                             .overlay(alignment: .bottomTrailing) {
                                 if !item.durationText.isEmpty {
-                                    Text(item.durationText)
+                                    Text(BilibiliDurationText.display(item.durationText))
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.white)
                                         .padding(.horizontal, 4)
@@ -2250,8 +2299,12 @@ struct BilibiliVideoDetailContent: View {
             detail = loaded
             authorFollowers = 0
             authorVideos = 0
+            authorFollowing = nil
+            watchingCount = nil
             let authorID = loaded.authorID
             Task { await loadAuthorStats(authorID) }
+            Task { await loadAuthorRelation(authorID) }
+            Task { await loadWatching(loaded) }
             if settings.bilibiliMode == .listen {
                 listenOnly = true
                 playbackURL = nil
@@ -2322,6 +2375,54 @@ struct BilibiliVideoDetailContent: View {
         authorFollowers = stats.followers
         authorVideos = stats.videos
     }
+
+    @MainActor private func loadAuthorRelation(_ mid: Int) async {
+        guard mid > 0, bilibili.isLoggedIn else {
+            authorFollowing = nil
+            return
+        }
+        authorFollowing = await BilibiliAPI.shared.isFollowing(mid: mid, cookie: bilibili.cookie)
+    }
+
+    @MainActor private func loadWatching(_ video: BilibiliAPI.Video) async {
+        watchingCount = await BilibiliAPI.shared.onlineViewerCount(bvid: video.bvid, cid: video.cid)
+    }
+
+    private func toggleAuthorFollow() {
+        guard !followBusy else { return }
+        guard bilibili.isLoggedIn else {
+            ToastCenter.shared.show("请先登录哔哩哔哩")
+            return
+        }
+        guard let current = authorFollowing else { return }
+        followBusy = true
+        let mid = activeVideo.authorID
+        Task { @MainActor in
+            do {
+                try await BilibiliAPI.shared.setFollow(mid: mid, follow: !current, cookie: bilibili.cookie)
+                authorFollowing = !current
+                ToastCenter.shared.show(current ? "已取消关注" : "已关注")
+            } catch {
+                ToastCenter.shared.show("操作失败，请稍后重试")
+            }
+            followBusy = false
+        }
+    }
+
+    private func openAuthorMessage() {
+        guard activeVideo.authorID > 0 else { return }
+        guard bilibili.isLoggedIn else {
+            ToastCenter.shared.show("请先登录哔哩哔哩")
+            return
+        }
+        showMessageComposer = true
+    }
+
+    private static let publishFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 
     @MainActor private func loadInteractionState() async {
         guard bilibili.isLoggedIn, activeVideo.aid > 0 else { return }
@@ -2557,55 +2658,83 @@ private struct BiliActionGlyph: View {
     var body: some View {
         Canvas { context, size in
             let shading = GraphicsContext.Shading.color(active ? Theme.accent : Color.primary.opacity(0.86))
-            let stroke = StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round)
+            let bounds = CGRect(origin: .zero, size: size)
             switch kind {
             case .like:
-                let path = Self.thumb(in: size)
-                if active { context.fill(path, with: shading) }
-                context.stroke(path, with: shading, style: stroke)
+                Self.drawThumb(&context, in: bounds.insetBy(dx: 1.2, dy: 1.2), shading: shading, width: 1.65, filled: active)
             case .coin:
-                context.fill(Self.coin(in: size), with: shading, style: FillStyle(eoFill: true))
+                Self.drawCoin(&context, in: bounds.insetBy(dx: 1.4, dy: 1.4), shading: shading, width: 1.55)
             case .favorite:
-                let path = Self.star(in: size)
-                if active { context.fill(path, with: shading) }
-                context.stroke(path, with: shading, style: stroke)
+                Self.drawStar(&context, in: bounds.insetBy(dx: 1.5, dy: 1.5), shading: shading, width: 1.6, filled: active)
             case .triple:
-                context.fill(Self.heart(in: size), with: shading)
+                let gap: CGFloat = 1.1
+                let item = (size.width - gap * 2) / 3
+                let y = size.height * 0.16
+                let height = size.height * 0.72
+                Self.drawThumb(&context, in: CGRect(x: 0, y: y, width: item, height: height), shading: shading, width: 1.15, filled: active)
+                Self.drawCoin(&context, in: CGRect(x: item + gap, y: y, width: item, height: height), shading: shading, width: 1.05)
+                Self.drawStar(&context, in: CGRect(x: (item + gap) * 2, y: y, width: item, height: height), shading: shading, width: 1.05, filled: active)
             case .later:
-                context.stroke(Self.clock(in: size), with: shading, style: stroke)
+                Self.drawClock(&context, in: bounds.insetBy(dx: 1.6, dy: 1.6), shading: shading, width: 1.6)
             }
         }
         .frame(width: 26, height: 26)
     }
 
-    private static func thumb(in size: CGSize) -> Path {
+    private static func drawThumb(_ context: inout GraphicsContext, in rect: CGRect,
+                                  shading: GraphicsContext.Shading, width: CGFloat, filled: Bool) {
         var path = Path()
-        let width = size.width
-        let height = size.height
-        path.addRoundedRect(
-            in: CGRect(x: width * 0.34, y: height * 0.40, width: width * 0.50, height: height * 0.46),
-            cornerSize: CGSize(width: 3, height: 3)
-        )
-        path.addRoundedRect(
-            in: CGRect(x: width * 0.12, y: height * 0.10, width: width * 0.28, height: height * 0.54),
-            cornerSize: CGSize(width: width * 0.14, height: width * 0.14)
-        )
-        return path
+        let x = rect.minX, y = rect.minY, w = rect.width, h = rect.height
+        path.move(to: CGPoint(x: x + w * 0.40, y: y + h * 0.98))
+        path.addLine(to: CGPoint(x: x + w * 0.40, y: y + h * 0.44))
+        path.addQuadCurve(to: CGPoint(x: x + w * 0.22, y: y + h * 0.30),
+                          control: CGPoint(x: x + w * 0.22, y: y + h * 0.44))
+        path.addQuadCurve(to: CGPoint(x: x + w * 0.36, y: y + h * 0.04),
+                          control: CGPoint(x: x + w * 0.04, y: y + h * 0.18))
+        path.addQuadCurve(to: CGPoint(x: x + w * 0.60, y: y + h * 0.18),
+                          control: CGPoint(x: x + w * 0.64, y: y))
+        path.addQuadCurve(to: CGPoint(x: x + w * 0.64, y: y + h * 0.40),
+                          control: CGPoint(x: x + w * 0.72, y: y + h * 0.26))
+        path.addLine(to: CGPoint(x: x + w * 0.86, y: y + h * 0.40))
+        path.addQuadCurve(to: CGPoint(x: x + w * 0.97, y: y + h * 0.52),
+                          control: CGPoint(x: x + w, y: y + h * 0.40))
+        path.addLine(to: CGPoint(x: x + w * 0.90, y: y + h * 0.84))
+        path.addQuadCurve(to: CGPoint(x: x + w * 0.74, y: y + h * 0.98),
+                          control: CGPoint(x: x + w * 0.90, y: y + h))
+        path.closeSubpath()
+        if filled { context.fill(path, with: shading) }
+        context.stroke(path, with: shading, style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
     }
 
-    private static func coin(in size: CGSize) -> Path {
-        var path = Path()
-        let outer = CGRect(origin: .zero, size: size).insetBy(dx: 2.2, dy: 2.2)
-        path.addEllipse(in: outer)
-        path.addEllipse(in: outer.insetBy(dx: outer.width * 0.24, dy: outer.height * 0.24))
-        return path
+    private static func drawCoin(_ context: inout GraphicsContext, in rect: CGRect,
+                                 shading: GraphicsContext.Shading, width: CGFloat) {
+        let style = StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
+        let outer = rect.insetBy(dx: width * 0.6, dy: width * 0.6)
+        var rings = Path()
+        rings.addEllipse(in: outer)
+        rings.addEllipse(in: outer.insetBy(dx: outer.width * 0.22, dy: outer.height * 0.22))
+        context.stroke(rings, with: shading, style: style)
+        var slot = Path()
+        slot.move(to: CGPoint(x: outer.midX, y: outer.minY + outer.height * 0.30))
+        slot.addLine(to: CGPoint(x: outer.midX, y: outer.maxY - outer.height * 0.30))
+        context.stroke(slot, with: shading, style: style)
+        let center = CGPoint(x: outer.midX, y: outer.midY)
+        let radius = min(outer.width, outer.height) / 2
+        var ticks = Path()
+        for index in 0..<4 {
+            let angle = CGFloat(index) * .pi / 2
+            let inner = radius - max(1.4, outer.width * 0.10)
+            ticks.move(to: CGPoint(x: center.x + cos(angle) * inner, y: center.y + sin(angle) * inner))
+            ticks.addLine(to: CGPoint(x: center.x + cos(angle) * (radius - width * 0.4), y: center.y + sin(angle) * (radius - width * 0.4)))
+        }
+        context.stroke(ticks, with: shading, style: StrokeStyle(lineWidth: max(0.9, width * 0.65), lineCap: .round))
     }
 
-    private static func star(in size: CGSize) -> Path {
-        let rect = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
+    private static func drawStar(_ context: inout GraphicsContext, in rect: CGRect,
+                                 shading: GraphicsContext.Shading, width: CGFloat, filled: Bool) {
         let center = CGPoint(x: rect.midX, y: rect.midY)
         let outer = min(rect.width, rect.height) / 2
-        let inner = outer * 0.42
+        let inner = outer * 0.46
         var path = Path()
         for index in 0..<10 {
             let radius = index.isMultiple(of: 2) ? outer : inner
@@ -2614,47 +2743,93 @@ private struct BiliActionGlyph: View {
             if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
         }
         path.closeSubpath()
-        return path
+        if filled { context.fill(path, with: shading) }
+        context.stroke(path, with: shading, style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
     }
 
-    private static func heart(in size: CGSize) -> Path {
-        var path = Path()
-        let width = size.width
-        let height = size.height
-        path.move(to: CGPoint(x: width * 0.50, y: height * 0.86))
-        path.addCurve(
-            to: CGPoint(x: width * 0.08, y: height * 0.36),
-            control1: CGPoint(x: width * 0.18, y: height * 0.68),
-            control2: CGPoint(x: width * 0.08, y: height * 0.52)
-        )
-        path.addCurve(
-            to: CGPoint(x: width * 0.50, y: height * 0.30),
-            control1: CGPoint(x: width * 0.08, y: height * 0.14),
-            control2: CGPoint(x: width * 0.32, y: height * 0.12)
-        )
-        path.addCurve(
-            to: CGPoint(x: width * 0.92, y: height * 0.36),
-            control1: CGPoint(x: width * 0.68, y: height * 0.12),
-            control2: CGPoint(x: width * 0.92, y: height * 0.14)
-        )
-        path.addCurve(
-            to: CGPoint(x: width * 0.50, y: height * 0.86),
-            control1: CGPoint(x: width * 0.92, y: height * 0.52),
-            control2: CGPoint(x: width * 0.82, y: height * 0.68)
-        )
-        path.closeSubpath()
-        return path
+    private static func drawClock(_ context: inout GraphicsContext, in rect: CGRect,
+                                  shading: GraphicsContext.Shading, width: CGFloat) {
+        let style = StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
+        var face = Path()
+        face.addEllipse(in: rect)
+        context.stroke(face, with: shading, style: style)
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        var ticks = Path()
+        for index in 0..<4 {
+            let angle = -CGFloat.pi / 2 + CGFloat(index) * .pi / 2
+            ticks.move(to: CGPoint(x: center.x + cos(angle) * radius * 0.72, y: center.y + sin(angle) * radius * 0.72))
+            ticks.addLine(to: CGPoint(x: center.x + cos(angle) * radius * 0.88, y: center.y + sin(angle) * radius * 0.88))
+        }
+        ticks.move(to: center)
+        ticks.addLine(to: CGPoint(x: center.x, y: center.y - radius * 0.46))
+        ticks.move(to: center)
+        ticks.addLine(to: CGPoint(x: center.x + radius * 0.34, y: center.y))
+        context.stroke(ticks, with: shading, style: style)
+    }
+}
+
+struct BilibiliMessageComposer: View {
+    let mid: Int
+    let name: String
+    @EnvironmentObject private var bilibili: BilibiliSessionStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var sending = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("发给 \(name)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                TextField("写一条私信", text: $text, axis: .vertical)
+                    .lineLimit(3...6)
+                    .textFieldStyle(.roundedBorder)
+                Spacer(minLength: 0)
+            }
+            .padding(18)
+            .navigationTitle("私信")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(sending ? "发送中" : "发送") { send() }
+                        .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
     }
 
-    private static func clock(in size: CGSize) -> Path {
-        var path = Path()
-        let rect = CGRect(origin: .zero, size: size).insetBy(dx: 2.4, dy: 2.4)
-        path.addEllipse(in: rect)
-        path.move(to: CGPoint(x: rect.midX, y: rect.midY))
-        path.addLine(to: CGPoint(x: rect.midX, y: rect.minY + rect.height * 0.28))
-        path.move(to: CGPoint(x: rect.midX, y: rect.midY))
-        path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.28, y: rect.midY))
-        return path
+    private func send() {
+        let message = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !message.isEmpty, !sending else { return }
+        sending = true
+        Task { @MainActor in
+            do {
+                try await BilibiliAPI.shared.sendPrivateMessage(to: mid, text: message, cookie: bilibili.cookie)
+                ToastCenter.shared.show("私信已发送")
+                dismiss()
+            } catch {
+                ToastCenter.shared.show("私信发送失败，请稍后重试")
+                sending = false
+            }
+        }
+    }
+}
+
+enum BilibiliDurationText {
+    static func display(_ raw: String) -> String {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return "" }
+        if value.contains(":") { return value }
+        let digits = value.filter(\.isNumber)
+        guard let seconds = Int(digits), seconds > 0 else { return value }
+        let hours = seconds / 3_600
+        let minutes = (seconds % 3_600) / 60
+        let remainder = seconds % 60
+        if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, remainder) }
+        return String(format: "%d:%02d", minutes, remainder)
     }
 }
 

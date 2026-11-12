@@ -350,6 +350,9 @@ struct HomeView: View {
 #if os(iOS)
     /// Bilibili is one more home platform: the window swaps the bottom tabs while this is on.
     @AppStorage("moumusic.home.bilibiliActive") private var bilibiliActive = false
+    @EnvironmentObject private var qqMusic: QQMusicSessionStore
+    @EnvironmentObject private var kugou: KugouSessionStore
+    @State private var showPlatformAccount = false
 #endif
     @StateObject private var model = HomeViewModel.shared
 #if os(iOS)
@@ -425,6 +428,18 @@ struct HomeView: View {
                 .accessibilityHint("选择首页推荐平台或打开哔哩哔哩")
             }
             .echoCircleItem()
+            if selectedHomePlatform == .tx || selectedHomePlatform == .kg {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showPlatformAccount = true
+                    } label: {
+                        platformAccountMark
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(selectedHomePlatform.displayName)账号")
+                }
+                .echoCircleItem()
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 EchoAvatarButton()
             }
@@ -445,6 +460,12 @@ struct HomeView: View {
             await loadCurrentHome(force: true)
         }
         #if os(iOS)
+        .sheet(isPresented: $showPlatformAccount) {
+            PlatformAccountPage(platform: selectedHomePlatform)
+                .environmentObject(qqMusic)
+                .environmentObject(kugou)
+                .environmentObject(player)
+        }
         .task { await RemoteControlStore.shared.refreshIfNeeded() }
         .onChange(of: remoteControl.announcementText) { _ in presentAnnouncementIfNew() }
         .onChange(of: remoteControl.announcementEnabled) { _ in presentAnnouncementIfNew() }
@@ -700,9 +721,14 @@ struct HomeView: View {
                         }
                     }
                     if !model.recommendTracks.isEmpty {
-                        SectionHeader(title: model.activePlatform == .wy ? "热门歌曲" : "推荐歌曲")
-                            .padding(.horizontal, Theme.Layout.contentInset)
-                        TrackListView(tracks: model.recommendTracks, showsSummary: false)
+                        HStack(alignment: .center, spacing: 8) {
+                            SectionHeader(title: model.activePlatform == .wy ? "热门歌曲" : "推荐歌曲")
+                            #if os(iOS)
+                            TrackBatchDownloadButton(tracks: model.recommendTracks)
+                            #endif
+                        }
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                        TrackListView(tracks: model.recommendTracks, showsSummary: false, showsBatchDownload: false)
                             .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }
                 }
@@ -749,6 +775,32 @@ struct HomeView: View {
 #if os(iOS)
     private var selectedHomePlatform: LXCatalogPlatform {
         settings.homeRecommendationMode == .netease ? .wy : settings.homeRecommendationPlatform
+    }
+
+    private var platformAccountMark: some View {
+        let loggedIn = selectedHomePlatform == .kg ? kugou.isLoggedIn : qqMusic.isLoggedIn
+        let avatarURL = selectedHomePlatform == .kg ? kugou.avatarURL : qqMusic.avatarURL
+        return ZStack {
+            Circle().fill(.ultraThinMaterial)
+            if loggedIn, let avatarURL {
+                CachedAsyncImage(url: avatarURL.resizedImageURL(160)) {
+                    Image(systemName: "person.crop.circle.fill")
+                        .resizable().scaledToFit().foregroundStyle(.secondary)
+                }
+                .frame(width: 42, height: 42)
+                .clipShape(Circle())
+            } else {
+                Image(systemName: loggedIn ? "person.crop.circle.fill" : "person.crop.circle.badge.plus")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 42, height: 42)
+        .clipShape(Circle())
+        .overlay {
+            Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1.5)
+        }
+        .fixedSize()
     }
 
     private func platformMenuIcon(_ platform: LXCatalogPlatform) -> String {

@@ -589,7 +589,7 @@ struct MyProfileView: View {
                 }
                 }
 
-                Text("点已登录的平台可退出登录或同步歌单。QQ 音乐、酷狗和哔哩哔哩的账号都在这里管理。")
+                Text("点已登录的平台可退出登录或同步歌单。QQ 音乐和酷狗的头像在推荐页右上角，哔哩哔哩仍在这里管理。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -142,6 +142,8 @@ struct SettingsView: View {
                 }
                 .frame(minHeight: 44)
                 VStack(alignment: .leading, spacing: 6) {
+                    Text("左右声道")
+                        .font(.subheadline.weight(.semibold))
                     HStack(spacing: 10) {
                         Text("左")
                             .font(.subheadline.weight(.medium))
@@ -149,7 +151,14 @@ struct SettingsView: View {
                         Slider(
                             value: Binding(
                                 get: { equalizer.balance },
-                                set: { equalizer.setBalance($0) }
+                                set: { newValue in
+                                    #if os(iOS)
+                                    let previous = (equalizer.balance * 2).rounded()
+                                    let next = (newValue * 2).rounded()
+                                    if previous != next { Haptics.tick() }
+                                    #endif
+                                    equalizer.setBalance(newValue)
+                                }
                             ),
                             in: -1...1
                         )
@@ -157,6 +166,15 @@ struct SettingsView: View {
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(.secondary)
                     }
+                    HStack(spacing: 0) {
+                        ForEach(0..<5, id: \.self) { index in
+                            Capsule()
+                                .fill(Color.secondary.opacity(index == 2 ? 0.9 : 0.45))
+                                .frame(width: 1.5, height: index == 2 ? 10 : 6)
+                            if index < 4 { Spacer(minLength: 0) }
+                        }
+                    }
+                    .padding(.horizontal, 28)
                     Text(equalizer.balance > 0.02 ? "偏右" : (equalizer.balance < -0.02 ? "偏左" : "居中"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -395,9 +413,16 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                Picker("迷你播放器第二行", selection: $miniPlayerSecondLine) {
-                    Text("歌词").tag("lyric")
-                    Text("歌手").tag("artist")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("迷你播放器第二行")
+                        .font(.subheadline.weight(.semibold))
+                    Text("折叠时，歌名下面显示歌词还是歌手。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("迷你播放器第二行", selection: $miniPlayerSecondLine) {
+                        Text("歌词").tag("lyric")
+                        Text("歌手").tag("artist")
+                    }
                 }
 
                 Picker("歌词样式", selection: $settings.lyricsDisplayStyle) {
