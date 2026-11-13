@@ -954,6 +954,7 @@ struct MyProfileView: View {
         }
     }
 
+    @ViewBuilder
     private func playlistGroup(_ title: String, _ playlists: [PlaylistSummary]) -> some View {
         if !playlists.isEmpty {
             Text(title)
@@ -1154,7 +1155,7 @@ private struct ListeningReportView: View {
                     reportDivider
                     reportMetric("日均", minutesText(averageMinutes))
                     reportDivider
-                    reportMetric("歌曲", "\(stats.records.count)")
+                    reportMetric("听歌天数", "\(listeningDays)")
                 }
                 .padding(.vertical, 8)
 
@@ -1203,6 +1204,8 @@ private struct ListeningReportView: View {
     }
 
     private var week: [(label: String, minutes: Double)] { stats.lastSevenDays() }
+    /// Days in the last week that actually have listening time.
+    private var listeningDays: Int { week.filter { $0.minutes > 0 }.count }
     private var weekMinutes: Double { week.reduce(0) { $0 + $1.minutes } }
     private var todayMinutes: Double { week.last?.minutes ?? 0 }
     private var averageMinutes: Double { week.isEmpty ? 0 : weekMinutes / Double(week.count) }
