@@ -364,5 +364,22 @@ final class NowPlayingManager {
         info[MPNowPlayingInfoPropertyPlaybackRate] = rate
         if external == nil { MPNowPlayingInfoCenter.default().nowPlayingInfo = info }
         MPNowPlayingInfoCenter.default().playbackState = rate > 0 ? .playing : .paused
+        publishWidgetProgress(elapsed, rate: rate)
+    }
+
+    private var lastWidgetElapsed: TimeInterval = -1
+    private var lastWidgetPlaying = false
+
+    /// The widget reads a snapshot, not the live player. Writing every second
+    /// would reload the timeline constantly, so only state changes and a few
+    /// seconds of progress get through.
+    private func publishWidgetProgress(_ elapsed: TimeInterval, rate: Double) {
+        guard let player, player.currentTrack != nil else { return }
+        let playing = rate > 0
+        let jumped = lastWidgetElapsed < 0 || abs(elapsed - lastWidgetElapsed) >= 5
+        guard playing != lastWidgetPlaying || jumped else { return }
+        lastWidgetElapsed = elapsed
+        lastWidgetPlaying = playing
+        player.publishWidgetSnapshot(elapsed: elapsed, duration: player.duration)
     }
 }

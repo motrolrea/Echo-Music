@@ -11,9 +11,25 @@ struct EchoQueueRow: Codable, Hashable, Identifiable {
 }
 
 private enum EchoWidgetStore {
-    static let suiteName = "group.com.jiajia2222.moumusic"
+    static let suiteName = "group.com.motrolrea.echomusic"
 
     static func entry(at date: Date = Date()) -> EchoPlayEntry {
+        if let file = containerURL()?.appendingPathComponent("echo-widget-snapshot.json"),
+           let data = try? Data(contentsOf: file),
+           let snapshot = try? JSONDecoder().decode(WidgetFile.self, from: data) {
+            return EchoPlayEntry(
+                date: date,
+                title: snapshot.title,
+                artist: snapshot.artist,
+                playing: snapshot.playing,
+                elapsed: snapshot.elapsed,
+                duration: snapshot.duration,
+                cover: coverImage(),
+                queue: snapshot.queue.map {
+                    EchoQueueRow(title: $0.title, artist: $0.artist, index: $0.index, current: $0.current)
+                }
+            )
+        }
         let defaults = UserDefaults(suiteName: suiteName)
         let title = defaults?.string(forKey: "echo.widget.title") ?? ""
         return EchoPlayEntry(
@@ -28,6 +44,16 @@ private enum EchoWidgetStore {
         )
     }
 
+    private struct WidgetFile: Codable {
+        var title: String
+        var artist: String
+        var playing: Bool
+        var elapsed: Double
+        var duration: Double
+        var queue: [Row]
+        struct Row: Codable { var title: String; var artist: String; var index: Int; var current: Bool }
+    }
+
     private static func queue(from defaults: UserDefaults?) -> [EchoQueueRow] {
         guard let data = defaults?.data(forKey: "echo.widget.queue"),
               let rows = try? JSONDecoder().decode([EchoQueueRow].self, from: data) else { return [] }
@@ -35,12 +61,16 @@ private enum EchoWidgetStore {
     }
 
     private static func coverImage() -> UIImage? {
-        guard let container = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: suiteName
-        ) else { return nil }
-        let file = container.appendingPathComponent("echo-widget-cover.jpg")
-        guard let data = try? Data(contentsOf: file) else { return nil }
+        guard let file = containerURL()?.appendingPathComponent("echo-widget-cover.jpg"),
+              let data = try? Data(contentsOf: file) else { return nil }
         return UIImage(data: data)
+    }
+
+    /// Same fallback as the app: App Group when entitled, otherwise the host
+    /// app's container, which an unsigned widget can still read.
+    private static func containerURL() -> URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName)
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
     }
 }
 
@@ -75,7 +105,7 @@ struct EchoPlayProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<EchoPlayEntry>) -> Void) {
         let entry = EchoWidgetStore.entry()
-        let next = Date().addingTimeInterval(15 * 60)
+        let next = Date().addingTimeInterval(entry.hasTrack ? 60 : 5 * 60)
         completion(Timeline(entries: [entry], policy: .after(next)))
     }
 
@@ -280,7 +310,7 @@ private struct EchoPlayerCard: View {
     private var controls: some View {
         HStack(spacing: 8) {
             control("backward.fill", "moumusic://previous", primary: false)
-            control(entry.playing ? "pause.fill" : "play.fill", "moumusic://toggle", primary: true)
+            control(entry.playing ? "pause.fill" : "play.fill", entry.playing ? "moumusic://toggle?play=0" : "moumusic://toggle?play=1", primary: true)
             control("forward.fill", "moumusic://next", primary: false)
         }
     }

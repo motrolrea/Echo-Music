@@ -62,14 +62,14 @@ final class BackgroundImageStore: ObservableObject {
     }
 
     func importSelection() async {
-        await import(selection: photoSelection, dark: false) { photoSelection = nil }
+        await importWallpaper(selection: photoSelection, dark: false) { photoSelection = nil }
     }
 
     func importDarkSelection() async {
-        await import(selection: darkPhotoSelection, dark: true) { darkPhotoSelection = nil }
+        await importWallpaper(selection: darkPhotoSelection, dark: true) { darkPhotoSelection = nil }
     }
 
-    private func import(selection: PhotosPickerItem?, dark: Bool, clearSelection: () -> Void) async {
+    private func importWallpaper(selection: PhotosPickerItem?, dark: Bool, clearSelection: () -> Void) async {
         guard let selection else { return }
         guard !isImporting else { return }
         isImporting = true

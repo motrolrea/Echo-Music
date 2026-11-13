@@ -300,6 +300,11 @@ final class PlayerService: ObservableObject {
             duration: duration ?? self.duration,
             queue: widgetQueueItems()
         )
+        #if os(iOS)
+        if let cover = currentTrack?.album.picUrl, let url = URL(string: cover) {
+            Task { await WidgetPlaybackBridge.storeCover(from: url) }
+        }
+        #endif
     }
 
     func playQueueIndex(_ index: Int) {
@@ -323,11 +328,11 @@ final class PlayerService: ObservableObject {
                 current: true
             ))
         }
-        for (offset, track) in playNextList.prefix(3).enumerated() {
+        for track in playNextList.prefix(3) {
             items.append(WidgetQueueItem(
                 title: track.name,
                 artist: track.artistNames,
-                index: -(offset + 1),
+                index: -1,
                 current: false
             ))
         }

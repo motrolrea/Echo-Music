@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A00000000000000000000001 /* MoumusicLyricsWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000003 /* MoumusicLyricsWidget.swift */; };
+		A00000000000000000000001 /* EchoMusicWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000003 /* EchoMusicWidget.swift */; };
 		A00000000000000000000002 /* KumoneIOSFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 2D74B41A7A94ABA39956EC55 /* KumoneIOSFeature */; };
 		69F9DF0E863EFB197513936E /* KumoneIOSUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A9033A23C5610F19ABA3774 /* KumoneIOSUITests.swift */; };
 		912D4F61C71BE306BABD494B /* KumoneIOSFeature in Frameworks */ = {isa = PBXBuildFile; productRef = 2D74B41A7A94ABA39956EC55 /* KumoneIOSFeature */; };
@@ -22,7 +22,7 @@
 			containerPortal = E1C3D3EF86B1B44C4A2366E3 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = A0000000000000000000000A;
-			remoteInfo = MoumusicWidget;
+			remoteInfo = EchoMusicWidget;
 		};
 		938A878937A1366DA22272E1 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -34,9 +34,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		A00000000000000000000003 /* MoumusicLyricsWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoumusicLyricsWidget.swift; sourceTree = "<group>"; };
+		A00000000000000000000003 /* EchoMusicWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EchoMusicWidget.swift; sourceTree = "<group>"; };
 		A00000000000000000000004 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		A00000000000000000000007 /* MoumusicWidget.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = MoumusicWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000007 /* EchoMusicWidget.appex */ = {isa = PBXFileReference; explicitFileType = wrapper.app-extension; includeInIndex = 0; path = EchoMusicWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		0646F456C7BF38C0A8ED880E /* KumoneIOSUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KumoneIOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2199D32FC69383EC32B19794 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		25934AD73710C9EDB53BDDA0 /* KumoneIOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = KumoneIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -63,7 +63,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A00000000000000000000002 /* KumoneIOSFeature in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,7 +82,7 @@
 			children = (
 				4E1CC50B92220A5917A760E8 /* Config */,
 				9C2BFF3109E01BC79A4469A4 /* KumoneIOS */,
-				A00000000000000000000006 /* MoumusicWidget */,
+				A00000000000000000000006 /* EchoMusicWidget */,
 				CEC97C7667B5C3BA415E1C82 /* KumoneIOSUITests */,
 				06B27D73B868029A6CD07927 /* Packages */,
 				49A9A6B7173C5F9EDEB542C8 /* Products */,
@@ -94,7 +93,7 @@
 			isa = PBXGroup;
 			children = (
 				25934AD73710C9EDB53BDDA0 /* KumoneIOS.app */,
-				A00000000000000000000007 /* MoumusicWidget.appex */,
+				A00000000000000000000007 /* EchoMusicWidget.appex */,
 				0646F456C7BF38C0A8ED880E /* KumoneIOSUITests.xctest */,
 			);
 			name = Products;
@@ -121,13 +120,13 @@
 			path = KumoneIOS;
 			sourceTree = "<group>";
 		};
-		A00000000000000000000006 /* MoumusicWidget */ = {
+		A00000000000000000000006 /* EchoMusicWidget */ = {
 			isa = PBXGroup;
 			children = (
 				A00000000000000000000004 /* Info.plist */,
-				A00000000000000000000003 /* MoumusicLyricsWidget.swift */,
+				A00000000000000000000003 /* EchoMusicWidget.swift */,
 			);
-			path = MoumusicWidget;
+			path = EchoMusicWidget;
 			sourceTree = "<group>";
 		};
 		CEC97C7667B5C3BA415E1C82 /* KumoneIOSUITests */ = {
@@ -173,9 +172,9 @@
 			productReference = 25934AD73710C9EDB53BDDA0 /* KumoneIOS.app */;
 			productType = "com.apple.product-type.application";
 		};
-		A0000000000000000000000A /* MoumusicWidget */ = {
+		A0000000000000000000000A /* EchoMusicWidget */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A0000000000000000000000D /* Build configuration list for PBXNativeTarget "MoumusicWidget" */;
+			buildConfigurationList = A0000000000000000000000D /* Build configuration list for PBXNativeTarget "EchoMusicWidget" */;
 			buildPhases = (
 				A00000000000000000000008 /* Sources */,
 				A00000000000000000000009 /* Frameworks */,
@@ -184,12 +183,11 @@
 			);
 			dependencies = (
 			);
-			name = MoumusicWidget;
+			name = EchoMusicWidget;
 			packageProductDependencies = (
-				2D74B41A7A94ABA39956EC55 /* KumoneIOSFeature */,
 			);
-			productName = MoumusicWidget;
-			productReference = A00000000000000000000007 /* MoumusicWidget.appex */;
+			productName = EchoMusicWidget;
+			productReference = A00000000000000000000007 /* EchoMusicWidget.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 		7F3FA2EAD87A1580A6CD3880 /* KumoneIOSUITests */ = {
@@ -252,7 +250,7 @@
 			projectRoot = "";
 			targets = (
 				481C5C62EB4A6DB3CC0FDC39 /* KumoneIOS */,
-				A0000000000000000000000A /* MoumusicWidget */,
+				A0000000000000000000000A /* EchoMusicWidget */,
 				7F3FA2EAD87A1580A6CD3880 /* KumoneIOSUITests */,
 			);
 		};
@@ -275,7 +273,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A00000000000000000000001 /* MoumusicLyricsWidget.swift in Sources */,
+				A00000000000000000000001 /* EchoMusicWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -300,7 +298,7 @@
 /* Begin PBXTargetDependency section */
 		A0000000000000000000000B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = A0000000000000000000000A /* MoumusicWidget */;
+			target = A0000000000000000000000A /* EchoMusicWidget */;
 			targetProxy = A0000000000000000000000C /* PBXContainerItemProxy */;
 		};
 		9142B884ABEBCFEA95FAB3EF /* PBXTargetDependency */ = {
@@ -316,12 +314,14 @@
 			baseConfigurationReference = 6D28AAA402747474C3A1B8AD /* Debug.xcconfig */;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = Config/MoumusicWidget.entitlements;
+				CODE_SIGN_ENTITLEMENTS = EchoMusicWidget/EchoMusicWidget.entitlements;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "";
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = MoumusicWidget/Info.plist;
-				PRODUCT_BUNDLE_IDENTIFIER = com.jiajia2222.moumusic.ios.widget;
-				PRODUCT_MODULE_NAME = MoumusicWidget;
-				PRODUCT_NAME = MoumusicWidget;
+				INFOPLIST_FILE = EchoMusicWidget/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.motrolrea.echomusic.ios.widget;
+				PRODUCT_MODULE_NAME = EchoMusicWidget;
+				PRODUCT_NAME = EchoMusicWidget;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -333,12 +333,14 @@
 			baseConfigurationReference = 2199D32FC69383EC32B19794 /* Release.xcconfig */;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = Config/MoumusicWidget.entitlements;
+				CODE_SIGN_ENTITLEMENTS = EchoMusicWidget/EchoMusicWidget.entitlements;
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_IDENTITY = "";
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = MoumusicWidget/Info.plist;
-				PRODUCT_BUNDLE_IDENTIFIER = com.jiajia2222.moumusic.ios.widget;
-				PRODUCT_MODULE_NAME = MoumusicWidget;
-				PRODUCT_NAME = MoumusicWidget;
+				INFOPLIST_FILE = EchoMusicWidget/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.motrolrea.echomusic.ios.widget;
+				PRODUCT_MODULE_NAME = EchoMusicWidget;
+				PRODUCT_NAME = EchoMusicWidget;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -525,7 +527,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A0000000000000000000000D /* Build configuration list for PBXNativeTarget "MoumusicWidget" */ = {
+		A0000000000000000000000D /* Build configuration list for PBXNativeTarget "EchoMusicWidget" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				A0000000000000000000000F /* Debug */,

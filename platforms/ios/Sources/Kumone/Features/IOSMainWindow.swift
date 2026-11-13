@@ -125,7 +125,23 @@ public struct IOSMainWindow: View {
                 let host = url.host?.lowercased() ?? ""
                 switch host {
                 case "toggle":
-                    player.togglePlayPause()
+                    let playValue = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                        .queryItems?
+                        .first { $0.name == "play" }?
+                        .value
+                    if playValue == "1" {
+                        if player.isPlaying {
+                            break
+                        } else if player.currentTrack != nil {
+                            player.togglePlayPause()
+                        } else if !player.resumeLastPlayback() {
+                            player.togglePlayPause()
+                        }
+                    } else if playValue == "0" {
+                        if player.isPlaying { player.togglePlayPause() }
+                    } else {
+                        player.togglePlayPause()
+                    }
                 case "next":
                     player.next()
                 case "previous":
@@ -135,12 +151,18 @@ public struct IOSMainWindow: View {
                         .queryItems?
                         .first(where: { $0.name == "index" })?.value,
                        let index = Int(raw) {
-                        player.playQueueIndex(index)
+                        if index < 0 {
+                            player.next()
+                        } else {
+                            player.playQueueIndex(index)
+                        }
                     }
                 default:
                     break
                 }
-                player.showNowPlaying = true
+                if host != "toggle" {
+                    player.showNowPlaying = true
+                }
             }
             .alert("当前设备已被禁止使用 Echo Music。", isPresented: .constant(deviceReporter.isBlocked)) {
                 Button("退出应用", role: .destructive) { exit(0) }

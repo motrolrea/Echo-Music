@@ -10,51 +10,74 @@ struct WidgetQueueItem: Codable {
     let current: Bool
 }
 
-enum WidgetPlaybackBridge {
-    static let suiteName = "group.com.jiajia2222.moumusic"
-    private static let coverName = "echo-widget-cover.jpg"
+struct WidgetSnapshot: Codable {
+    var title: String
+    var artist: String
+    var playing: Bool
+    var coverURL: String?
+    var elapsed: Double
+    var duration: Double
+    var queue: [WidgetQueueItem]
+    var updatedAt: Date
+}
 
-    /// Writes the desktop-widget snapshot into the shared App Group.
+enum WidgetPlaybackBridge {
+    static let suiteName = "group.com.motrolrea.echomusic"
+    private static let coverName = "echo-widget-cover.jpg"
+    private static let snapshotName = "echo-widget-snapshot.json"
+
+    /// Writes the widget snapshot. Unsigned builds have no App Group, so the
+    /// same file is also stored where the embedded widget can open it directly.
     static func publish(title: String, artist: String, playing: Bool, coverURL: String? = nil,
                         elapsed: Double? = nil, duration: Double? = nil,
                         queue: [WidgetQueueItem] = []) {
-        guard let defaults = UserDefaults(suiteName: suiteName) else { return }
-        defaults.set(title, forKey: "echo.widget.title")
-        defaults.set(artist, forKey: "echo.widget.artist")
-        defaults.set(playing, forKey: "echo.widget.playing")
-        if let coverURL { defaults.set(coverURL, forKey: "echo.widget.coverURL") }
-        if let elapsed { defaults.set(elapsed, forKey: "echo.widget.elapsed") }
-        if let duration { defaults.set(duration, forKey: "echo.widget.duration") }
-        if let data = try? JSONEncoder().encode(queue) {
-            defaults.set(data, forKey: "echo.widget.queue")
+        let snapshot = WidgetSnapshot(
+            title: title,
+            artist: artist,
+            playing: playing,
+            coverURL: coverURL,
+            elapsed: elapsed ?? 0,
+            duration: duration ?? 0,
+            queue: Array(queue.prefix(7)),
+            updatedAt: Date()
+        )
+        if let defaults = UserDefaults(suiteName: suiteName) {
+            defaults.set(snapshot.title, forKey: "echo.widget.title")
+            defaults.set(snapshot.artist, forKey: "echo.widget.artist")
+            defaults.set(snapshot.playing, forKey: "echo.widget.playing")
+            if let coverURL { defaults.set(coverURL, forKey: "echo.widget.coverURL") }
+            defaults.set(snapshot.elapsed, forKey: "echo.widget.elapsed")
+            defaults.set(snapshot.duration, forKey: "echo.widget.duration")
+            if let data = try? JSONEncoder().encode(snapshot.queue) {
+                defaults.set(data, forKey: "echo.widget.queue")
+            }
         }
-        #if os(iOS)
-        DispatchQueue.main.async {
-            WidgetCenter.shared.reloadAllTimelines()
+        if let data = try? JSONEncoder().encode(snapshot), let url = fileURL(snapshotName) {
+            try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: url, options: .atomic)
         }
-        #endif
+        reload()
     }
 
     static func publishCover(_ data: Data?) {
-        guard let container = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: suiteName
-        ) else { return }
-        let file = container.appendingPathComponent(coverName)
+        guard let file = fileURL(coverName) else { return }
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         if let data, !data.isEmpty {
             try? data.write(to: file, options: .atomic)
         } else {
             try? FileManager.default.removeItem(at: file)
         }
-        #if os(iOS)
-        DispatchQueue.main.async {
-            WidgetCenter.shared.reloadAllTimelines()
-        }
-        #endif
+        reload()
+    }
+
+    static func currentSnapshot() -> WidgetSnapshot? {
+        guard let url = fileURL(snapshotName),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(WidgetSnapshot.self, from: data)
     }
 
     static func coverFileURL() -> URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName)?
-            .appendingPathComponent(coverName)
+        fileURL(coverName)
     }
 
     static func storeCover(from url: URL) async {
@@ -62,5 +85,21 @@ enum WidgetPlaybackBridge {
               let http = response as? HTTPURLResponse, http.statusCode == 200,
               !data.isEmpty else { return }
         publishCover(data)
+    }
+
+    private static func reload() {
+        #if os(iOS)
+        DispatchQueue.main.async {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+        #endif
+    }
+
+    /// App Group when the entitlement exists; otherwise the app container,
+    /// which an embedded widget extension can still read.
+    private static func fileURL(_ name: String) -> URL? {
+        let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName)
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        return root?.appendingPathComponent(name)
     }
 }
