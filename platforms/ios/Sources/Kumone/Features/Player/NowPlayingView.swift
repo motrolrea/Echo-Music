@@ -33,6 +33,7 @@ struct NowPlayingView: View {
         return nil
     }
     @ObservedObject private var dynamicWallpaper = DynamicWallpaperStore.shared
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var playerAmbience = PlayerAmbienceStore.shared
     @Environment(\.dismissNowPlayingAction) private var dismissNowPlayingAction
     @Environment(\.dismissNowPlayingDragAction) private var dismissNowPlayingDragAction
@@ -265,7 +266,7 @@ struct NowPlayingView: View {
                     intensity: dynamicWallpaper.intensity
                 )
                 .overlay(Color.black.opacity(0.18).ignoresSafeArea())
-            } else if backgroundStore.syncToPlayer, let image = backgroundStore.image {
+            } else if backgroundStore.syncToPlayer, let image = backgroundStore.image(for: colorScheme) {
                 MoumusicWallpaperView(
                     image: image,
                     blurRadius: backgroundStore.blurRadius,
@@ -422,9 +423,7 @@ struct NowPlayingView: View {
             immersiveCompactLayout(size: size)
         case .minimal:
             minimalCompactLayout(size: size)
-        case .lyrics:
-            lyricsCompactLayout(size: size)
-        case .amll:
+        case .lyrics, .amll:
             amllCompactLayout(size: size)
         case .vinyl:
             vinylCompactLayout(size: size)
@@ -502,22 +501,6 @@ struct NowPlayingView: View {
             }
             .padding(.bottom, 12)
         }
-    }
-
-    private func lyricsCompactLayout(size: CGSize) -> some View {
-        VStack(spacing: 14) {
-            compactTrackMetaView
-                .padding(.top, compactTitleTopPadding)
-            lyricsColumn
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            NowPlayingScrubber(onShowQuality: { activeSheet = .quality })
-                .padding(.horizontal, 20)
-            CompactVolumeControl()
-                .padding(.horizontal, 20)
-            CompactTransportControls()
-                .padding(.bottom, 12)
-        }
-        .padding(.horizontal, 16)
     }
 
     /// AMLL is a player-page presentation, not a second global player mode.
@@ -933,11 +916,13 @@ struct NowPlayingView: View {
                         font: .system(size: 21, weight: .bold),
                         color: .white,
                         centered: classic,
-                        uiFont: .boldSystemFont(ofSize: 21)
+                        uiFont: .boldSystemFont(ofSize: 21),
+                        fillsWidth: false
                     )
                     if player.currentTrack?.isVIP == true {
                         VIPBadge()
                     }
+                    Spacer(minLength: 0)
                 }
                 PlayerArtistLink(font: .system(size: 13.5), opacity: 0.65, centered: classic)
             }
@@ -3486,19 +3471,23 @@ private struct PlayerMarqueeText: View {
     let color: Color
     var centered = false
     var uiFont: UIFont = .boldSystemFont(ofSize: 21)
+    /// Title rows keep the VIP badge beside the name instead of the row edge.
+    var fillsWidth = true
 
     init(
         _ text: String,
         font: Font,
         color: Color,
         centered: Bool = false,
-        uiFont: UIFont = .boldSystemFont(ofSize: 21)
+        uiFont: UIFont = .boldSystemFont(ofSize: 21),
+        fillsWidth: Bool = true
     ) {
         self.text = text
         self.font = font
         self.color = color
         self.centered = centered
         self.uiFont = uiFont
+        self.fillsWidth = fillsWidth
     }
 
     var body: some View {
@@ -3529,7 +3518,7 @@ private struct PlayerMarqueeText: View {
             .frame(width: width, height: geo.size.height, alignment: .leading)
             .clipped()
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: fillsWidth ? .infinity : nil)
         .frame(height: ceil(uiFont.lineHeight))
     }
 

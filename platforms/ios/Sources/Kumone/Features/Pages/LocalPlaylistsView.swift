@@ -127,6 +127,9 @@ struct LocalPlaylistsView: View {
                     onCreate: { showCreate = true }
                 )
             }
+#if os(iOS)
+            .echoCircleItem()
+#endif
             ToolbarItem(placement: .topBarTrailing) {
                 EchoAvatarButton()
             }

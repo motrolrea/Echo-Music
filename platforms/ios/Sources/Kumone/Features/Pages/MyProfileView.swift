@@ -35,7 +35,6 @@ struct MyProfileView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                header
                 compactIdentity
                 accountSourcesCard
                 listeningCard
@@ -53,7 +52,30 @@ struct MyProfileView: View {
             _ = await moumusicServer.start()
             await DeviceReporter.shared.reportHeartbeat()
         }
+        .navigationTitle("我的")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showCustomize = true } label: {
+                    Image(systemName: "person.crop.rectangle")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .accessibilityLabel("名片")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                ThemeRevealButton()
+                    .font(.system(size: 16, weight: .semibold))
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .accessibilityLabel("设置")
+            }
+        }
         .sheet(isPresented: $showDownloads) {
             NavigationStack {
                 DownloadsView()
@@ -103,30 +125,6 @@ struct MyProfileView: View {
         .sheet(isPresented: $showMoumusicProfileEditor) {
             MoumusicProfileEditorView()
                 .environmentObject(moumusicServer)
-        }
-    }
-
-    private var header: some View {
-        HStack(alignment: .center) {
-            Text("我的")
-                .font(.system(size: 38, weight: .bold, design: .rounded))
-            Spacer()
-            ThemeRevealButton()
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 48, height: 48)
-                .mouMaterialBackground(.regularMaterial, in: Circle())
-                .overlay(Circle().strokeBorder(.primary.opacity(0.10), lineWidth: 1))
-            NavigationLink {
-                SettingsView()
-            } label: {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 48, height: 48)
-                    .mouMaterialBackground(.regularMaterial, in: Circle())
-                    .overlay(Circle().strokeBorder(.primary.opacity(0.10), lineWidth: 1))
-            }
-            .accessibilityLabel("设置")
         }
     }
 
@@ -519,24 +517,69 @@ struct MyProfileView: View {
     }
 
     private var listeningCard: some View {
-        MouGlassCard {
-            VStack(alignment: .leading, spacing: 13) {
-                Label("听歌时长", systemImage: "waveform.path.ecg")
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(Theme.accent)
+        VStack(alignment: .leading, spacing: 10) {
+            Text("听歌报告")
+                .font(.headline.weight(.semibold))
+                .padding(.horizontal, 4)
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    metric(title: "累计时长", value: syncStore.formattedDuration)
-                    metric(title: "已同步歌曲", value: "\(syncStore.syncedTrackCount)")
-                    // The local counters survive logout, but they must not
-                    // claim that the current account is still synchronized.
-                    metric(title: "状态", value: syncStore.platformStatusText)
+                    ForEach(listeningReportTiles) { tile in
+                        listeningReportTile(tile)
+                    }
                 }
-                Text("网易云音乐账号负责同步最近播放与听歌时长；播放仍使用已选择的 LX 音源。未登录时不会尝试同步。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                .scrollTargetLayout()
             }
+            .scrollTargetBehavior(.viewAligned)
+            .contentMargins(.horizontal, 0, for: .scrollContent)
         }
+    }
+
+    private struct ListeningReportTile: Identifiable {
+        let id: String
+        let title: String
+        let value: String
+        let icon: String
+        let tint: Color
+    }
+
+    private var listeningReportTiles: [ListeningReportTile] {
+        let week = stats.lastSevenDays()
+        let weekMinutes = week.reduce(0) { $0 + $1.minutes }
+        let todayMinutes = week.last?.minutes ?? 0
+        let average = week.isEmpty ? 0 : weekMinutes / Double(week.count)
+        return [
+            ListeningReportTile(id: "total", title: "累计时长", value: stats.formattedDuration, icon: "clock.fill", tint: Theme.accent),
+            ListeningReportTile(id: "plays", title: "播放次数", value: "\(stats.totalPlayCount)", icon: "play.fill", tint: .blue),
+            ListeningReportTile(id: "streak", title: "连续天数", value: "\(stats.streakDays) 天", icon: "flame.fill", tint: .orange),
+            ListeningReportTile(id: "today", title: "今日", value: Self.minutesText(todayMinutes), icon: "sun.max.fill", tint: .yellow),
+            ListeningReportTile(id: "week", title: "近 7 天", value: Self.minutesText(weekMinutes), icon: "calendar", tint: .purple),
+            ListeningReportTile(id: "average", title: "日均", value: Self.minutesText(average), icon: "chart.line.uptrend.xyaxis", tint: .green)
+        ]
+    }
+
+    private static func minutesText(_ minutes: Double) -> String {
+        let total = Int(minutes.rounded())
+        if total >= 60 { return "\(total / 60)小时\(total % 60)分" }
+        return "\(total)分钟"
+    }
+
+    private func listeningReportTile(_ tile: ListeningReportTile) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: tile.icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(tile.tint)
+            Text(tile.value)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(tile.title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(12)
+        .frame(width: 132, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private var accountSourcesCard: some View {

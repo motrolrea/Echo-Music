@@ -13,7 +13,9 @@ final class BackgroundImageStore: ObservableObject {
     static let shared = BackgroundImageStore()
 
     @Published var photoSelection: PhotosPickerItem?
+    @Published var darkPhotoSelection: PhotosPickerItem?
     @Published private(set) var image: UIImage?
+    @Published private(set) var darkImage: UIImage?
     @Published private(set) var isImporting = false
     @Published var blurRadius: Double {
         didSet { UserDefaults.standard.set(blurRadius, forKey: Keys.blurRadius) }
@@ -28,35 +30,55 @@ final class BackgroundImageStore: ObservableObject {
     private enum Keys {
         static let path = "moumusic.background.path.v1"
         static let fallbackData = "moumusic.background.data.v1"
+        static let darkPath = "moumusic.background.dark.path.v1"
+        static let darkFallbackData = "moumusic.background.dark.data.v1"
         static let blurRadius = "moumusic.background.blur.v1"
         static let syncToPlayer = "moumusic.background.syncPlayer.v1"
         static let syncToApp = "moumusic.background.syncApp.v1"
     }
 
     private let fileName = "wallpaper.jpg"
+    private let darkFileName = "wallpaper-dark.jpg"
 
     /// True while a wallpaper is shown behind the app: cards then use flat tints instead of
     /// blur / glass so the picture stays sharp (the 背景模糊 slider only blurs the picture itself).
-    var appWallpaperActive: Bool { image != nil && syncToApp }
+    var appWallpaperActive: Bool { (image != nil || darkImage != nil) && syncToApp }
+
+    /// Light and dark each keep their own picture. A scheme without its own
+    /// picture falls back to the other one, then to the legacy single image.
+    func image(for scheme: ColorScheme) -> UIImage? {
+        if scheme == .dark { return darkImage ?? image }
+        return image ?? darkImage
+    }
 
     private init() {
         photoSelection = nil
+        darkPhotoSelection = nil
         blurRadius = UserDefaults.standard.object(forKey: Keys.blurRadius) as? Double ?? 8
         syncToPlayer = UserDefaults.standard.object(forKey: Keys.syncToPlayer) as? Bool ?? true
         syncToApp = UserDefaults.standard.object(forKey: Keys.syncToApp) as? Bool ?? true
-        image = loadStoredImage()
+        image = loadStoredImage(pathKey: Keys.path, fallbackKey: Keys.fallbackData, fileName: fileName)
+        darkImage = loadStoredImage(pathKey: Keys.darkPath, fallbackKey: Keys.darkFallbackData, fileName: darkFileName)
     }
 
     func importSelection() async {
-        guard let selection = photoSelection else { return }
+        await import(selection: photoSelection, dark: false) { photoSelection = nil }
+    }
+
+    func importDarkSelection() async {
+        await import(selection: darkPhotoSelection, dark: true) { darkPhotoSelection = nil }
+    }
+
+    private func import(selection: PhotosPickerItem?, dark: Bool, clearSelection: () -> Void) async {
+        guard let selection else { return }
         guard !isImporting else { return }
         isImporting = true
-        defer { photoSelection = nil }
+        defer { clearSelection() }
         defer { isImporting = false }
 
         do {
             guard let data = try await loadImageData(from: selection),
-                  save(data: data) else {
+                  save(data: data, dark: dark) else {
                 ToastCenter.shared.show("无法读取图片，请重新选择")
                 return
             }
@@ -89,34 +111,45 @@ final class BackgroundImageStore: ObservableObject {
     }
 
     @discardableResult
-    func save(data: Data) -> Bool {
+    func save(data: Data, dark: Bool = false) -> Bool {
         guard let normalized = normalizedJPEG(from: data) else { return false }
+        let name = dark ? darkFileName : fileName
+        let pathKey = dark ? Keys.darkPath : Keys.path
+        let fallbackKey = dark ? Keys.darkFallbackData : Keys.fallbackData
         do {
-            let url = try storageURL()
+            let url = try storageURL(fileName: name)
             try normalized.write(to: url, options: .atomic)
-            UserDefaults.standard.set(url.path, forKey: Keys.path)
+            UserDefaults.standard.set(url.path, forKey: pathKey)
             // The small fallback makes app backup/restore and an upgraded
             // sandbox resilient without putting the full source image in the
             // normal settings payload.
-            UserDefaults.standard.set(normalized.base64EncodedString(), forKey: Keys.fallbackData)
-            image = UIImage(data: normalized)
-            return image != nil
+            UserDefaults.standard.set(normalized.base64EncodedString(), forKey: fallbackKey)
+            let loaded = UIImage(data: normalized)
+            if dark { darkImage = loaded } else { image = loaded }
+            return loaded != nil
         } catch {
             return false
         }
     }
 
-    func clear() {
-        if let path = UserDefaults.standard.string(forKey: Keys.path) {
+    func clear(dark: Bool = false) {
+        let pathKey = dark ? Keys.darkPath : Keys.path
+        let fallbackKey = dark ? Keys.darkFallbackData : Keys.fallbackData
+        if let path = UserDefaults.standard.string(forKey: pathKey) {
             try? FileManager.default.removeItem(atPath: path)
         }
-        UserDefaults.standard.removeObject(forKey: Keys.path)
-        UserDefaults.standard.removeObject(forKey: Keys.fallbackData)
-        photoSelection = nil
-        image = nil
+        UserDefaults.standard.removeObject(forKey: pathKey)
+        UserDefaults.standard.removeObject(forKey: fallbackKey)
+        if dark {
+            darkPhotoSelection = nil
+            darkImage = nil
+        } else {
+            photoSelection = nil
+            image = nil
+        }
     }
 
-    private func storageURL() throws -> URL {
+    private func storageURL(fileName: String? = nil) throws -> URL {
         let directory = try FileManager.default.url(
             for: .applicationSupportDirectory,
             in: .userDomainMask,
@@ -128,20 +161,20 @@ final class BackgroundImageStore: ObservableObject {
             withIntermediateDirectories: true,
             attributes: nil
         )
-        return directory.appendingPathComponent(fileName)
+        return directory.appendingPathComponent(fileName ?? self.fileName)
     }
 
-    private func loadStoredImage() -> UIImage? {
-        if let path = UserDefaults.standard.string(forKey: Keys.path),
+    private func loadStoredImage(pathKey: String, fallbackKey: String, fileName: String) -> UIImage? {
+        if let path = UserDefaults.standard.string(forKey: pathKey),
            let stored = UIImage(contentsOfFile: path) {
             return stored
         }
-        guard let encoded = UserDefaults.standard.string(forKey: Keys.fallbackData),
+        guard let encoded = UserDefaults.standard.string(forKey: fallbackKey),
               let data = Data(base64Encoded: encoded),
               let restored = UIImage(data: data) else { return nil }
-        if let url = try? storageURL() {
+        if let url = try? storageURL(fileName: fileName) {
             try? data.write(to: url, options: .atomic)
-            UserDefaults.standard.set(url.path, forKey: Keys.path)
+            UserDefaults.standard.set(url.path, forKey: pathKey)
         }
         return restored
     }

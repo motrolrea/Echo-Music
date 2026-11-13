@@ -260,7 +260,7 @@ public struct IOSMainWindow: View {
                 intensity: dynamicWallpaper.intensity
             )
             .overlay(Color.black.opacity(0.08).ignoresSafeArea())
-        } else if backgroundStore.syncToApp, let image = backgroundStore.image {
+        } else if backgroundStore.syncToApp, let image = backgroundStore.image(for: resolvedColorScheme) {
             MoumusicWallpaperView(
                 image: image,
                 blurRadius: backgroundStore.blurRadius,
@@ -575,6 +575,7 @@ public struct IOSMainWindow: View {
                 }
         }
         .toolbarBackground(.hidden, for: .navigationBar)
+        .modifier(SoftScrollEdgeModifier())
         .background(Color.clear)
     }
 
@@ -680,6 +681,17 @@ struct BeansScrollCollapseTracker: ViewModifier {
                         BottomBarCollapseStore.shared.update(offset: -value)
                     }
             }
+        }
+    }
+}
+
+/// Replaces the hard scroll-edge line with a soft blur that fades out.
+private struct SoftScrollEdgeModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectStyle(.soft, for: .top)
+        } else {
+            content
         }
     }
 }
@@ -853,7 +865,7 @@ struct IOSMiniPlayerBar: View {
                     width: artworkSize,
                     height: artworkSize
                 )
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
+                .clipShape(coverShape)
                 .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
 
             VStack(alignment: .leading, spacing: metadataSpacing) {
@@ -874,6 +886,13 @@ struct IOSMiniPlayerBar: View {
         }
         .contentShape(Rectangle())
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Collapsed and inline covers stay circular; the expanded bar keeps the rounded square.
+    private var coverShape: AnyShape {
+        presentation.isCompact || presentation.isInline
+            ? AnyShape(Circle())
+            : AnyShape(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
     }
 
     private var artworkSize: CGFloat {

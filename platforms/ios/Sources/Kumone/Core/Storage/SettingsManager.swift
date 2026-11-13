@@ -341,13 +341,17 @@ enum NowPlayingMode: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Stored `.lyrics` stays decodable; the picker only offers AMLL.
+    static var pickerCases: [NowPlayingMode] {
+        allCases.filter { $0 != .lyrics }
+    }
+
     var displayName: String {
         switch self {
         case .classic: return String(localized: "经典模式")
         case .immersive: return String(localized: "沉浸模式")
         case .minimal: return String(localized: "简洁模式")
-        case .lyrics: return String(localized: "歌词模式")
-        case .amll: return String(localized: "Apple Music / AMLL")
+        case .lyrics, .amll: return String(localized: "Apple Music / AMLL")
         case .vinyl: return String(localized: "唱片模式")
         }
     }
@@ -589,7 +593,11 @@ final class SettingsManager: ObservableObject {
             .flatMap(PlaybackSourceMode.init(rawValue:)) ?? .automatic
         appearance = defaults.string(forKey: Keys.appearance).flatMap(AppAppearance.init) ?? .auto
         #if os(iOS)
-        nowPlayingMode = defaults.string(forKey: Keys.nowPlayingMode).flatMap(NowPlayingMode.init) ?? .immersive
+        let storedMode = defaults.string(forKey: Keys.nowPlayingMode).flatMap(NowPlayingMode.init) ?? .immersive
+        nowPlayingMode = storedMode == .lyrics ? .amll : storedMode
+        if storedMode == .lyrics {
+            defaults.set(NowPlayingMode.amll.rawValue, forKey: Keys.nowPlayingMode)
+        }
         lockScreenImmersiveArtwork = defaults.object(forKey: Keys.lockScreenImmersiveArtwork) as? Bool ?? true
         #endif
         showLyricsTranslation = defaults.object(forKey: Keys.showTranslation) as? Bool ?? true

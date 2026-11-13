@@ -95,7 +95,6 @@ struct EchoPlaylistActions: View {
         .foregroundStyle(.primary)
         .buttonStyle(.plain)
         .padding(.horizontal, 2)
-        .background(.ultraThinMaterial, in: Capsule())
         .overlay {
             Capsule().strokeBorder(
                 LinearGradient(

@@ -26,6 +26,8 @@ struct SettingsView: View {
     @State private var showDownloads = false
     @State private var showPlayerLayoutEditor = false
     @State private var isImportingBackgroundFile = false
+    @State private var backgroundFileTarget: WallpaperScheme = .light
+    private enum WallpaperScheme { case light, dark }
     @State private var waterPhoto: PhotosPickerItem?
     @State private var showFeedback = false
     @State private var showDeveloperTools = false
@@ -222,7 +224,7 @@ struct SettingsView: View {
 #if os(iOS)
             settingsGroup("播放器模式") {
                 Picker("播放器模式", selection: $settings.nowPlayingMode) {
-                    ForEach(NowPlayingMode.allCases) { mode in
+                    ForEach(NowPlayingMode.pickerCases) { mode in
                         Text(mode.displayName).tag(mode)
                     }
                 }
@@ -342,66 +344,22 @@ struct SettingsView: View {
 
             settingsGroup("图片背景") {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 10) {
-                        Label("背景图片", systemImage: "photo.on.rectangle.angled")
-                        Spacer()
-                        if backgroundStore.image != nil {
-                            Text("已设置")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    if let image = backgroundStore.image {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(height: 92)
-                            .frame(maxWidth: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(.white.opacity(0.18), lineWidth: 1)
-                            }
-                            .accessibilityHidden(true)
-                    }
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        PhotosPicker(selection: $backgroundStore.photoSelection,
-                                     matching: .images,
-                                     photoLibrary: .shared()) {
-                            Label("选择图片", systemImage: "photo.badge.plus")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .frame(minHeight: 44)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .disabled(backgroundStore.isImporting)
-
-                        Button {
-                            isImportingBackgroundFile = true
-                        } label: {
-                            Label("从文件选择", systemImage: "folder.badge.plus")
-                        }
-                        .buttonStyle(.bordered)
-                        .frame(minHeight: 44)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .disabled(backgroundStore.isImporting)
-
-                        if backgroundStore.image != nil {
-                            Button(role: .destructive) {
-                                backgroundStore.clear()
-                            } label: {
-                                Label("移除", systemImage: "trash")
-                            }
-                            .frame(minHeight: 44)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-
+                    wallpaperPicker(
+                        title: "浅色模式壁纸",
+                        image: backgroundStore.image,
+                        selection: $backgroundStore.photoSelection,
+                        fileFlag: .light
+                    )
+                    wallpaperPicker(
+                        title: "深色模式壁纸",
+                        image: backgroundStore.darkImage,
+                        selection: $backgroundStore.darkPhotoSelection,
+                        fileFlag: .dark
+                    )
                     Toggle("同步到播放页", isOn: $backgroundStore.syncToPlayer)
                     Toggle("同步到应用页面", isOn: $backgroundStore.syncToApp)
                     backgroundBlurControl
-                    Text("图片会缩放并压缩保存到本机；开启应用同步时，首页和其他页面也会使用这张图。")
+                    Text("浅色和深色各自一张图。只设置其中一张时，另一种外观会沿用这张图。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -691,7 +649,7 @@ struct SettingsView: View {
             }
             do {
                 let imageData = try Data(contentsOf: url)
-                guard backgroundStore.save(data: imageData) else {
+                guard backgroundStore.save(data: imageData, dark: backgroundFileTarget == .dark) else {
                     ToastCenter.shared.show("背景图片导入失败")
                     return
                 }
@@ -747,7 +705,64 @@ struct SettingsView: View {
         .onChange(of: backgroundStore.photoSelection) { _ in
             Task { await backgroundStore.importSelection() }
         }
+        .onChange(of: backgroundStore.darkPhotoSelection) { _ in
+            Task { await backgroundStore.importDarkSelection() }
+        }
 #endif
+    }
+
+    private func wallpaperPicker(
+        title: String,
+        image: UIImage?,
+        selection: Binding<PhotosPickerItem?>,
+        fileFlag: WallpaperScheme
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Label(title, systemImage: "photo.on.rectangle.angled")
+                Spacer()
+                if image != nil {
+                    Text("已设置")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(height: 92)
+                    .frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .accessibilityHidden(true)
+            }
+            PhotosPicker(selection: selection, matching: .images, photoLibrary: .shared()) {
+                Label("选择图片", systemImage: "photo.badge.plus")
+            }
+            .buttonStyle(.borderedProminent)
+            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .disabled(backgroundStore.isImporting)
+            Button {
+                backgroundFileTarget = fileFlag
+                isImportingBackgroundFile = true
+            } label: {
+                Label("从文件选择", systemImage: "folder.badge.plus")
+            }
+            .buttonStyle(.bordered)
+            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .disabled(backgroundStore.isImporting)
+            if image != nil {
+                Button(role: .destructive) {
+                    backgroundStore.clear(dark: fileFlag == .dark)
+                } label: {
+                    Label("移除", systemImage: "trash")
+                }
+                .frame(minHeight: 44)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 
     private func settingsIcon(for title: String) -> String {
