@@ -30,6 +30,7 @@ struct MyProfileView: View {
     @AppStorage("moumusic.home.bilibiliActive") private var bilibiliActive = false
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var appearance = ProfileAppearanceStore.shared
+    @ObservedObject private var stats = ListeningStatsStore.shared
     @State private var signedInTarget: SignedInTarget?
     @State private var showAccountPlaylists = false
     private enum SignedInTarget: String, Identifiable { case qq, kugou, bilibili; var id: String { rawValue } }
