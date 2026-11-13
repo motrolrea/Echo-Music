@@ -919,10 +919,12 @@ struct NowPlayingView: View {
                         uiFont: .boldSystemFont(ofSize: 21),
                         fillsWidth: false
                     )
+                    .layoutPriority(-1)
                     if player.currentTrack?.isVIP == true {
                         VIPBadge()
+                            .fixedSize()
+                            .layoutPriority(1)
                     }
-                    Spacer(minLength: 0)
                 }
                 PlayerArtistLink(font: .system(size: 13.5), opacity: 0.65, centered: classic)
             }
@@ -3518,7 +3520,12 @@ private struct PlayerMarqueeText: View {
             .frame(width: width, height: geo.size.height, alignment: .leading)
             .clipped()
         }
-        .frame(maxWidth: fillsWidth ? .infinity : nil)
+        .frame(
+            minWidth: 0,
+            maxWidth: fillsWidth
+                ? .infinity
+                : max((text as NSString).size(withAttributes: [.font: uiFont]).width, 1)
+        )
         .frame(height: ceil(uiFont.lineHeight))
     }
 

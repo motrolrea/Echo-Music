@@ -94,18 +94,14 @@ struct EchoPlaylistActions: View {
         .font(.system(size: 15, weight: .semibold))
         .foregroundStyle(.primary)
         .buttonStyle(.plain)
-        .padding(.horizontal, 2)
-        .overlay {
-            Capsule().strokeBorder(
-                LinearGradient(
-                    colors: [.white.opacity(0.82), .white.opacity(0.16), .white.opacity(0.48)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                lineWidth: 2.0
-            )
+        .padding(.horizontal, 12)
+        .frame(height: 36)
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.ultraThinMaterial)
         }
-        .shadow(color: .white.opacity(0.18), radius: 2, y: 0)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("导入或新建歌单")
     }
 }
 

@@ -247,7 +247,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            settingsGroup("动态壁纸") {
+            settingsGroup("壁纸设置") {
                 Toggle("启用动态壁纸", isOn: Binding(
                     get: { dynamicWallpaper.isEnabled },
                     set: { enabled in
@@ -297,6 +297,30 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Divider()
+                Text("自定义壁纸")
+                    .font(.subheadline.weight(.semibold))
+                VStack(alignment: .leading, spacing: 10) {
+                    wallpaperPicker(
+                        title: "浅色模式壁纸",
+                        image: backgroundStore.image,
+                        selection: $backgroundStore.photoSelection,
+                        fileFlag: .light
+                    )
+                    wallpaperPicker(
+                        title: "深色模式壁纸",
+                        image: backgroundStore.darkImage,
+                        selection: $backgroundStore.darkPhotoSelection,
+                        fileFlag: .dark
+                    )
+                    Toggle("同步到播放页", isOn: $backgroundStore.syncToPlayer)
+                    Toggle("同步到应用页面", isOn: $backgroundStore.syncToApp)
+                    backgroundBlurControl
+                    Text("浅色和深色各自一张图。只设置其中一张时，另一种外观会沿用这张图。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             settingsGroup("播放器氛围") {
@@ -342,28 +366,6 @@ struct SettingsView: View {
                 }
             }
 
-            settingsGroup("图片背景") {
-                VStack(alignment: .leading, spacing: 10) {
-                    wallpaperPicker(
-                        title: "浅色模式壁纸",
-                        image: backgroundStore.image,
-                        selection: $backgroundStore.photoSelection,
-                        fileFlag: .light
-                    )
-                    wallpaperPicker(
-                        title: "深色模式壁纸",
-                        image: backgroundStore.darkImage,
-                        selection: $backgroundStore.darkPhotoSelection,
-                        fileFlag: .dark
-                    )
-                    Toggle("同步到播放页", isOn: $backgroundStore.syncToPlayer)
-                    Toggle("同步到应用页面", isOn: $backgroundStore.syncToApp)
-                    backgroundBlurControl
-                    Text("浅色和深色各自一张图。只设置其中一张时，另一种外观会沿用这张图。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
 #endif
 
             settingsGroup("歌词显示") {
@@ -736,31 +738,40 @@ struct SettingsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .accessibilityHidden(true)
             }
-            PhotosPicker(selection: selection, matching: .images, photoLibrary: .shared()) {
-                Label("选择图片", systemImage: "photo.badge.plus")
-            }
-            .buttonStyle(.borderedProminent)
-            .frame(minHeight: 44)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .disabled(backgroundStore.isImporting)
-            Button {
-                backgroundFileTarget = fileFlag
-                isImportingBackgroundFile = true
-            } label: {
-                Label("从文件选择", systemImage: "folder.badge.plus")
-            }
-            .buttonStyle(.bordered)
-            .frame(minHeight: 44)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .disabled(backgroundStore.isImporting)
-            if image != nil {
-                Button(role: .destructive) {
-                    backgroundStore.clear(dark: fileFlag == .dark)
-                } label: {
-                    Label("移除", systemImage: "trash")
+            HStack(spacing: 8) {
+                PhotosPicker(selection: selection, matching: .images, photoLibrary: .shared()) {
+                    Label("选择图片", systemImage: "photo.badge.plus")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity)
                 }
-                .frame(minHeight: 44)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(backgroundStore.isImporting)
+                Button {
+                    backgroundFileTarget = fileFlag
+                    isImportingBackgroundFile = true
+                } label: {
+                    Label("从文件选择", systemImage: "folder.badge.plus")
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(backgroundStore.isImporting)
+                if image != nil {
+                    Button(role: .destructive) {
+                        backgroundStore.clear(dark: fileFlag == .dark)
+                    } label: {
+                        Label("移除", systemImage: "trash")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
             }
         }
     }
@@ -773,9 +784,8 @@ struct SettingsView: View {
         case "LX 音源": return "square.and.arrow.down"
         case "主题模式": return "circle.lefthalf.filled"
         case "播放器模式": return "slider.horizontal.3"
-        case "动态壁纸": return "photo"
+        case "壁纸设置": return "photo"
         case "播放器氛围": return "sparkles"
-        case "图片背景": return "photo.on.rectangle"
         case "歌词显示": return "quote.bubble"
         case "存储与下载": return "internaldrive"
         case "数据备份与恢复": return "arrow.triangle.2.circlepath"
@@ -877,7 +887,7 @@ struct SettingsView: View {
 
         var summary: String {
             switch self {
-            case .appearance: return "主题、播放器、动态壁纸、歌词显示、刷新率"
+            case .appearance: return "主题、播放器、壁纸设置、歌词显示、刷新率"
             case .playback: return "音源与音质、播放设置、LX 音源"
             case .accounts: return "账号登录、同步、哔哩哔哩"
             case .about: return "缓存与备份、反馈、诊断、关于"
@@ -887,7 +897,7 @@ struct SettingsView: View {
         var groups: [String] {
             switch self {
             case .appearance:
-                return ["界面与颜色", "主题模式", "播放器模式", "动态壁纸", "播放器氛围", "图片背景", "歌词显示", "显示与性能"]
+                return ["界面与颜色", "主题模式", "播放器模式", "壁纸设置", "播放器氛围", "歌词显示", "显示与性能"]
             case .playback:
                 return ["音源与音质", "播放设置", "LX 音源"]
             case .accounts:
@@ -906,9 +916,8 @@ struct SettingsView: View {
         "LX 音源": "lx user api 脚本 导入",
         "主题模式": "深色 浅色 外观 颜色",
         "播放器模式": "唱片 布局 封面",
-        "动态壁纸": "壁纸 metal 流体 云层",
+        "壁纸设置": "动态壁纸 自定义壁纸 图片背景 metal 流体 云层 背景 同步",
         "播放器氛围": "氛围 背景 光效",
-        "图片背景": "背景 自定义 同步",
         "歌词显示": "逐字 偏移 注音 翻译 同步",
         "存储与下载": "缓存 清理 下载 空间",
         "数据备份与恢复": "备份 导入 导出 恢复",

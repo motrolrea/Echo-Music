@@ -1,4 +1,5 @@
 import SwiftUI
+import AppIntents
 import WidgetKit
 
 struct EchoQueueRow: Codable, Hashable, Identifiable {
@@ -66,11 +67,8 @@ private enum EchoWidgetStore {
         return UIImage(data: data)
     }
 
-    /// Same fallback as the app: App Group when entitled, otherwise the host
-    /// app's container, which an unsigned widget can still read.
     private static func containerURL() -> URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName)
-            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
     }
 }
 
@@ -105,8 +103,24 @@ struct EchoPlayProvider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<EchoPlayEntry>) -> Void) {
         let entry = EchoWidgetStore.entry()
-        let next = Date().addingTimeInterval(entry.hasTrack ? 60 : 5 * 60)
-        completion(Timeline(entries: [entry], policy: .after(next)))
+        var entries = [entry]
+        if entry.playing, entry.duration > 1 {
+            entries = (0..<30).map { step in
+                let elapsed = min(entry.elapsed + Double(step) * 2, entry.duration)
+                return EchoPlayEntry(
+                    date: Date().addingTimeInterval(Double(step) * 2),
+                    title: entry.title,
+                    artist: entry.artist,
+                    playing: elapsed < entry.duration,
+                    elapsed: elapsed,
+                    duration: entry.duration,
+                    cover: entry.cover,
+                    queue: entry.queue
+                )
+            }
+        }
+        let refresh = entry.hasTrack ? 20.0 : 5 * 60
+        completion(Timeline(entries: entries, policy: .after(Date().addingTimeInterval(refresh))))
     }
 
     private var sample: EchoPlayEntry {
@@ -309,20 +323,35 @@ private struct EchoPlayerCard: View {
 
     private var controls: some View {
         HStack(spacing: 8) {
-            control("backward.fill", "moumusic://previous", primary: false)
-            control(entry.playing ? "pause.fill" : "play.fill", entry.playing ? "moumusic://toggle?play=0" : "moumusic://toggle?play=1", primary: true)
-            control("forward.fill", "moumusic://next", primary: false)
+            playbackControl("backward.fill", command: "previous", primary: false)
+            playbackControl(entry.playing ? "pause.fill" : "play.fill", command: entry.playing ? "pause" : "play", primary: true)
+            playbackControl("forward.fill", command: "next", primary: false)
         }
     }
 
-    private func control(_ symbol: String, _ link: String, primary: Bool) -> some View {
-        Link(destination: URL(string: link)!) {
-            Image(systemName: symbol)
-                .font(.system(size: style == .compact ? 13 : 15, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, minHeight: style == .expanded ? 30 : 26)
-                .background(primary ? accent.opacity(0.95) : Color.white.opacity(0.14), in: Capsule())
+    private func playbackControl(_ symbol: String, command: String, primary: Bool) -> some View {
+        let label = Image(systemName: symbol)
+            .font(.system(size: style == .compact ? 13 : 15, weight: .bold))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: style == .expanded ? 30 : 26)
+            .background(primary ? accent.opacity(0.95) : Color.white.opacity(0.14), in: Capsule())
+        return playbackControlBody(command: command, label: label)
+    }
+
+    @ViewBuilder
+    private func playbackControlBody(command: String, label: some View) -> some View {
+        if #available(iOS 17.0, *) {
+            Button(intent: EchoPlaybackIntent(command: command)) { label }
+                .buttonStyle(.plain)
+        } else {
+            Link(destination: URL(string: playbackLink(command))!) { label }
         }
+    }
+
+    private func playbackLink(_ command: String) -> String {
+        if command == "play" { return "moumusic://toggle?play=1" }
+        if command == "pause" { return "moumusic://toggle?play=0" }
+        return "moumusic://\(command)"
     }
 
     private var queueList: some View {
@@ -420,5 +449,31 @@ private extension View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 .background(EchoWidgetBackground(cover: cover))
         }
+    }
+}
+
+@available(iOS 17.0, *)
+struct EchoPlaybackIntent: AudioPlaybackIntent {
+    static var title: LocalizedStringResource = "播放控制"
+    static var openAppWhenRun = false
+
+    @Parameter(title: "命令")
+    var command: String
+
+    init() { command = "play" }
+    init(command: String) { self.command = command }
+
+    func perform() async throws -> some IntentResult {
+        let suite = "group.com.motrolrea.echomusic"
+        let defaults = UserDefaults(suiteName: suite)
+        defaults?.set(command, forKey: "echo.widget.command")
+        defaults?.set(Date().timeIntervalSince1970, forKey: "echo.widget.commandAt")
+        if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suite) {
+            let file = container.appendingPathComponent("echo-widget-command.txt")
+            try? Data(command.utf8).write(to: file, options: .atomic)
+        }
+        let name = CFNotificationName("com.motrolrea.echomusic.widget.command" as CFString)
+        CFNotificationCenterPostNotification(CFNotificationCenterGetDarwinNotifyCenter(), name, nil, nil, true)
+        return .result()
     }
 }

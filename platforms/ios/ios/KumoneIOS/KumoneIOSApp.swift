@@ -38,6 +38,18 @@ final class MoumusicAppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    func application(
+        _ app: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        guard url.scheme?.lowercased() == "moumusic" else { return false }
+        Task { @MainActor in
+            EchoWidgetCommands.handle(url)
+        }
+        return true
+    }
+
     func applicationDidEnterBackground(_ application: UIApplication) {
         scheduleProviderRefresh()
     }

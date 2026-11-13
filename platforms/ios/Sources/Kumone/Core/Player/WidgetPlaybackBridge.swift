@@ -95,11 +95,8 @@ enum WidgetPlaybackBridge {
         #endif
     }
 
-    /// App Group when the entitlement exists; otherwise the app container,
-    /// which an embedded widget extension can still read.
     private static func fileURL(_ name: String) -> URL? {
-        let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName)
-            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        return root?.appendingPathComponent(name)
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: suiteName)?
+            .appendingPathComponent(name)
     }
 }

@@ -78,8 +78,24 @@ jobs:
         run: |
           APP_NAME=$(grep -m1 '^PRODUCT_NAME' Config/Shared.xcconfig | sed -E 's/.*= *//')
           echo "App binary: $APP_NAME"
+          APP_PATH="build/Build/Products/Release-iphoneos/${APP_NAME}.app"
+          if [ -d "$APP_PATH/Frameworks" ]; then
+            find "$APP_PATH/Frameworks" -depth \( -name '*.framework' -o -name '*.dylib' \) -print0 | while IFS= read -r -d '' item; do
+              codesign --force --sign - --generate-entitlement-der --timestamp=none "$item" || true
+            done
+          fi
+          codesign --force --sign - --entitlements EchoMusicWidget/EchoMusicWidget.entitlements --generate-entitlement-der --timestamp=none "$APP_PATH/PlugIns/EchoMusicWidget.appex"
+          cat > /tmp/echo-app-group.plist <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>com.apple.security.application-groups</key>
+          <array><string>group.com.motrolrea.echomusic</string></array>
+          </dict></plist>
+          EOF
+          codesign --force --sign - --entitlements /tmp/echo-app-group.plist --generate-entitlement-der --timestamp=none "$APP_PATH"
           mkdir -p dist/Payload
-          cp -R build/Build/Products/Release-iphoneos/${APP_NAME}.app dist/Payload/${APP_NAME}.app
+          cp -R "$APP_PATH" dist/Payload/${APP_NAME}.app
           plutil -p dist/Payload/${APP_NAME}.app/Info.plist | grep -E "CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion"
           ditto -c -k --sequesterRsrc --keepParent dist/Payload dist/EchoMusic-full-ios26-unsigned.ipa
 

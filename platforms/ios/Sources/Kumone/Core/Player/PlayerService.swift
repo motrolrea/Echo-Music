@@ -628,6 +628,7 @@ final class PlayerService: ObservableObject {
         } catch {
             print("Failed to activate audio session: \(error)")
         }
+        EchoWidgetCommands.start()
 
         // Resume after interruptions (phone calls, WeChat voice messages, …).
         NotificationCenter.default.addObserver(

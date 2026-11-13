@@ -25,21 +25,24 @@ struct MyProfileView: View {
     @ObservedObject private var deviceReporter = DeviceReporter.shared
     @State private var showDeviceCode = false
     @State private var showCustomize = false
+    @State private var showAggregate = false
+    @AppStorage("echo.profile.aggregateOnHome") private var aggregateOnHome = false
+    @AppStorage("moumusic.home.bilibiliActive") private var bilibiliActive = false
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var appearance = ProfileAppearanceStore.shared
     @State private var signedInTarget: SignedInTarget?
     @State private var showAccountPlaylists = false
     private enum SignedInTarget: String, Identifiable { case qq, kugou, bilibili; var id: String { rawValue } }
-    @ObservedObject private var stats = ListeningStatsStore.shared
+
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                compactIdentity
-                accountSourcesCard
-                listeningCard
-                quickLinks
-                originalProjectCard
+                if aggregateOnHome {
+                    aggregateSections
+                } else {
+                    platformHome
+                }
                 PlayerClearanceSpacer()
             }
             .padding(.horizontal, 16)
@@ -55,12 +58,55 @@ struct MyProfileView: View {
         .navigationTitle("我的")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Menu {
+                    Section("切换平台") {
+                        ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }) { platform in
+                            Button {
+                                bilibiliActive = false
+                                settings.homeRecommendationMode = platform == .wy ? .netease : .lx
+                                settings.homeRecommendationPlatform = platform
+                            } label: {
+                                HStack(spacing: 8) {
+                                    PlatformGlyph(platform: platform, contentMode: .fill)
+                                        .frame(width: 28, height: 28)
+                                        .clipShape(Circle())
+                                    Text(platform.displayName)
+                                }
+                            }
+                        }
+                        if settings.bilibiliMode != .disabled {
+                            Button {
+                                bilibiliActive = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    BrandIconView(name: "BrandBilibili", contentMode: .fill)
+                                        .frame(width: 28, height: 28)
+                                        .clipShape(Circle())
+                                    Text("哔哩哔哩")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    profilePlatformBadge
+                }
+                .accessibilityLabel("切换平台")
+            }
+            .echoCircleItem()
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showCustomize = true } label: {
-                    Image(systemName: "person.crop.rectangle")
+                Button {
+                    if aggregateOnHome {
+                        aggregateOnHome = false
+                        ToastCenter.shared.show("我的页面显示当前平台")
+                    } else {
+                        showAggregate = true
+                    }
+                } label: {
+                    Image(systemName: aggregateOnHome ? "person.crop.rectangle.fill" : "person.crop.rectangle")
                         .font(.system(size: 16, weight: .semibold))
                 }
-                .accessibilityLabel("名片")
+                .accessibilityLabel(aggregateOnHome ? "改回当前平台" : "汇总")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 ThemeRevealButton()
@@ -105,6 +151,27 @@ struct MyProfileView: View {
         }
         .sheet(isPresented: $showCustomize) {
             ProfileCustomizeSheet()
+        }
+        .sheet(isPresented: $showAggregate) {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        Toggle("在我的页面显示汇总", isOn: $aggregateOnHome)
+                            .padding(.horizontal, 4)
+                        aggregateSections
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .padding(.bottom, 24)
+                }
+                .navigationTitle("汇总")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("完成") { showAggregate = false }
+                    }
+                }
+            }
         }
         .sheet(isPresented: $showDeviceCode) {
             DeviceCodeSheet()
@@ -516,70 +583,235 @@ struct MyProfileView: View {
         }
     }
 
-    private var listeningCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("听歌报告")
-                .font(.headline.weight(.semibold))
-                .padding(.horizontal, 4)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(listeningReportTiles) { tile in
-                        listeningReportTile(tile)
+    private var aggregateSections: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            compactIdentity
+            accountSourcesCard
+            quickLinks
+            originalProjectCard
+        }
+    }
+
+    @ViewBuilder
+    private var profilePlatformBadge: some View {
+        if bilibiliActive, settings.bilibiliMode != .disabled {
+            ZStack {
+                Circle().fill(.ultraThinMaterial)
+                BrandIconView(name: "BrandBilibili", contentMode: .fill)
+                    .frame(width: 42, height: 42)
+                    .clipShape(Circle())
+            }
+            .frame(width: 42, height: 42)
+            .clipShape(Circle())
+            .overlay { Circle().strokeBorder(.white.opacity(0.55), lineWidth: 2.4) }
+        } else {
+            HomePlatformBadge(
+                platform: settings.homeRecommendationMode == .netease ? .wy : settings.homeRecommendationPlatform
+            )
+        }
+    }
+
+    private var activeProfilePlatform: LXCatalogPlatform {
+        settings.homeRecommendationMode == .netease ? .wy : settings.homeRecommendationPlatform
+    }
+
+    @ViewBuilder
+    private var platformHome: some View {
+        if bilibiliActive, settings.bilibiliMode != .disabled {
+            bilibiliProfile
+            quickLinks
+        } else {
+            switch activeProfilePlatform {
+            case .wy:
+                neteaseProfile
+            case .kg:
+                sessionProfile(
+                    name: kugou.profileName,
+                    avatar: kugou.avatarURL,
+                    loggedIn: kugou.isLoggedIn,
+                    vip: kugou.isVIP,
+                    brand: "BrandKugou",
+                    title: "酷狗音乐"
+                ) { showKugouLogin = true }
+                PlatformAccountPlaylists(platform: .kg)
+                    .padding(.horizontal, -16)
+            case .tx:
+                sessionProfile(
+                    name: qqMusic.profileName,
+                    avatar: qqMusic.avatarURL,
+                    loggedIn: qqMusic.isLoggedIn,
+                    vip: qqMusic.isVIP == true,
+                    brand: "BrandQQ",
+                    title: "QQ 音乐"
+                ) { showQQMusicLogin = true }
+                PlatformAccountPlaylists(platform: .tx)
+                    .padding(.horizontal, -16)
+            default:
+                MouGlassCard {
+                    Text("\(activeProfilePlatform.displayName) 还没有个人主页，下面这些是本机记录。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            quickLinks
+        }
+    }
+
+    private var neteaseProfile: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            MouGlassCard(cornerRadius: 24, padding: 14) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 12) {
+                        CachedAsyncImage(url: account.profile?.avatarUrl?.resizedImageURL(192)) {
+                            Image(systemName: "person.crop.circle.fill")
+                                .resizable().scaledToFit().foregroundStyle(.secondary)
+                        }
+                        .frame(width: 64, height: 64)
+                        .clipShape(Circle())
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(account.profile?.nickname ?? "未登录网易云")
+                                .font(.headline)
+                                .lineLimit(1)
+                            Text(account.isLoggedIn ? (account.vipLabel ?? "非会员") : "登录后同步歌单和收藏")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if let uid = account.profile?.userId {
+                                Text("uid \(uid)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        Spacer(minLength: 8)
+                        NavigationLink(value: Destination.accountSync) {
+                            Image(systemName: account.isLoggedIn ? "checkmark.circle.fill" : "person.badge.plus")
+                                .font(.title3)
+                                .foregroundStyle(account.isLoggedIn ? .green : Theme.accent)
+                        }
+                        .accessibilityLabel(account.isLoggedIn ? "查看账号同步" : "登录网易云")
+                    }
+                    if let signature = account.profile?.signature, !signature.isEmpty {
+                        Text(signature)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                    }
+                    HStack(spacing: 10) {
+                        metric(title: "歌单", value: "\(account.userPlaylists.count)")
+                        metric(title: "红心", value: "\(account.likedTrackIDs.count)")
+                        metric(title: "专辑", value: "\(account.likedAlbums.count)")
+                        metric(title: "歌手", value: "\(account.likedArtists.count)")
                     }
                 }
-                .scrollTargetLayout()
             }
-            .scrollTargetBehavior(.viewAligned)
-            .contentMargins(.horizontal, 0, for: .scrollContent)
+            if account.isLoggedIn {
+                if !account.createdPlaylists.isEmpty {
+                    Text("我创建的歌单")
+                        .font(.headline.weight(.semibold))
+                        .padding(.horizontal, 4)
+                    ForEach(account.createdPlaylists.prefix(8)) { playlist in
+                        NavigationLink(value: Destination.playlist(playlist.id)) {
+                            HStack(spacing: 12) {
+                                CachedAsyncImage(url: playlist.coverURL?.resizedImageURL(160)) {
+                                    RoundedRectangle(cornerRadius: 8).fill(.secondary.opacity(0.2))
+                                }
+                                .frame(width: 48, height: 48)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(playlist.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                    Text("\(playlist.trackCount) 首").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .task {
+            guard account.isLoggedIn else { return }
+            await account.refreshLibrary()
         }
     }
 
-    private struct ListeningReportTile: Identifiable {
-        let id: String
-        let title: String
-        let value: String
-        let icon: String
-        let tint: Color
-    }
-
-    private var listeningReportTiles: [ListeningReportTile] {
-        let week = stats.lastSevenDays()
-        let weekMinutes = week.reduce(0) { $0 + $1.minutes }
-        let todayMinutes = week.last?.minutes ?? 0
-        let average = week.isEmpty ? 0 : weekMinutes / Double(week.count)
-        return [
-            ListeningReportTile(id: "total", title: "累计时长", value: stats.formattedDuration, icon: "clock.fill", tint: Theme.accent),
-            ListeningReportTile(id: "plays", title: "播放次数", value: "\(stats.totalPlayCount)", icon: "play.fill", tint: .blue),
-            ListeningReportTile(id: "streak", title: "连续天数", value: "\(stats.streakDays) 天", icon: "flame.fill", tint: .orange),
-            ListeningReportTile(id: "today", title: "今日", value: Self.minutesText(todayMinutes), icon: "sun.max.fill", tint: .yellow),
-            ListeningReportTile(id: "week", title: "近 7 天", value: Self.minutesText(weekMinutes), icon: "calendar", tint: .purple),
-            ListeningReportTile(id: "average", title: "日均", value: Self.minutesText(average), icon: "chart.line.uptrend.xyaxis", tint: .green)
-        ]
-    }
-
-    private static func minutesText(_ minutes: Double) -> String {
-        let total = Int(minutes.rounded())
-        if total >= 60 { return "\(total / 60)小时\(total % 60)分" }
-        return "\(total)分钟"
-    }
-
-    private func listeningReportTile(_ tile: ListeningReportTile) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: tile.icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(tile.tint)
-            Text(tile.value)
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-            Text(tile.title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+    private func sessionProfile(
+        name: String?,
+        avatar: String?,
+        loggedIn: Bool,
+        vip: Bool,
+        brand: String,
+        title: String,
+        login: @escaping () -> Void
+    ) -> some View {
+        MouGlassCard(cornerRadius: 24, padding: 14) {
+            HStack(spacing: 12) {
+                Group {
+                    if loggedIn, let avatar {
+                        CachedAsyncImage(url: avatar.resizedImageURL(176)) {
+                            BrandIconView(name: brand)
+                        }
+                    } else {
+                        BrandIconView(name: brand)
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(loggedIn ? (name ?? title) : "未登录\(title)")
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(loggedIn ? (vip ? "会员" : "非会员") : "登录后同步这个平台的歌单")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Button(action: login) {
+                    Image(systemName: loggedIn ? "arrow.clockwise" : "person.badge.plus")
+                        .font(.title3)
+                        .foregroundStyle(loggedIn ? .green : Theme.accent)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(loggedIn ? "重新登录\(title)" : "登录\(title)")
+            }
         }
-        .padding(12)
-        .frame(width: 132, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var bilibiliProfile: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            MouGlassCard(cornerRadius: 24, padding: 14) {
+                HStack(spacing: 12) {
+                    Group {
+                        if bilibili.isLoggedIn, let avatar = bilibili.avatarURL {
+                            CachedAsyncImage(url: avatar.resizedImageURL(176)) {
+                                BrandIconView(name: "BrandBilibili")
+                            }
+                        } else {
+                            BrandIconView(name: "BrandBilibili")
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(bilibili.isLoggedIn ? (bilibili.profileName ?? "哔哩哔哩") : "未登录哔哩哔哩")
+                            .font(.headline)
+                        Text(bilibili.isLoggedIn ? (bilibili.membershipTitle ?? "非会员") : "登录后同步账号资料")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        if bilibili.isLoggedIn { signedInTarget = .bilibili } else { showBilibiliLogin = true }
+                    } label: {
+                        Image(systemName: bilibili.isLoggedIn ? "person.crop.circle" : "person.badge.plus")
+                            .font(.title3)
+                            .foregroundStyle(bilibili.isLoggedIn ? .green : Theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            BilibiliCloudPlaylistsCard()
+        }
     }
 
     private var accountSourcesCard: some View {
@@ -724,7 +956,12 @@ struct MyProfileView: View {
                 profileTileLabel("听歌排行", icon: "chart.bar.fill", tint: .purple)
             }
             .buttonStyle(.plain)
-            profileTile("我的歌单", icon: "music.note.list", tint: Theme.accent, destination: .localPlaylists)
+            NavigationLink {
+                ListeningReportView()
+            } label: {
+                profileTileLabel("听歌报告", icon: "waveform.path.ecg", tint: Theme.accent)
+            }
+            .buttonStyle(.plain)
             profileTile("收藏", icon: "bookmark.fill", tint: .yellow, destination: .collections)
             Button { showDownloads = true } label: {
                 profileTileLabel("下载管理", icon: "arrow.down.circle.fill", tint: .blue)
@@ -806,6 +1043,84 @@ struct MyProfileView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("复制原项目地址")
             }
+        }
+    }
+}
+
+private struct ListeningReportView: View {
+    @ObservedObject private var stats = ListeningStatsStore.shared
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    reportStat("累计时长", stats.formattedDuration, "clock.fill")
+                    reportStat("播放次数", "\(stats.totalPlayCount)", "play.fill")
+                    reportStat("连续天数", "\(stats.streakDays) 天", "flame.fill")
+                    reportStat("今日", minutesText(todayMinutes), "sun.max.fill")
+                    reportStat("近 7 天", minutesText(weekMinutes), "calendar")
+                    reportStat("日均", minutesText(averageMinutes), "chart.line.uptrend.xyaxis")
+                }
+                MouGlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("近 7 天")
+                            .font(.headline.weight(.semibold))
+                        HStack(alignment: .bottom, spacing: 8) {
+                            ForEach(Array(week.enumerated()), id: \.offset) { _, day in
+                                VStack(spacing: 6) {
+                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                        .fill(Theme.accent)
+                                        .frame(height: barHeight(day.minutes))
+                                    Text(day.label)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .frame(height: 120, alignment: .bottom)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 24)
+        }
+        .navigationTitle("听歌报告")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var week: [(label: String, minutes: Double)] { stats.lastSevenDays() }
+    private var weekMinutes: Double { week.reduce(0) { $0 + $1.minutes } }
+    private var todayMinutes: Double { week.last?.minutes ?? 0 }
+    private var averageMinutes: Double { week.isEmpty ? 0 : weekMinutes / Double(week.count) }
+
+    private func barHeight(_ minutes: Double) -> CGFloat {
+        let peak = max(week.map(\.minutes).max() ?? 0, 1)
+        return max(4, CGFloat(minutes / peak) * 86)
+    }
+
+    private func minutesText(_ minutes: Double) -> String {
+        let total = Int(minutes.rounded())
+        if total >= 60 { return "\(total / 60)小时\(total % 60)分" }
+        return "\(total)分钟"
+    }
+
+    private func reportStat(_ title: String, _ value: String, _ icon: String) -> some View {
+        MouGlassCard(padding: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                Text(value)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }

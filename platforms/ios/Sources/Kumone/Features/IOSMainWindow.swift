@@ -123,43 +123,7 @@ public struct IOSMainWindow: View {
             .onOpenURL { url in
                 guard url.scheme?.lowercased() == "moumusic" else { return }
                 let host = url.host?.lowercased() ?? ""
-                switch host {
-                case "toggle":
-                    let playValue = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                        .queryItems?
-                        .first { $0.name == "play" }?
-                        .value
-                    if playValue == "1" {
-                        if player.isPlaying {
-                            break
-                        } else if player.currentTrack != nil {
-                            player.togglePlayPause()
-                        } else if !player.resumeLastPlayback() {
-                            player.togglePlayPause()
-                        }
-                    } else if playValue == "0" {
-                        if player.isPlaying { player.togglePlayPause() }
-                    } else {
-                        player.togglePlayPause()
-                    }
-                case "next":
-                    player.next()
-                case "previous":
-                    player.previous()
-                case "play":
-                    if let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-                        .queryItems?
-                        .first(where: { $0.name == "index" })?.value,
-                       let index = Int(raw) {
-                        if index < 0 {
-                            player.next()
-                        } else {
-                            player.playQueueIndex(index)
-                        }
-                    }
-                default:
-                    break
-                }
+                EchoWidgetCommands.handle(url)
                 if host != "toggle" {
                     player.showNowPlaying = true
                 }
