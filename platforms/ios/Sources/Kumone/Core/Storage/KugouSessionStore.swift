@@ -26,6 +26,9 @@ final class KugouSessionStore: ObservableObject {
     @Published private(set) var profileName: String?
     @Published private(set) var avatarURL: String?
     @Published private(set) var isVIP = false
+    @Published private(set) var level = 0
+    @Published private(set) var fans = 0
+    @Published private(set) var follows = 0
     @Published private(set) var sessionRevision = 0
 
     var cookie: String? { storedCookie }
@@ -88,6 +91,7 @@ final class KugouSessionStore: ObservableObject {
         profileName = profile?.name ?? "酷狗音乐用户"
         avatarURL = profile?.avatarURL
         isVIP = profile?.isVIP ?? false
+        applyCounts(profile)
         isLoggedIn = true
         sessionRevision &+= 1
     }
@@ -113,6 +117,7 @@ final class KugouSessionStore: ObservableObject {
         profileName = profile.name
         if let avatarURL = profile.avatarURL { self.avatarURL = avatarURL }
         isVIP = profile.isVIP
+        applyCounts(profile)
         isLoggedIn = true
         if let refreshedCookie = profile.refreshedCookie {
             try? ProviderSessionSupport.writeCookie(refreshedCookie, service: keychainService)
@@ -144,8 +149,17 @@ final class KugouSessionStore: ObservableObject {
         profileName = nil
         avatarURL = nil
         isVIP = false
+        level = 0
+        fans = 0
+        follows = 0
         isLoggedIn = false
         sessionRevision &+= 1
+    }
+
+    private func applyCounts(_ profile: KugouAPI.Profile?) {
+        level = profile?.level ?? 0
+        fans = profile?.fans ?? 0
+        follows = profile?.follows ?? 0
     }
 
     private static func hasUsableCredential(_ cookie: String) -> Bool {

@@ -24,6 +24,9 @@ final class BilibiliSessionStore: ObservableObject {
     @Published private(set) var vipType = 0
     @Published private(set) var vipDueDate: Date?
     @Published private(set) var membershipLabel: String?
+    @Published private(set) var level = 0
+    @Published private(set) var following = 0
+    @Published private(set) var fans = 0
     @Published private(set) var sessionRevision = 0
 
     var membershipTitle: String? {
@@ -113,6 +116,7 @@ final class BilibiliSessionStore: ObservableObject {
         vipType = profile?.vipType ?? 0
         vipDueDate = profile?.vipDueDate
         membershipLabel = profile?.membershipLabel
+        applyCounts(profile)
         isLoggedIn = true
         sessionRevision &+= 1
     }
@@ -140,8 +144,15 @@ final class BilibiliSessionStore: ObservableObject {
         vipType = profile.vipType
         vipDueDate = profile.vipDueDate
         membershipLabel = profile.membershipLabel
+        applyCounts(profile)
         isLoggedIn = true
         sessionRevision &+= 1
+    }
+
+    private func applyCounts(_ profile: BilibiliAPI.Profile?) {
+        level = profile?.level ?? 0
+        following = profile?.following ?? 0
+        fans = profile?.fans ?? 0
     }
 
     private static func hasAccountCookie(_ cookie: String) -> Bool {
@@ -162,6 +173,9 @@ final class BilibiliSessionStore: ObservableObject {
         vipType = 0
         vipDueDate = nil
         membershipLabel = nil
+        level = 0
+        following = 0
+        fans = 0
         isLoggedIn = false
         sessionRevision &+= 1
     }

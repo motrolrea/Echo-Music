@@ -9,9 +9,16 @@ struct UserProfile: Decodable, Hashable {
     let backgroundUrl: String?
     let signature: String?
     let vipType: Int
+    /// CloudMusic level. 0 when the account endpoint omits it.
+    let level: Int
+    let follows: Int
+    let followeds: Int
+    let listenSongs: Int
+    let playlistBeSubscribedCount: Int
 
     private enum CodingKeys: String, CodingKey {
         case userId, nickname, avatarUrl, backgroundUrl, signature, vipType
+        case level, follows, followeds, listenSongs, playlistBeSubscribedCount
     }
 
     init(from decoder: Decoder) throws {
@@ -22,6 +29,11 @@ struct UserProfile: Decodable, Hashable {
         backgroundUrl = try? c.decode(String.self, forKey: .backgroundUrl)
         signature = try? c.decode(String.self, forKey: .signature)
         vipType = (try? c.decode(Int.self, forKey: .vipType)) ?? 0
+        level = (try? c.decode(Int.self, forKey: .level)) ?? 0
+        follows = (try? c.decode(Int.self, forKey: .follows)) ?? 0
+        followeds = (try? c.decode(Int.self, forKey: .followeds)) ?? 0
+        listenSongs = (try? c.decode(Int.self, forKey: .listenSongs)) ?? 0
+        playlistBeSubscribedCount = (try? c.decode(Int.self, forKey: .playlistBeSubscribedCount)) ?? 0
     }
 
     /// NetEase reports zero for a non-VIP account. This is deliberately kept

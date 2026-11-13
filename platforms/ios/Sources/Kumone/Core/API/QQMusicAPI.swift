@@ -39,6 +39,10 @@ actor QQMusicAPI {
         let avatarURL: String?
         /// A provider-issued session replacement, if the response rotated it.
         let refreshedCookie: String?
+        /// QQ music level when the homepage payload includes it. 0 means unknown.
+        var level: Int = 0
+        var fans: Int = 0
+        var follows: Int = 0
     }
 
     struct ResolvedAudio: Sendable {
@@ -723,11 +727,17 @@ actor QQMusicAPI {
             avatar = avatar ?? base.avatar
         }
         let finalName = name ?? "QQ 音乐用户 \(Self.normalizedAccountID(accountID))"
-        return Profile(id: id, name: finalName, avatarURL: avatar,
-                       refreshedCookie: Self.mergedCookie(
-                        original: cookie,
-                        response: response as? HTTPURLResponse
-                       ))
+        let creator = (dataObject["creator"] as? [String: Any]) ?? info
+        return Profile(
+            id: id, name: finalName, avatarURL: avatar,
+            refreshedCookie: Self.mergedCookie(
+                original: cookie,
+                response: response as? HTTPURLResponse
+            ),
+            level: Self.integer(in: creator, keys: ["lvinfo", "level", "grade"]) ?? 0,
+            fans: Self.integer(in: creator, keys: ["fansnum", "fans", "follower"]) ?? 0,
+            follows: Self.integer(in: creator, keys: ["follownum", "follow", "following"]) ?? 0
+        )
     }
 
     private func baseUserInfo(uin: String, cookie: String) async -> (nick: String?, avatar: String?)? {

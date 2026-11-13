@@ -25,6 +25,9 @@ final class QQMusicSessionStore: ObservableObject {
     @Published private(set) var avatarURL: String?
     /// nil until the membership lookup finishes (or when QQ does not answer).
     @Published private(set) var isVIP: Bool?
+    @Published private(set) var level = 0
+    @Published private(set) var fans = 0
+    @Published private(set) var follows = 0
     @Published private(set) var sessionRevision = 0
 
     var cookie: String? { storedCookie }
@@ -91,6 +94,7 @@ final class QQMusicSessionStore: ObservableObject {
         }
         profileName = profile?.name ?? "QQ 音乐用户"
         avatarURL = profile?.avatarURL
+        applyCounts(profile)
         isLoggedIn = true
         sessionRevision &+= 1
         refreshVIP()
@@ -122,6 +126,7 @@ final class QQMusicSessionStore: ObservableObject {
         }
         profileName = profile.name
         if let avatarURL = profile.avatarURL { self.avatarURL = avatarURL }
+        applyCounts(profile)
         isLoggedIn = true
         sessionRevision &+= 1
         refreshVIP()
@@ -137,8 +142,17 @@ final class QQMusicSessionStore: ObservableObject {
         profileName = nil
         avatarURL = nil
         isVIP = nil
+        level = 0
+        fans = 0
+        follows = 0
         isLoggedIn = false
         sessionRevision &+= 1
+    }
+
+    private func applyCounts(_ profile: QQMusicAPI.Profile?) {
+        level = profile?.level ?? 0
+        fans = profile?.fans ?? 0
+        follows = profile?.follows ?? 0
     }
 
     private static func hasUsableCredential(_ cookie: String) -> Bool {

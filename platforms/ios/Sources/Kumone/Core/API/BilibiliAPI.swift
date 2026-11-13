@@ -83,6 +83,9 @@ actor BilibiliAPI {
         let vipType: Int
         let vipDueDate: Date?
         let membershipLabel: String?
+        let level: Int
+        let following: Int
+        let fans: Int
 
         var membershipTitle: String? {
             guard isVIP else { return nil }
@@ -615,7 +618,10 @@ actor BilibiliAPI {
             isVIP: isVIP,
             vipType: vipType,
             vipDueDate: dueDate,
-            membershipLabel: membershipLabel
+            membershipLabel: membershipLabel,
+            level: Self.integer(payload["level_info"].flatMap { ($0 as? [String: Any])?["current_level"] } ?? payload["level"]) ?? 0,
+            following: Self.integer(payload["following"]) ?? 0,
+            fans: Self.integer(payload["follower"]) ?? 0
         )
     }
 

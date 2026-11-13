@@ -15,6 +15,10 @@ actor KugouAPI {
         let avatarURL: String?
         let refreshedCookie: String?
         var isVIP: Bool = false
+        /// Kugou user grade when the gateway returns it. 0 means unknown.
+        var level: Int = 0
+        var fans: Int = 0
+        var follows: Int = 0
     }
 
     struct ResolvedAudio: Sendable {
@@ -184,7 +188,10 @@ actor KugouAPI {
             name: name,
             avatarURL: Self.text(in: info, keys: ["pic", "avatar", "avatar_url", "avatarUrl", "headurl"]),
             refreshedCookie: nil,
-            isVIP: vip > 0
+            isVIP: vip > 0,
+            level: Self.integer(in: info, keys: ["p_grade", "grade", "user_grade", "level"]) ?? 0,
+            fans: Self.integer(in: info, keys: ["fans", "fan_count", "fans_count"]) ?? 0,
+            follows: Self.integer(in: info, keys: ["follows", "follow_count", "friends"]) ?? 0
         )
     }
 
@@ -301,7 +308,10 @@ actor KugouAPI {
                 original: cookie,
                 response: response as? HTTPURLResponse
             ),
-            isVIP: vipLevel > 0
+            isVIP: vipLevel > 0,
+            level: Self.integer(in: info, keys: ["p_grade", "grade", "user_grade", "level"]) ?? 0,
+            fans: Self.integer(in: info, keys: ["fans", "fan_count", "fans_count"]) ?? 0,
+            follows: Self.integer(in: info, keys: ["follows", "follow_count", "friends"]) ?? 0
         )
     }
 

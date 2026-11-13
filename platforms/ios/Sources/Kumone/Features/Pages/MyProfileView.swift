@@ -632,7 +632,8 @@ struct MyProfileView: View {
                     loggedIn: kugou.isLoggedIn,
                     vip: kugou.isVIP,
                     brand: "BrandKugou",
-                    title: "酷狗音乐"
+                    title: "酷狗音乐",
+                    stats: platformStats(level: kugou.level, playlists: nil, hearts: nil, listens: 0, follows: kugou.follows, fans: kugou.fans)
                 ) { showKugouLogin = true }
                 PlatformAccountPlaylists(platform: .kg)
                     .padding(.horizontal, -16)
@@ -643,7 +644,8 @@ struct MyProfileView: View {
                     loggedIn: qqMusic.isLoggedIn,
                     vip: qqMusic.isVIP == true,
                     brand: "BrandQQ",
-                    title: "QQ 音乐"
+                    title: "QQ 音乐",
+                    stats: platformStats(level: qqMusic.level, playlists: nil, hearts: nil, listens: 0, follows: qqMusic.follows, fans: qqMusic.fans)
                 ) { showQQMusicLogin = true }
                 PlatformAccountPlaylists(platform: .tx)
                     .padding(.horizontal, -16)
@@ -670,9 +672,19 @@ struct MyProfileView: View {
                         .frame(width: 64, height: 64)
                         .clipShape(Circle())
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(account.profile?.nickname ?? "未登录网易云")
-                                .font(.headline)
-                                .lineLimit(1)
+                            HStack(spacing: 6) {
+                                Text(account.profile?.nickname ?? "未登录网易云")
+                                    .font(.headline)
+                                    .lineLimit(1)
+                                if let level = account.profile?.level, level > 0 {
+                                    Text("Lv.\(level)")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(Theme.accent)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Theme.accent.opacity(0.14), in: Capsule())
+                                }
+                            }
                             Text(account.isLoggedIn ? (account.vipLabel ?? "非会员") : "登录后同步歌单和收藏")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -696,38 +708,24 @@ struct MyProfileView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(3)
                     }
-                    HStack(spacing: 10) {
-                        metric(title: "歌单", value: "\(account.userPlaylists.count)")
-                        metric(title: "红心", value: "\(account.likedTrackIDs.count)")
-                        metric(title: "专辑", value: "\(account.likedAlbums.count)")
-                        metric(title: "歌手", value: "\(account.likedArtists.count)")
-                    }
+                    profileStatRow(platformStats(
+                        level: account.profile?.level ?? 0,
+                        playlists: account.userPlaylists.count,
+                        hearts: account.likedTrackIDs.count,
+                        listens: account.profile?.listenSongs ?? 0,
+                        follows: account.profile?.follows ?? 0,
+                        fans: account.profile?.followeds ?? 0
+                    ) + [
+                        ProfileStat(title: "专辑", value: "\(account.likedAlbums.count)"),
+                        ProfileStat(title: "歌手", value: "\(account.likedArtists.count)")
+                    ])
                 }
             }
             if account.isLoggedIn {
-                if !account.createdPlaylists.isEmpty {
-                    Text("我创建的歌单")
-                        .font(.headline.weight(.semibold))
-                        .padding(.horizontal, 4)
-                    ForEach(account.createdPlaylists.prefix(8)) { playlist in
-                        NavigationLink(value: Destination.playlist(playlist.id)) {
-                            HStack(spacing: 12) {
-                                CachedAsyncImage(url: playlist.coverURL?.resizedImageURL(160)) {
-                                    RoundedRectangle(cornerRadius: 8).fill(.secondary.opacity(0.2))
-                                }
-                                .frame(width: 48, height: 48)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(playlist.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                    Text("\(playlist.trackCount) 首").font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+                let favorites = account.userPlaylists.filter(\.isLikedSongsList)
+                playlistGroup("我喜欢的音乐", favorites)
+                playlistGroup("收藏的歌单", Array(account.subscribedPlaylists.prefix(8)))
+                playlistGroup("我创建的歌单", Array(account.createdPlaylists.prefix(8)))
             }
         }
         .task {
@@ -743,9 +741,11 @@ struct MyProfileView: View {
         vip: Bool,
         brand: String,
         title: String,
+        stats: [ProfileStat] = [],
         login: @escaping () -> Void
     ) -> some View {
         MouGlassCard(cornerRadius: 24, padding: 14) {
+            VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Group {
                     if loggedIn, let avatar {
@@ -775,6 +775,10 @@ struct MyProfileView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(loggedIn ? "重新登录\(title)" : "登录\(title)")
             }
+            if loggedIn, !stats.isEmpty {
+                profileStatRow(stats)
+            }
+            }
         }
     }
 
@@ -794,8 +798,19 @@ struct MyProfileView: View {
                     .frame(width: 44, height: 44)
                     .clipShape(Circle())
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(bilibili.isLoggedIn ? (bilibili.profileName ?? "哔哩哔哩") : "未登录哔哩哔哩")
-                            .font(.headline)
+                        HStack(spacing: 6) {
+                            Text(bilibili.isLoggedIn ? (bilibili.profileName ?? "哔哩哔哩") : "未登录哔哩哔哩")
+                                .font(.headline)
+                                .lineLimit(1)
+                            if bilibili.isLoggedIn, bilibili.level > 0 {
+                                Text("Lv.\(bilibili.level)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(Theme.accent)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Theme.accent.opacity(0.14), in: Capsule())
+                            }
+                        }
                         Text(bilibili.isLoggedIn ? (bilibili.membershipTitle ?? "非会员") : "登录后同步账号资料")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -809,6 +824,12 @@ struct MyProfileView: View {
                             .foregroundStyle(bilibili.isLoggedIn ? .green : Theme.accent)
                     }
                     .buttonStyle(.plain)
+                }
+                if bilibili.isLoggedIn {
+                    profileStatRow(platformStats(
+                        level: bilibili.level, playlists: nil, hearts: nil, listens: 0,
+                        follows: bilibili.following, fans: bilibili.fans
+                    ))
                 }
             }
             BilibiliCloudPlaylistsCard()
@@ -933,6 +954,59 @@ struct MyProfileView: View {
         }
     }
 
+    private func playlistGroup(_ title: String, _ playlists: [PlaylistSummary]) -> some View {
+        if !playlists.isEmpty {
+            Text(title)
+                .font(.headline.weight(.semibold))
+                .padding(.horizontal, 4)
+            ForEach(playlists) { playlist in
+                NavigationLink(value: Destination.playlist(playlist.id)) {
+                    HStack(spacing: 12) {
+                        CachedAsyncImage(url: playlist.coverURL?.resizedImageURL(160)) {
+                            RoundedRectangle(cornerRadius: 8).fill(.secondary.opacity(0.2))
+                        }
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(playlist.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Text("\(playlist.trackCount) 首").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private struct ProfileStat: Identifiable {
+        let title: String
+        let value: String
+        var id: String { title }
+    }
+
+    /// Hide a count the platform did not return. A real zero still shows for
+    /// playlists and hearts, which are loaded locally.
+    private func platformStats(level: Int, playlists: Int?, hearts: Int?, listens: Int, follows: Int, fans: Int) -> [ProfileStat] {
+        var items: [ProfileStat] = []
+        if level > 0 { items.append(.init(title: "等级", value: "Lv.\(level)")) }
+        if let playlists { items.append(.init(title: "歌单", value: "\(playlists)")) }
+        if let hearts { items.append(.init(title: "红心", value: "\(hearts)")) }
+        if listens > 0 { items.append(.init(title: "听歌", value: "\(listens)")) }
+        if follows > 0 { items.append(.init(title: "关注", value: "\(follows)")) }
+        if fans > 0 { items.append(.init(title: "粉丝", value: "\(fans)")) }
+        return items
+    }
+
+    private func profileStatRow(_ items: [ProfileStat]) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+            ForEach(items) { item in
+                metric(title: item.title, value: item.value)
+            }
+        }
+    }
+
     private func metric(title: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(value)
@@ -1053,42 +1127,79 @@ private struct ListeningReportView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    reportStat("累计时长", stats.formattedDuration, "clock.fill")
-                    reportStat("播放次数", "\(stats.totalPlayCount)", "play.fill")
-                    reportStat("连续天数", "\(stats.streakDays) 天", "flame.fill")
-                    reportStat("今日", minutesText(todayMinutes), "sun.max.fill")
-                    reportStat("近 7 天", minutesText(weekMinutes), "calendar")
-                    reportStat("日均", minutesText(averageMinutes), "chart.line.uptrend.xyaxis")
+            VStack(spacing: 0) {
+                VStack(spacing: 6) {
+                    Text(stats.formattedDuration)
+                        .font(.system(size: 34, weight: .bold, design: .rounded))
+                    Text("累计听歌")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-                MouGlassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("近 7 天")
-                            .font(.headline.weight(.semibold))
-                        HStack(alignment: .bottom, spacing: 8) {
-                            ForEach(Array(week.enumerated()), id: \.offset) { _, day in
-                                VStack(spacing: 6) {
-                                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                        .fill(Theme.accent)
-                                        .frame(height: barHeight(day.minutes))
-                                    Text(day.label)
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 22)
+
+                HStack(spacing: 0) {
+                    reportMetric("播放", "\(stats.totalPlayCount)")
+                    reportDivider
+                    reportMetric("连续", "\(stats.streakDays) 天")
+                    reportDivider
+                    reportMetric("今日", minutesText(todayMinutes))
+                }
+                .padding(.vertical, 8)
+
+                Divider().padding(.horizontal, 16)
+
+                HStack(spacing: 0) {
+                    reportMetric("近 7 天", minutesText(weekMinutes))
+                    reportDivider
+                    reportMetric("日均", minutesText(averageMinutes))
+                    reportDivider
+                    reportMetric("歌曲", "\(stats.records.count)")
+                }
+                .padding(.vertical, 8)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("近 7 天")
+                        .font(.headline.weight(.semibold))
+                    HStack(alignment: .bottom, spacing: 8) {
+                        ForEach(Array(week.enumerated()), id: \.offset) { _, day in
+                            VStack(spacing: 6) {
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(Theme.accent.opacity(day.minutes > 0 ? 1 : 0.18))
+                                    .frame(height: barHeight(day.minutes))
+                                Text(day.label)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
                             }
+                            .frame(maxWidth: .infinity)
                         }
-                        .frame(height: 120, alignment: .bottom)
                     }
+                    .frame(height: 120, alignment: .bottom)
                 }
+                .padding(16)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, 24)
         }
         .navigationTitle("听歌报告")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func reportMetric(_ title: String, _ value: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var reportDivider: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.08))
+            .frame(width: 1, height: 28)
     }
 
     private var week: [(label: String, minutes: Double)] { stats.lastSevenDays() }
@@ -1105,24 +1216,6 @@ private struct ListeningReportView: View {
         let total = Int(minutes.rounded())
         if total >= 60 { return "\(total / 60)小时\(total % 60)分" }
         return "\(total)分钟"
-    }
-
-    private func reportStat(_ title: String, _ value: String, _ icon: String) -> some View {
-        MouGlassCard(padding: 12) {
-            VStack(alignment: .leading, spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-                Text(value)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 }
 

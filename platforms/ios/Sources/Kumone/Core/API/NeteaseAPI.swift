@@ -108,7 +108,19 @@ enum NeteaseAPI {
     }
 
     static func userAccount() async throws -> UserProfile? {
-        try await weapi(AccountResponse.self, "/w/nuser/account/get").profile
+        guard let profile = try await weapi(AccountResponse.self, "/w/nuser/account/get").profile else {
+            return nil
+        }
+        // The account endpoint often omits level, follows and listen counts.
+        // `/user/detail` carries them; keep the account profile if it fails.
+        if let detail = try? await weapi(UserDetailResponse.self, "/user/detail", ["uid": profile.userId]).profile {
+            return detail
+        }
+        return profile
+    }
+
+    private struct UserDetailResponse: Decodable {
+        let profile: UserProfile?
     }
 
     /// Membership as the NetEase client sees it. `/w/nuser/account/get` often reports

@@ -882,20 +882,18 @@ struct NowPlayingView: View {
 
     private var trackMetaView: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
-                Text(player.currentTrack?.name ?? "")
-                    .font(.system(size: 21, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                if player.currentTrack?.isVIP == true {
-                    VIPBadge()
-                }
-            }
-            Text("\(player.currentTrack?.artistNames ?? "") — \(player.currentTrack?.album.name ?? "")")
-                .font(.system(size: 13.5))
-                .foregroundStyle(.white.opacity(0.65))
-                .lineLimit(1)
-
+            PlayerTitleRow(
+                name: player.currentTrack?.name ?? "",
+                isVIP: player.currentTrack?.isVIP == true,
+                titleSize: 21,
+                centered: false
+            )
+            PlayerMarqueeText(
+                "\(player.currentTrack?.artistNames ?? "") — \(player.currentTrack?.album.name ?? "")",
+                font: .system(size: 13.5),
+                color: .white.opacity(0.65),
+                uiFont: .systemFont(ofSize: 13.5)
+            )
         }
         .frame(maxWidth: 400, alignment: .leading)
         #if os(iOS)
@@ -908,28 +906,14 @@ struct NowPlayingView: View {
     /// player keeps one stable large title + artist header in every mode.
     private var compactTrackMetaView: some View {
         let classic = settings.nowPlayingMode == .classic
-        return HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: classic ? .center : .leading, spacing: 3) {
-                HStack(spacing: 8) {
-                    PlayerMarqueeText(
-                        player.currentTrack?.name ?? "",
-                        font: .system(size: 21, weight: .bold),
-                        color: .white,
-                        centered: classic,
-                        uiFont: .boldSystemFont(ofSize: 21),
-                        fillsWidth: false
-                    )
-                    .layoutPriority(-1)
-                    if player.currentTrack?.isVIP == true {
-                        VIPBadge()
-                            .fixedSize()
-                            .layoutPriority(1)
-                    }
-                }
-                PlayerArtistLink(font: .system(size: 13.5), opacity: 0.65, centered: classic)
-            }
-            .frame(maxWidth: .infinity, alignment: classic ? .center : .leading)
-
+        return VStack(alignment: classic ? .center : .leading, spacing: 3) {
+            PlayerTitleRow(
+                name: player.currentTrack?.name ?? "",
+                isVIP: player.currentTrack?.isVIP == true,
+                titleSize: 21,
+                centered: classic
+            )
+            PlayerArtistLink(font: .system(size: 13.5), opacity: 0.65, centered: classic)
         }
         .frame(maxWidth: .infinity, alignment: classic ? .center : .leading)
         #if os(iOS)
@@ -942,15 +926,12 @@ struct NowPlayingView: View {
     /// under the artwork made the title wrap and pushed the controls down.
     private var landscapeTrackHeader: some View {
         VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 8) {
-                Text(player.currentTrack?.name ?? "")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                if player.currentTrack?.isVIP == true {
-                    VIPBadge()
-                }
-            }
+            PlayerTitleRow(
+                name: player.currentTrack?.name ?? "",
+                isVIP: player.currentTrack?.isVIP == true,
+                titleSize: 20,
+                centered: false
+            )
             PlayerArtistLink(font: .system(size: 13.5), opacity: 0.65)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2023,15 +2004,12 @@ private struct CompactTrackHeader: View {
                 ) { [.compact: $0] }
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(player.currentTrack?.name ?? "")
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    if player.currentTrack?.isVIP == true {
-                        VIPBadge()
-                    }
-                }
+                PlayerTitleRow(
+                    name: player.currentTrack?.name ?? "",
+                    isVIP: player.currentTrack?.isVIP == true,
+                    titleSize: 17,
+                    centered: false
+                )
                 PlayerArtistLink(font: .subheadline, opacity: 0.62)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -2948,16 +2926,13 @@ private struct MinimalTrackInfoRow: View {
         textAlignment: TextAlignment
     ) -> some View {
         VStack(alignment: alignment, spacing: 4) {
-            HStack(spacing: 6) {
-                Text(player.currentTrack?.name ?? "")
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                if player.currentTrack?.isVIP == true {
-                    VIPBadge()
-                }
-            }
-            PlayerArtistLink(font: .footnote, opacity: 0.62)
+            PlayerTitleRow(
+                name: player.currentTrack?.name ?? "",
+                isVIP: player.currentTrack?.isVIP == true,
+                titleSize: 17,
+                centered: textAlignment == .center
+            )
+            PlayerArtistLink(font: .footnote, opacity: 0.62, centered: textAlignment == .center)
         }
         .multilineTextAlignment(textAlignment)
         .accessibilityElement(children: .contain)
@@ -3463,6 +3438,35 @@ struct MiniLyricsView: View {
         .padding(.horizontal, 28)
         .id(line?.id)
         .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+}
+
+/// Title plus VIP badge. The badge stays after the name and never overlaps the
+/// trailing controls; a name that does not fit the leftover width scrolls.
+private struct PlayerTitleRow: View {
+    let name: String
+    let isVIP: Bool
+    let titleSize: CGFloat
+    var centered = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            PlayerMarqueeText(
+                name,
+                font: .system(size: titleSize, weight: .bold),
+                color: .white,
+                centered: centered,
+                uiFont: .boldSystemFont(ofSize: titleSize)
+            )
+            .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
+            .layoutPriority(0)
+            if isVIP {
+                VIPBadge()
+                    .fixedSize()
+                    .layoutPriority(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
     }
 }
 
