@@ -777,7 +777,7 @@ private struct ExploreCollapsedSearchAccessory: View {
         .buttonStyle(.plain)
         .accessibilityLabel("搜索歌曲和歌单")
         .fullScreenCover(isPresented: $showSearch) {
-            NavigationStack { SearchView() }
+            NavigationStack { SearchView(query: "") }
         }
     }
 }
