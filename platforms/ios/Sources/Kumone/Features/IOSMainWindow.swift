@@ -303,11 +303,8 @@ public struct IOSMainWindow: View {
             }
         }
         .onChange(of: selectedTab) { newValue in
-            // 独立搜索小球：点中搜索时立刻回到上一个功能页，并拉起全屏搜索
-            if newValue == .search {
-                selectedTab = lastPrimaryTab
-                showSearch = true
-            } else {
+            // 搜索球交给系统 TabView（含系统自带的展开动画）；旧系统仍用浮层搜索。
+            if newValue != .search {
                 lastPrimaryTab = newValue
             }
         }
@@ -323,7 +320,8 @@ public struct IOSMainWindow: View {
     @available(iOS 26.0, *)
     private var iOS26TabInterface: some View {
         iOS26TabView
-            .tabBarMinimizeBehavior(tabBarMinimizes ? .onScrollDown : .never)
+            // 精选页和其他页保持完整底栏，不跟随下滑折叠。
+            .tabBarMinimizeBehavior(selectedTab == .explore || !tabBarMinimizes ? .never : .onScrollDown)
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
@@ -371,9 +369,12 @@ public struct IOSMainWindow: View {
                 tabStack(.profile) { MyProfileView() }
             }
 
-            // 系统搜索小球：滚动最小化时由系统负责圆球与搜索条的形变动画。
+            // 系统搜索小球：交给系统呈现搜索页，展开动画由系统负责。
             Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
-                Color.clear
+                tabStack(.search) { SearchView(query: "") }
+                    .environment(\.dismissSearchAction) {
+                        selectedTab = lastPrimaryTab
+                    }
             }
         }
         .toolbarBackground(.hidden, for: .tabBar)

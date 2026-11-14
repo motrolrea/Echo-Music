@@ -143,7 +143,8 @@ struct IOSNowPlayingPresentation<Content: View>: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let isInteractive = proxy.size.width < 720 && mode != .classic
+            // 唱片架自己处理左右滑动，不能让下滑关闭手势跟它抢。
+            let isInteractive = proxy.size.width < 720 && mode != .classic && mode != .shelf
             let usesCustomDrag = isInteractive && !usesSystemInteractiveDismissal
 
             ZStack(alignment: .top) {

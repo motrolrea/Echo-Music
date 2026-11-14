@@ -370,10 +370,24 @@ final class SearchViewModel: ObservableObject {
     }
 }
 
+/// 搜索作为 TabView 的一个 tab 呈现时没有可 dismiss 的浮层，
+/// 由主窗口注入「切回上一个标签页」的动作。
+private struct DismissSearchActionKey: EnvironmentKey {
+    static let defaultValue: (() -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var dismissSearchAction: (() -> Void)? {
+        get { self[DismissSearchActionKey.self] }
+        set { self[DismissSearchActionKey.self] = newValue }
+    }
+}
+
 struct SearchView: View {
     @StateObject private var model: SearchViewModel
     @StateObject private var history = SearchHistoryStore.shared
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dismissSearchAction) private var dismissSearchAction
     @State private var searchText: String = ""
 #if os(iOS)
     @EnvironmentObject private var bilibili: BilibiliSessionStore
@@ -447,7 +461,11 @@ struct SearchView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    dismiss()
+                    if let dismissSearchAction {
+                        dismissSearchAction()
+                    } else {
+                        dismiss()
+                    }
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .semibold))
