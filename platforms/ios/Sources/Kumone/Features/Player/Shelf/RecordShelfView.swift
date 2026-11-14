@@ -213,7 +213,9 @@ struct RecordShelfView: UIViewRepresentable {
                 let node = album.node
                 if offset == 0 {
                     node.position = SCNVector3(-0.02, -0.01, 0.48)
-                    node.eulerAngles = SCNVector3(-15 * .pi / 180, 16 * .pi / 180, 6 * .pi / 180)
+                    node.eulerAngles = SCNVector3(-15 * Float.pi / 180,
+                                                  16 * Float.pi / 180,
+                                                  6 * Float.pi / 180)
                 } else {
                     let x: Float = offset > 0
                         ? -0.02 + rightGap + Float(offset - 1) * stackPitch
@@ -338,7 +340,7 @@ final class ShelfAlbum {
         shadowMaterial.writesToDepthBuffer = false
         shadow.materials = [shadowMaterial]
         contact.geometry = shadow
-        contact.eulerAngles = SCNVector3(-.pi / 2, 0, 0)
+        contact.eulerAngles = SCNVector3(-Float.pi / 2, 0, 0)
         contact.position = SCNVector3(0, Float(-size / 2) - 0.006, 0)
     }
 
