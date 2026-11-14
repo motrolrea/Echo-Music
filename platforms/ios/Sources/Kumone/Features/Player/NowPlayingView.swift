@@ -513,6 +513,7 @@ struct NowPlayingView: View {
             // player modes and remove the redundant small mode label.
             compactTrackMetaView
                 .padding(.top, compactTitleTopPadding)
+                .padding(.trailing, 56)
 
             lyricsColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -533,6 +534,7 @@ struct NowPlayingView: View {
         return VStack(spacing: 16) {
             compactTrackMetaView
                 .padding(.top, compactTitleTopPadding)
+                .padding(.trailing, 56)
             if showLyricsOnMobile {
                 // The full lyric page of the record player: a small record on the left returns to the turntable.
                 Button {
@@ -748,6 +750,7 @@ struct NowPlayingView: View {
             // changes look like a different player page.
             compactTrackMetaView
                 .padding(.top, compactTitleTopPadding)
+                .padding(.trailing, 40)
 
             ZStack(alignment: .top) {
                 Color.clear
@@ -3441,8 +3444,8 @@ struct MiniLyricsView: View {
     }
 }
 
-/// Title plus VIP badge. The badge stays after the name and never overlaps the
-/// trailing controls; a name that does not fit the leftover width scrolls.
+/// Title plus VIP badge. The badge is pinned after the name and never scrolls.
+/// A VIP song gives the marquee a narrower lane so the badge stays visible.
 private struct PlayerTitleRow: View {
     let name: String
     let isVIP: Bool
@@ -3455,18 +3458,18 @@ private struct PlayerTitleRow: View {
                 name,
                 font: .system(size: titleSize, weight: .bold),
                 color: .white,
-                centered: centered,
+                centered: centered && !isVIP,
                 uiFont: .boldSystemFont(ofSize: titleSize)
             )
-            .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
+            .frame(maxWidth: .infinity, alignment: (centered && !isVIP) ? .center : .leading)
             .layoutPriority(0)
             if isVIP {
                 VIPBadge()
-                    .fixedSize()
                     .layoutPriority(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
+        .clipped()
     }
 }
 

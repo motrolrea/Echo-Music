@@ -159,14 +159,42 @@ struct PlayCountBadge: View {
 struct VIPBadge: View {
     var body: some View {
         Text("VIP")
-            .font(.system(size: 8.5, weight: .bold))
-            .foregroundStyle(Theme.accent)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .overlay(
-                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                    .stroke(Theme.accent.opacity(0.8), lineWidth: 1)
+            .font(.system(size: 8, weight: .heavy))
+            .foregroundStyle(
+                LinearGradient(
+                    colors: [Color(red: 0.42, green: 0.24, blue: 0.02), Color(red: 0.22, green: 0.12, blue: 0.01)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
             )
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1.5)
+            .background {
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 1.0, green: 0.93, blue: 0.62),
+                                Color(red: 0.93, green: 0.72, blue: 0.28),
+                                Color(red: 0.72, green: 0.48, blue: 0.12)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(alignment: .top) {
+                        Capsule()
+                            .fill(.white.opacity(0.38))
+                            .frame(height: 5)
+                            .blur(radius: 0.4)
+                            .offset(y: 0.5)
+                    }
+            }
+            .overlay {
+                Capsule().strokeBorder(.white.opacity(0.55), lineWidth: 0.6)
+            }
+            .shadow(color: Color(red: 0.72, green: 0.48, blue: 0.12).opacity(0.35), radius: 1.5, y: 0.5)
+            .fixedSize()
     }
 }
 

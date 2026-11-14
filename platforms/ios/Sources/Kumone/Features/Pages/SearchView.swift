@@ -373,6 +373,7 @@ final class SearchViewModel: ObservableObject {
 struct SearchView: View {
     @StateObject private var model: SearchViewModel
     @StateObject private var history = SearchHistoryStore.shared
+    @Environment(\.dismiss) private var dismiss
     @State private var searchText: String = ""
 #if os(iOS)
     @EnvironmentObject private var bilibili: BilibiliSessionStore
@@ -443,6 +444,17 @@ struct SearchView: View {
         }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .accessibilityLabel("返回")
+            }
+        }
         .task(id: "\(model.tab.rawValue)-\(model.platform.rawValue)-\(searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)") {
             if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 await model.loadHotKeywords()

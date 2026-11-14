@@ -216,6 +216,7 @@ final class ExploreViewModel: ObservableObject {
 struct ExploreView: View {
     @StateObject private var model = ExploreViewModel.shared
     @EnvironmentObject private var settings: SettingsManager
+    @ObservedObject private var bottomCollapse = BottomBarCollapseStore.shared
     @State private var playlistQuery = ""
     @State private var songResults: [Track] = []
     @State private var searchHistory = ExploreSearchHistory.load()
@@ -408,7 +409,8 @@ struct ExploreView: View {
     }
 
     private var exploreSearchBar: some View {
-        HStack(spacing: 8) {
+        let collapsed = bottomCollapse.isCollapsed
+        return HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -426,6 +428,8 @@ struct ExploreView: View {
         .overlay { Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.8) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("搜索歌曲和歌单")
+        .opacity(collapsed ? 0 : 1)
+        .allowsHitTesting(!collapsed)
     }
 
     private var barPlatform: LXCatalogPlatform {

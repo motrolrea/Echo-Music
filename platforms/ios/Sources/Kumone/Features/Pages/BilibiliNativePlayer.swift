@@ -673,8 +673,21 @@ final class BiliPlayerModel: NSObject, ObservableObject, AVPictureInPictureContr
 // MARK: - Layer / route picker bridges
 
 final class BiliPlayerLayerUIView: UIView {
-    override class var layerClass: AnyClass { AVPlayerLayer.self }
-    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+    let playerLayer = AVPlayerLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .black
+        playerLayer.videoGravity = .resizeAspect
+        layer.addSublayer(playerLayer)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        playerLayer.frame = bounds
+    }
 }
 
 struct BiliPlayerLayerView: UIViewRepresentable {
@@ -842,6 +855,7 @@ struct BiliNativePlayer: View {
             }
             if showDanmaku, !audioOnly {
                 danmakuCanvas
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .id(model.danmakuRefreshToken)
             }
             if let text = currentSubtitle {
@@ -1440,19 +1454,26 @@ final class BiliDanmakuUIView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window == nil { stop() } else { start() }
+        if window == nil {
+            stop()
+        } else if bounds.width > 1, bounds.height > 1 {
+            start()
+        }
     }
 
-    /// Inline (detail page) the view is inserted before SwiftUI has given it a size, so the first
-    /// frames are skipped; the display link is (re)started here once a real size arrives.
+    /// Inline (detail page) the view is inserted before SwiftUI has given it a size.
+    /// A display link started at zero bounds never paints until something else forces a layout,
+    /// which is why danmaku only appeared after leaving fullscreen.
     override func layoutSubviews() {
         super.layoutSubviews()
-        guard window != nil, bounds.width > 0, bounds.height > 0 else { return }
-        start()
-        if lastBoundsSize != bounds.size {
+        guard window != nil, bounds.width > 1, bounds.height > 1 else { return }
+        let gainedSize = lastBoundsSize.width < 1 || lastBoundsSize.height < 1
+        if gainedSize || lastBoundsSize != bounds.size {
             lastBoundsSize = bounds.size
             clearLayersOnly()
+            stop()
         }
+        start()
     }
 
     func setItems(_ newItems: [PlacedDanmaku]) {

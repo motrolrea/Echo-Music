@@ -395,10 +395,26 @@ public struct IOSMainWindow: View {
         .animation(AppAnimation.standard, value: player.hasCurrentTrack)
     }
 
-    /// 胶囊底栏 + 迷你播放器 dock；滚动折叠后收成「当前页小球 + 迷你播放器 + 独立搜索小球」
+    /// 胶囊底栏 + 迷你播放器 dock。精选页下滑后迷你播放器留在上面，
+    /// 底行变成「当前页小球 + 向左拉长的搜索条」。
     @ViewBuilder
     private var legacyBottomBar: some View {
-        if isBarCollapsed {
+        if isBarCollapsed, selectedTab == .explore, !bilibiliChrome {
+            VStack(spacing: 8) {
+                if player.hasCurrentTrack {
+                    IOSMiniPlayerBar(presentation: .legacyOverlay)
+                        .nowPlayingTransitionSource(in: nowPlayingTransition)
+                        .padding(.horizontal, 12)
+                }
+                HStack(spacing: 10) {
+                    collapsedTabBall
+                    stretchedSearchBar
+                }
+                .frame(maxWidth: 560)
+                .padding(.horizontal, 18)
+            }
+            .padding(.bottom, 6)
+        } else if isBarCollapsed {
             HStack(spacing: 10) {
                 collapsedTabBall
 
@@ -454,6 +470,33 @@ public struct IOSMainWindow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(currentTabTitle)
+    }
+
+    /// 精选页下滑后，搜索小球向左拉长，占住原来迷你播放器和小球那一行。
+    private var stretchedSearchBar: some View {
+        Button {
+            Haptics.tap()
+            showSearch = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 17, weight: .semibold))
+                Text("搜索歌曲、歌单")
+                    .font(.system(size: 16))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.primary.opacity(0.72))
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .background { Capsule().fill(.regularMaterial) }
+            .clipShape(Capsule())
+            .contentShape(Capsule())
+            .overlay { Capsule().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5) }
+            .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("搜索歌曲和歌单")
     }
 
     /// 独立悬浮搜索小球（与胶囊底栏分离）

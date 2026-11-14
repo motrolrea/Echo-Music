@@ -113,14 +113,26 @@ enum NeteaseAPI {
         }
         // The account endpoint often omits level, follows and listen counts.
         // `/user/detail` carries them; keep the account profile if it fails.
-        if let detail = try? await weapi(UserDetailResponse.self, "/user/detail", ["uid": profile.userId]).profile {
-            return detail
+        if let detail = try? await weapi(UserDetailResponse.self, "/user/detail", ["uid": profile.userId]) {
+            return detail.merged(with: profile)
         }
         return profile
     }
 
     private struct UserDetailResponse: Decodable {
         let profile: UserProfile?
+        let level: Int?
+        let listenSongs: Int?
+
+        func merged(with account: UserProfile) -> UserProfile {
+            let base = profile ?? account
+            return base.mergingDetail(
+                level: level ?? 0,
+                listenSongs: listenSongs ?? 0,
+                follows: profile?.follows ?? account.follows,
+                followeds: profile?.followeds ?? account.followeds
+            )
+        }
     }
 
     /// Membership as the NetEase client sees it. `/w/nuser/account/get` often reports

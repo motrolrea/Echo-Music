@@ -685,9 +685,14 @@ struct MyProfileView: View {
                                         .background(Theme.accent.opacity(0.14), in: Capsule())
                                 }
                             }
-                            Text(account.isLoggedIn ? (account.vipLabel ?? "非会员") : "登录后同步歌单和收藏")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            HStack(spacing: 6) {
+                                if account.profile?.hasActiveVIP == true {
+                                    VIPBadge()
+                                }
+                                Text(account.isLoggedIn ? (account.vipLabel ?? "非会员") : "登录后同步歌单和收藏")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                             if let uid = account.profile?.userId {
                                 Text("uid \(uid)")
                                     .font(.caption2)
@@ -759,9 +764,12 @@ struct MyProfileView: View {
                 .frame(width: 44, height: 44)
                 .clipShape(Circle())
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(loggedIn ? (name ?? title) : "未登录\(title)")
-                        .font(.headline)
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(loggedIn ? (name ?? title) : "未登录\(title)")
+                            .font(.headline)
+                            .lineLimit(1)
+                        if loggedIn, vip { VIPBadge() }
+                    }
                     Text(loggedIn ? (vip ? "会员" : "非会员") : "登录后同步这个平台的歌单")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -802,6 +810,9 @@ struct MyProfileView: View {
                             Text(bilibili.isLoggedIn ? (bilibili.profileName ?? "哔哩哔哩") : "未登录哔哩哔哩")
                                 .font(.headline)
                                 .lineLimit(1)
+                            if bilibili.isLoggedIn, bilibili.membershipTitle != nil {
+                                VIPBadge()
+                            }
                             if bilibili.isLoggedIn, bilibili.level > 0 {
                                 Text("Lv.\(bilibili.level)")
                                     .font(.system(size: 11, weight: .bold))
@@ -1125,6 +1136,7 @@ struct MyProfileView: View {
 
 private struct ListeningReportView: View {
     @ObservedObject private var stats = ListeningStatsStore.shared
+    @State private var selectedDay: Int?
 
     var body: some View {
         ScrollView {
@@ -1163,19 +1175,35 @@ private struct ListeningReportView: View {
                     Text("近 7 天")
                         .font(.headline.weight(.semibold))
                     HStack(alignment: .bottom, spacing: 8) {
-                        ForEach(Array(week.enumerated()), id: \.offset) { _, day in
+                        ForEach(Array(week.enumerated()), id: \.offset) { index, day in
+                            let selected = selectedDay == index
                             VStack(spacing: 6) {
+                                Text(selected ? durationText(day.minutes) : " ")
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(Theme.accent)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.center)
+                                    .minimumScaleFactor(0.7)
+                                    .frame(height: 28)
                                 RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(Theme.accent.opacity(day.minutes > 0 ? 1 : 0.18))
+                                    .fill(Theme.accent.opacity(day.minutes > 0 ? (selected ? 1 : 0.72) : 0.18))
                                     .frame(height: barHeight(day.minutes))
                                 Text(day.label)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                    .font(.caption2.weight(selected ? .bold : .regular))
+                                    .foregroundStyle(selected ? Theme.accent : .secondary)
                             }
                             .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.easeInOut(duration: 0.18)) {
+                                    selectedDay = selectedDay == index ? nil : index
+                                }
+                            }
+                            .accessibilityLabel("\(day.label) \(durationText(day.minutes))")
+                            .accessibilityAddTraits(.isButton)
                         }
                     }
-                    .frame(height: 120, alignment: .bottom)
+                    .frame(height: 156, alignment: .bottom)
                 }
                 .padding(16)
             }
@@ -1219,6 +1247,16 @@ private struct ListeningReportView: View {
         let total = Int(minutes.rounded())
         if total >= 60 { return "\(total / 60)小时\(total % 60)分" }
         return "\(total)分钟"
+    }
+
+    /// Bar values are stored in minutes; the tap label needs the leftover seconds.
+    private func durationText(_ minutes: Double) -> String {
+        let total = max(0, Int((minutes * 60).rounded()))
+        let hours = total / 3600
+        let mins = (total % 3600) / 60
+        let secs = total % 60
+        if hours > 0 { return "\(hours)时\(mins)分\(secs)秒" }
+        return "\(mins)分\(secs)秒"
     }
 }
 

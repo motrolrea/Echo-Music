@@ -36,6 +36,49 @@ struct UserProfile: Decodable, Hashable {
         playlistBeSubscribedCount = (try? c.decode(Int.self, forKey: .playlistBeSubscribedCount)) ?? 0
     }
 
+    /// `/user/detail` puts level and listen count on the response root, not inside `profile`.
+    func mergingDetail(level rootLevel: Int, listenSongs rootListens: Int, follows rootFollows: Int, followeds rootFans: Int) -> UserProfile {
+        UserProfile(
+            userId: userId,
+            nickname: nickname,
+            avatarUrl: avatarUrl,
+            backgroundUrl: backgroundUrl,
+            signature: signature,
+            vipType: vipType,
+            level: max(level, rootLevel),
+            follows: max(follows, rootFollows),
+            followeds: max(followeds, rootFans),
+            listenSongs: max(listenSongs, rootListens),
+            playlistBeSubscribedCount: playlistBeSubscribedCount
+        )
+    }
+
+    private init(
+        userId: Int,
+        nickname: String,
+        avatarUrl: String?,
+        backgroundUrl: String?,
+        signature: String?,
+        vipType: Int,
+        level: Int,
+        follows: Int,
+        followeds: Int,
+        listenSongs: Int,
+        playlistBeSubscribedCount: Int
+    ) {
+        self.userId = userId
+        self.nickname = nickname
+        self.avatarUrl = avatarUrl
+        self.backgroundUrl = backgroundUrl
+        self.signature = signature
+        self.vipType = vipType
+        self.level = level
+        self.follows = follows
+        self.followeds = followeds
+        self.listenSongs = listenSongs
+        self.playlistBeSubscribedCount = playlistBeSubscribedCount
+    }
+
     /// NetEase reports zero for a non-VIP account. This is deliberately kept
     /// separate from the presence of an auth cookie: being logged in does not
     /// grant VIP-only playback tiers.
