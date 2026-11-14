@@ -322,37 +322,16 @@ public struct IOSMainWindow: View {
     /// apply it conditionally.
     @available(iOS 26.0, *)
     private var iOS26TabInterface: some View {
-        ZStack(alignment: .bottom) {
-            iOS26TabView
-                .tabBarMinimizeBehavior(tabBarMinimizes ? .onScrollDown : .never)
-                // Keep one TabView identity while the accessory appears/disappears.
-                // This preserves the iOS 26 matched-transition zoom anchor.
-                .modifier(MiniPlayerAccessoryModifier(
-                    isActive: player.hasCurrentTrack && !exploreUsesCustomBar,
-                    transitionNamespace: nowPlayingTransition,
-                    colorScheme: resolvedColorScheme
-                ))
-                .animation(AppAnimation.standard, value: player.hasCurrentTrack)
-
-            if exploreUsesCustomBar {
-                legacyBottomBar
-                    .transition(.opacity)
-            }
-        }
-        .animation(.easeInOut(duration: 0.24), value: exploreUsesCustomBar)
-        .animation(.easeInOut(duration: 0.26), value: bottomCollapse.isCollapsed)
-    }
-
-    /// 精选页固定使用自定义底栏。系统底栏的显隐若跟着滚动变化，会反复改动
-    /// 安全区，导致列表卡顿、要滑好几次才折叠；这里只在切换标签页时变。
-    private var exploreUsesCustomBar: Bool {
-        selectedTab == .explore && !bilibiliChrome
-    }
-
-    /// 精选页下滑后，底栏换成「当前页小球 + 拉长搜索」，迷你播放器留在上面。
-    /// 与顶栏搜索的渐隐共用同一个折叠状态，保证两者始终同步。
-    private var exploreSearchCollapsed: Bool {
-        selectedTab == .explore && bottomCollapse.isCollapsed && !bilibiliChrome
+        iOS26TabView
+            .tabBarMinimizeBehavior(tabBarMinimizes ? .onScrollDown : .never)
+            // Keep one TabView identity while the accessory appears/disappears.
+            // This preserves the iOS 26 matched-transition zoom anchor.
+            .modifier(MiniPlayerAccessoryModifier(
+                isActive: player.hasCurrentTrack,
+                transitionNamespace: nowPlayingTransition,
+                colorScheme: resolvedColorScheme
+            ))
+            .animation(AppAnimation.standard, value: player.hasCurrentTrack)
     }
 
     @available(iOS 26.0, *)
@@ -376,8 +355,6 @@ public struct IOSMainWindow: View {
                         ExploreView()
                     }
                 }
-                // 系统底栏形状固定，精选页改用自定义底栏绘制拉长的搜索条。
-                .toolbar(exploreUsesCustomBar ? .hidden : .visible, for: .tabBar)
             }
 
             Tab(bilibiliChrome ? "动态" : "歌单", systemImage: bilibiliChrome ? "bolt.horizontal.circle" : "music.note.list", value: .playlists) {
@@ -394,7 +371,7 @@ public struct IOSMainWindow: View {
                 tabStack(.profile) { MyProfileView() }
             }
 
-            // 独立搜索小球。精选页下滑后由自定义底栏接管搜索条。
+            // 系统搜索小球：滚动最小化时由系统负责圆球与搜索条的形变动画。
             Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
                 Color.clear
             }
@@ -417,36 +394,10 @@ public struct IOSMainWindow: View {
         .animation(AppAnimation.standard, value: player.hasCurrentTrack)
     }
 
-    /// 胶囊底栏 + 迷你播放器 dock。精选页下滑后迷你播放器留在上面，
-    /// 底行变成「当前页小球 + 向左拉长的搜索条」。
+    /// 胶囊底栏 + 迷你播放器 dock（仅旧系统走这里；iOS 26 用系统底栏）。
     @ViewBuilder
     private var legacyBottomBar: some View {
-        if exploreUsesCustomBar {
-            VStack(spacing: 8) {
-                if player.hasCurrentTrack {
-                    IOSMiniPlayerBar(presentation: .legacyOverlay)
-                        .nowPlayingTransitionSource(in: nowPlayingTransition)
-                        .padding(.horizontal, 12)
-                }
-                if exploreSearchCollapsed {
-                    HStack(spacing: 10) {
-                        collapsedTabBall
-                        stretchedSearchBar
-                    }
-                    .frame(maxWidth: 560)
-                    .padding(.horizontal, 18)
-                } else {
-                    HStack(spacing: 10) {
-                        GlassTabBar(items: barItems, selection: $selectedTab) { tab in
-                            popToRoot(tab)
-                        }
-                        searchBall(size: 52)
-                            .padding(.trailing, 12)
-                    }
-                }
-            }
-            .padding(.bottom, 6)
-        } else if isBarCollapsed {
+        if isBarCollapsed {
             HStack(spacing: 10) {
                 collapsedTabBall
 
@@ -494,42 +445,14 @@ public struct IOSMainWindow: View {
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 52, height: 52)
-                .background { Circle().fill(Theme.accent.opacity(0.20)) }
                 .compatGlass(interactive: true, in: Circle())
                 .clipShape(Circle())
                 .compositingGroup()
-                .overlay { Circle().strokeBorder(Theme.accent.opacity(0.35), lineWidth: 0.5) }
+                .overlay { Circle().strokeBorder(.white.opacity(0.16), lineWidth: 0.5) }
                 .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(currentTabTitle)
-    }
-
-    /// 精选页下滑后，搜索小球向左拉长，占住原来迷你播放器和小球那一行。
-    private var stretchedSearchBar: some View {
-        Button {
-            Haptics.tap()
-            showSearch = true
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
-                Text("搜索歌曲、歌单")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.primary.opacity(0.72))
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .compatGlass(interactive: true, in: Capsule())
-            .contentShape(Capsule())
-            .overlay { Capsule().strokeBorder(Theme.accent.opacity(0.22), lineWidth: 0.5) }
-            .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("搜索歌曲和歌单")
     }
 
     /// 独立悬浮搜索小球（与胶囊底栏分离）
@@ -544,7 +467,7 @@ public struct IOSMainWindow: View {
                 .frame(width: size, height: size)
                 .compatGlass(interactive: true, in: Circle())
                 .contentShape(Circle())
-                .overlay { Circle().strokeBorder(Theme.accent.opacity(0.22), lineWidth: 0.5) }
+                .overlay { Circle().strokeBorder(.white.opacity(0.16), lineWidth: 0.5) }
                 .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
