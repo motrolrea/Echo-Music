@@ -15,6 +15,41 @@ enum NeteaseAPI {
         try await client.weapi(path, payload)
     }
 
+    /// `/user/detail` via the plain API keeps follow counts. The encrypted route
+    /// has returned a profile without follows / fans for this client.
+    private static func userDetailData(uid: Int) async -> Data? {
+        let query = "uid=\(uid)"
+        if let data = try? await client.authedGet("/user/detail?\(query)"),
+           hasFollowCounts(data) {
+            return data
+        }
+        if let data = try? await client.publicGet("/user/detail?\(query)"),
+           hasFollowCounts(data) {
+            return data
+        }
+        if let data = try? await client.publicGet("/v1/user/detail/\(uid)"),
+           hasFollowCounts(data) {
+            return data
+        }
+        if let data = try? await client.weapi("/user/detail", ["uid": uid]),
+           hasFollowCounts(data) {
+            return data
+        }
+        return (try? await client.eapi("/user/detail", ["uid": uid]))
+            ?? (try? await client.weapi("/user/detail", ["uid": uid]))
+            ?? (try? await client.publicGet("/user/detail?\(query)"))
+    }
+
+    private static func hasFollowCounts(_ data: Data) -> Bool {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return false
+        }
+        let profile = (root["profile"] as? [String: Any]) ?? root
+        let follows = intValue(profile["follows"]) ?? intValue(profile["followCount"]) ?? intValue(root["follows"]) ?? 0
+        let fans = intValue(profile["followeds"]) ?? intValue(profile["fans"]) ?? intValue(root["followeds"]) ?? 0
+        return follows > 0 || fans > 0
+    }
+
     private static func eapi<T: Decodable>(
         _ type: T.Type, _ path: String, _ payload: [String: Any] = [:]
     ) async throws -> T {
@@ -117,7 +152,7 @@ enum NeteaseAPI {
         }
         // The account endpoint often omits level, follows and listen counts.
         // `/user/detail` carries them; keep the account profile if it fails.
-        let detail = try? await weapiData("/user/detail", ["uid": profile.userId])
+        let detail = await userDetailData(uid: profile.userId)
         return mergeUserDetail(detail, into: profile)
     }
 
@@ -128,7 +163,7 @@ enum NeteaseAPI {
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return account
         }
-        let profile = root["profile"] as? [String: Any]
+        let profile = (root["profile"] as? [String: Any]) ?? root
         return account.mergingDetail(
             level: intValue(root["level"]) ?? intValue(profile?["level"]) ?? 0,
             listenSongs: intValue(root["listenSongs"]) ?? intValue(profile?["listenSongs"]) ?? 0,

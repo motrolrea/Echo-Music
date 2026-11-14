@@ -197,6 +197,18 @@ final class NeteaseClient: @unchecked Sendable {
         return try await perform(request)
     }
 
+    /// Same plain API, but with the signed-in cookie. Profile counts such as
+    /// follows and fans are omitted when the request is anonymous.
+    func authedGet(_ path: String) async throws -> Data {
+        let url = URL(string: "https://music.163.com/api\(path)")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("https://music.163.com", forHTTPHeaderField: "Referer")
+        request.setValue(cookieHeader(extra: Self.baseCookies), forHTTPHeaderField: "Cookie")
+        return try await perform(request)
+    }
+
     private func perform(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw NeteaseAPIError.http(-1) }

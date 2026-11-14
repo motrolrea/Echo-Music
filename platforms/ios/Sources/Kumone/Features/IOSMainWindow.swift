@@ -327,10 +327,9 @@ public struct IOSMainWindow: View {
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
-                isActive: player.hasCurrentTrack || (selectedTab == .explore && isBarCollapsed && !bilibiliChrome),
+                isActive: player.hasCurrentTrack,
                 transitionNamespace: nowPlayingTransition,
-                colorScheme: resolvedColorScheme,
-                exploreSearch: selectedTab == .explore && isBarCollapsed && !bilibiliChrome
+                colorScheme: resolvedColorScheme
             ))
             .animation(AppAnimation.standard, value: player.hasCurrentTrack)
     }
@@ -372,10 +371,17 @@ public struct IOSMainWindow: View {
                 tabStack(.profile) { MyProfileView() }
             }
 
-            // 独立搜索小球：role: .search 让 iOS 26 把搜索渲染成底栏右侧的独立圆钮，
-            // 点中时由 tabInterface 的 onChange 拉起全屏搜索。
-            Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
-                Color.clear
+            // 独立搜索小球。精选页下滑后，圆钮向左拉成搜索条；迷你播放器仍在上面展开。
+            if selectedTab == .explore, isBarCollapsed, !bilibiliChrome {
+                Tab(value: .search, role: .search) {
+                    Color.clear
+                } label: {
+                    Label("搜索歌曲、歌单", systemImage: "magnifyingglass")
+                }
+            } else {
+                Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
+                    Color.clear
+                }
             }
         }
         .toolbarBackground(.hidden, for: .tabBar)
@@ -733,51 +739,15 @@ private struct MiniPlayerAccessoryModifier: ViewModifier {
     let isActive: Bool
     let transitionNamespace: Namespace.ID
     let colorScheme: ColorScheme
-    var exploreSearch = false
-
     @ViewBuilder
     func body(content: Content) -> some View {
         if isActive {
             content.tabViewBottomAccessory {
-                if exploreSearch {
-                    ExploreCollapsedSearchAccessory()
-                        .environment(\.colorScheme, colorScheme)
-                } else {
-                    IOSMiniPlayerAccessory(transitionNamespace: transitionNamespace)
-                        .environment(\.colorScheme, colorScheme)
-                }
+                IOSMiniPlayerAccessory(transitionNamespace: transitionNamespace)
+                    .environment(\.colorScheme, colorScheme)
             }
         } else {
             content
-        }
-    }
-}
-
-/// iOS 26 精选页下滑后，底栏上方那条留给搜索，不再收成迷你播放器。
-private struct ExploreCollapsedSearchAccessory: View {
-    @State private var showSearch = false
-
-    var body: some View {
-        Button {
-            Haptics.tap()
-            showSearch = true
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 16, weight: .semibold))
-                Text("搜索歌曲、歌单")
-                    .font(.system(size: 16))
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(.primary.opacity(0.78))
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("搜索歌曲和歌单")
-        .fullScreenCover(isPresented: $showSearch) {
-            NavigationStack { SearchView(query: "") }
         }
     }
 }

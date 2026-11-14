@@ -138,17 +138,6 @@ final class AccountStore: ObservableObject {
             return
         }
         let now = Date()
-        if !force,
-           let last = lastPlaylistSyncAt,
-           now.timeIntervalSince(last) < 20 {
-            // Playlist metadata is throttled, but the recent-play list is the
-            // user's listening history and should still refresh when the
-            // account/profile page is reopened.
-            if let uid = profile?.userId {
-                await ListeningSyncStore.shared.refreshRemoteRecords(uid: uid)
-            }
-            return
-        }
         if profile == nil {
             await bootstrap()
             return

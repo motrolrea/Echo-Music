@@ -171,13 +171,15 @@ struct VIPBadge: View {
     }
 }
 
-/// Membership mark on a platform profile. Song VIP badges stay the plain outline.
+/// Styled membership title, such as 黑胶 VIP / 黑胶 SVIP. Song badges stay plain.
 struct PlatformMembershipBadge: View {
+    var title: String = "VIP"
+
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: "crown.fill")
                 .font(.system(size: 8, weight: .bold))
-            Text("至尊会员")
+            Text(title)
                 .font(.system(size: 10, weight: .heavy))
         }
         .foregroundStyle(

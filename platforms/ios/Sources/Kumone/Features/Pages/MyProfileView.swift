@@ -687,7 +687,7 @@ struct MyProfileView: View {
                             }
                             HStack(spacing: 6) {
                                 if account.profile?.hasActiveVIP == true {
-                                    PlatformMembershipBadge()
+                                    PlatformMembershipBadge(title: account.vipLabel ?? "黑胶 VIP")
                                 }
                                 Text(account.isLoggedIn ? (account.vipLabel ?? "非会员") : "登录后同步歌单和收藏")
                                     .font(.caption)
@@ -768,7 +768,7 @@ struct MyProfileView: View {
                         Text(loggedIn ? (name ?? title) : "未登录\(title)")
                             .font(.headline)
                             .lineLimit(1)
-                        if loggedIn, vip { PlatformMembershipBadge() }
+                        if loggedIn, vip { PlatformMembershipBadge(title: "豪华绿钻") }
                     }
                     Text(loggedIn ? (vip ? "会员" : "非会员") : "登录后同步这个平台的歌单")
                         .font(.caption)
@@ -810,8 +810,8 @@ struct MyProfileView: View {
                             Text(bilibili.isLoggedIn ? (bilibili.profileName ?? "哔哩哔哩") : "未登录哔哩哔哩")
                                 .font(.headline)
                                 .lineLimit(1)
-                            if bilibili.isLoggedIn, bilibili.membershipTitle != nil {
-                                PlatformMembershipBadge()
+                            if bilibili.isLoggedIn, let title = bilibili.membershipTitle {
+                                PlatformMembershipBadge(title: title)
                             }
                             if bilibili.isLoggedIn, bilibili.level > 0 {
                                 Text("Lv.\(bilibili.level)")
@@ -1171,13 +1171,14 @@ private struct ListeningReportView: View {
                 }
                 .padding(.vertical, 8)
 
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(spacing: 14) {
                     Text("近 7 天")
                         .font(.headline.weight(.semibold))
-                    HStack(alignment: .bottom, spacing: 8) {
+                        .frame(maxWidth: .infinity)
+                    HStack(alignment: .bottom, spacing: 10) {
                         ForEach(Array(week.enumerated()), id: \.offset) { index, day in
                             let selected = selectedDay == index
-                            VStack(spacing: 6) {
+                            VStack(spacing: 8) {
                                 Text(selected ? durationText(day.minutes) : " ")
                                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                                     .foregroundStyle(Theme.accent)
@@ -1185,9 +1186,10 @@ private struct ListeningReportView: View {
                                     .multilineTextAlignment(.center)
                                     .minimumScaleFactor(0.7)
                                     .frame(height: 28)
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(Theme.accent.opacity(day.minutes > 0 ? (selected ? 1 : 0.72) : 0.18))
-                                    .frame(height: barHeight(day.minutes))
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(Theme.accent.opacity(day.minutes > 0 ? (selected ? 1 : 0.9) : 0.16))
+                                    .frame(width: 22, height: barHeight(day.minutes))
+                                    .frame(maxWidth: .infinity)
                                 Text(day.label)
                                     .font(.caption2.weight(selected ? .bold : .regular))
                                     .foregroundStyle(selected ? Theme.accent : .secondary)
