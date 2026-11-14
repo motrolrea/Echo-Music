@@ -90,7 +90,8 @@ enum WidgetPlaybackBridge {
     private static func reload() {
         #if os(iOS)
         DispatchQueue.main.async {
-            WidgetCenter.shared.reloadAllTimelines()
+            WidgetCenter.shared.reloadTimelines(ofKind: "EchoNowPlaying")
+            WidgetCenter.shared.reloadTimelines(ofKind: "EchoOpenPlayer")
         }
         #endif
     }

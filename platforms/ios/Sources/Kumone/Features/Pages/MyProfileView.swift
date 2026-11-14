@@ -688,10 +688,11 @@ struct MyProfileView: View {
                             HStack(spacing: 6) {
                                 if account.profile?.hasActiveVIP == true {
                                     PlatformMembershipBadge(title: account.vipLabel ?? "黑胶 VIP")
+                                } else {
+                                    Text(account.isLoggedIn ? (account.vipLabel ?? "非会员") : "登录后同步歌单和收藏")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
-                                Text(account.isLoggedIn ? (account.vipLabel ?? "非会员") : "登录后同步歌单和收藏")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
                             }
                             if let uid = account.profile?.userId {
                                 Text("uid \(uid)")
@@ -720,10 +721,7 @@ struct MyProfileView: View {
                         listens: account.profile?.listenSongs ?? 0,
                         follows: account.profile?.follows ?? 0,
                         fans: account.profile?.followeds ?? 0
-                    ) + [
-                        ProfileStat(title: "专辑", value: "\(account.likedAlbums.count)"),
-                        ProfileStat(title: "歌手", value: "\(account.likedArtists.count)")
-                    ])
+                    ))
                 }
             }
             if account.isLoggedIn {
@@ -822,9 +820,15 @@ struct MyProfileView: View {
                                     .background(Theme.accent.opacity(0.14), in: Capsule())
                             }
                         }
-                        Text(bilibili.isLoggedIn ? (bilibili.membershipTitle ?? "非会员") : "登录后同步账号资料")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if !bilibili.isLoggedIn {
+                            Text("登录后同步账号资料")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if bilibili.membershipTitle == nil {
+                            Text("非会员")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     Spacer()
                     Button {
@@ -842,6 +846,33 @@ struct MyProfileView: View {
                         follows: bilibili.following, fans: bilibili.fans
                     ))
                 }
+            }
+            if bilibili.isLoggedIn {
+                NavigationLink {
+                    BilibiliContentView(locked: .account)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.text.rectangle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("账号内容")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("动态、私信、观看记录和收藏")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .mouMaterialBackground(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                }
+                .buttonStyle(.plain)
             }
             BilibiliCloudPlaylistsCard()
         }
@@ -1152,46 +1183,43 @@ private struct ListeningReportView: View {
                 .padding(.vertical, 22)
 
                 HStack(spacing: 0) {
-                    reportMetric("累计", minutesText(totalMinutes))
-                    reportDivider
                     reportMetric("播放", "\(stats.totalPlayCount) 首")
                     reportDivider
                     reportMetric("连续", "\(stats.streakDays) 天")
+                    reportDivider
+                    reportMetric("今日", minutesText(todayMinutes))
                 }
                 .padding(.vertical, 8)
 
                 Divider().padding(.horizontal, 16)
 
                 HStack(spacing: 0) {
-                    reportMetric("今日", durationText(todayMinutes))
+                    reportMetric("近 7 天", minutesText(weekMinutes))
                     reportDivider
-                    reportMetric("本周", durationText(weekMinutes))
+                    reportMetric("日均", minutesText(averageMinutes))
                     reportDivider
-                    reportMetric("最久一天", durationText(peakMinutes))
+                    reportMetric("最久一天", minutesText(peakMinutes))
                 }
                 .padding(.vertical, 8)
 
-                VStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 14) {
                     Text("近 7 天")
                         .font(.headline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                    HStack(alignment: .bottom, spacing: 10) {
+                    HStack(alignment: .bottom, spacing: 8) {
                         ForEach(Array(week.enumerated()), id: \.offset) { index, day in
                             let selected = selectedDay == index
-                            VStack(spacing: 8) {
+                            VStack(spacing: 6) {
                                 Text(selected ? durationText(day.minutes) : " ")
                                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                                     .foregroundStyle(Theme.accent)
-                                    .lineLimit(2)
-                                    .multilineTextAlignment(.center)
-                                    .minimumScaleFactor(0.7)
-                                    .frame(height: 28)
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(Theme.accent.opacity(day.minutes > 0 ? (selected ? 1 : 0.9) : 0.16))
-                                    .frame(width: 22, height: barHeight(day.minutes))
-                                    .frame(maxWidth: .infinity)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.6)
+                                    .frame(height: 20)
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .fill(Theme.accent.opacity(day.minutes > 0 ? 1 : 0.18))
+                                    .frame(height: barHeight(day.minutes))
                                 Text(day.label)
-                                    .font(.caption2.weight(selected ? .bold : .regular))
+                                    .font(.caption2)
                                     .foregroundStyle(selected ? Theme.accent : .secondary)
                             }
                             .frame(maxWidth: .infinity)
@@ -1205,7 +1233,7 @@ private struct ListeningReportView: View {
                             .accessibilityAddTraits(.isButton)
                         }
                     }
-                    .frame(height: 156, alignment: .bottom)
+                    .frame(height: 140, alignment: .bottom)
                 }
                 .padding(16)
             }
@@ -1236,7 +1264,7 @@ private struct ListeningReportView: View {
     private var week: [(label: String, minutes: Double)] { stats.lastSevenDays() }
     private var weekMinutes: Double { week.reduce(0) { $0 + $1.minutes } }
     private var todayMinutes: Double { week.last?.minutes ?? 0 }
-    private var totalMinutes: Double { Double(stats.totalSeconds) / 60 }
+    private var averageMinutes: Double { week.isEmpty ? 0 : weekMinutes / Double(week.count) }
     private var peakMinutes: Double { week.map(\.minutes).max() ?? 0 }
 
     private func barHeight(_ minutes: Double) -> CGFloat {

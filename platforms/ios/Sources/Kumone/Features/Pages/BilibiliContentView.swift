@@ -200,7 +200,7 @@ struct BilibiliContentView: View {
     }
 
     enum LockedSurface {
-        case videos, live, dynamic
+        case videos, live, dynamic, account
     }
 
     @EnvironmentObject private var bilibili: BilibiliSessionStore
@@ -248,6 +248,7 @@ struct BilibiliContentView: View {
             case .videos: initial = .videos
             case .live: initial = .live
             case .dynamic: initial = .dynamic
+            case .account: initial = .account
             }
             _surface = State(initialValue: initial)
         }
@@ -306,16 +307,6 @@ struct BilibiliContentView: View {
                     }
                     .accessibilityLabel("最近播放")
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showBilibiliAccount = true
-                    } label: {
-                        bilibiliAvatarButton
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("哔哩哔哩账号")
-                }
-                .echoCircleItem()
             }
             if locked == nil && !embedded {
             ToolbarItem(placement: .topBarLeading) {

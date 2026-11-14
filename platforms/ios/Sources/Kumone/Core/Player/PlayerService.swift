@@ -630,6 +630,18 @@ final class PlayerService: ObservableObject {
         }
         EchoWidgetCommands.start()
 
+        // Republish on every foreground: a home-screen widget added later (or
+        // one whose extension missed earlier reloads) then picks up the track
+        // that is already loaded instead of staying on the empty placeholder.
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.currentTrack != nil else { return }
+                self.publishWidgetSnapshot()
+            }
+        }
+
         // Resume after interruptions (phone calls, WeChat voice messages, …).
         NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,

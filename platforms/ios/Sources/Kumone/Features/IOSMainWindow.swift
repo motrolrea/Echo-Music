@@ -322,16 +322,30 @@ public struct IOSMainWindow: View {
     /// apply it conditionally.
     @available(iOS 26.0, *)
     private var iOS26TabInterface: some View {
-        iOS26TabView
-            .tabBarMinimizeBehavior(tabBarMinimizes ? .onScrollDown : .never)
-            // Keep one TabView identity while the accessory appears/disappears.
-            // This preserves the iOS 26 matched-transition zoom anchor.
-            .modifier(MiniPlayerAccessoryModifier(
-                isActive: player.hasCurrentTrack,
-                transitionNamespace: nowPlayingTransition,
-                colorScheme: resolvedColorScheme
-            ))
-            .animation(AppAnimation.standard, value: player.hasCurrentTrack)
+        ZStack(alignment: .bottom) {
+            iOS26TabView
+                .tabBarMinimizeBehavior(tabBarMinimizes ? .onScrollDown : .never)
+                // Keep one TabView identity while the accessory appears/disappears.
+                // This preserves the iOS 26 matched-transition zoom anchor.
+                .modifier(MiniPlayerAccessoryModifier(
+                    isActive: player.hasCurrentTrack && !exploreSearchCollapsed,
+                    transitionNamespace: nowPlayingTransition,
+                    colorScheme: resolvedColorScheme
+                ))
+                .animation(AppAnimation.standard, value: player.hasCurrentTrack)
+
+            if exploreSearchCollapsed {
+                legacyBottomBar
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.24), value: exploreSearchCollapsed)
+    }
+
+    /// 精选页下滑后，底栏换成「当前页小球 + 拉长搜索」，迷你播放器留在上面。
+    /// 与顶栏搜索的渐隐共用同一个折叠状态，保证两者始终同步。
+    private var exploreSearchCollapsed: Bool {
+        selectedTab == .explore && bottomCollapse.isCollapsed && !bilibiliChrome
     }
 
     @available(iOS 26.0, *)
@@ -355,6 +369,8 @@ public struct IOSMainWindow: View {
                         ExploreView()
                     }
                 }
+                // 系统底栏形状固定，精选下滑后改用自定义底栏绘制拉长的搜索条。
+                .toolbar(exploreSearchCollapsed ? .hidden : .visible, for: .tabBar)
             }
 
             Tab(bilibiliChrome ? "动态" : "歌单", systemImage: bilibiliChrome ? "bolt.horizontal.circle" : "music.note.list", value: .playlists) {
@@ -371,17 +387,9 @@ public struct IOSMainWindow: View {
                 tabStack(.profile) { MyProfileView() }
             }
 
-            // 独立搜索小球。精选页下滑后，圆钮向左拉成搜索条；迷你播放器仍在上面展开。
-            if selectedTab == .explore, isBarCollapsed, !bilibiliChrome {
-                Tab(value: .search, role: .search) {
-                    Color.clear
-                } label: {
-                    Label("搜索歌曲、歌单", systemImage: "magnifyingglass")
-                }
-            } else {
-                Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
-                    Color.clear
-                }
+            // 独立搜索小球。精选页下滑后由自定义底栏接管搜索条。
+            Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
+                Color.clear
             }
         }
         .toolbarBackground(.hidden, for: .tabBar)
@@ -406,7 +414,7 @@ public struct IOSMainWindow: View {
     /// 底行变成「当前页小球 + 向左拉长的搜索条」。
     @ViewBuilder
     private var legacyBottomBar: some View {
-        if isBarCollapsed, selectedTab == .explore, !bilibiliChrome {
+        if exploreSearchCollapsed {
             VStack(spacing: 8) {
                 if player.hasCurrentTrack {
                     IOSMiniPlayerBar(presentation: .legacyOverlay)
