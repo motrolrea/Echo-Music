@@ -35,9 +35,13 @@ enum NeteaseAPI {
            hasFollowCounts(data) {
             return data
         }
-        return (try? await client.eapi("/user/detail", ["uid": uid]))
-            ?? (try? await client.weapi("/user/detail", ["uid": uid]))
-            ?? (try? await client.publicGet("/user/detail?\(query)"))
+        if let data = try? await client.eapi("/user/detail", ["uid": uid]) {
+            return data
+        }
+        if let data = try? await client.weapi("/user/detail", ["uid": uid]) {
+            return data
+        }
+        return try? await client.publicGet("/user/detail?\(query)")
     }
 
     private static func hasFollowCounts(_ data: Data) -> Bool {
@@ -165,10 +169,10 @@ enum NeteaseAPI {
         }
         let profile = (root["profile"] as? [String: Any]) ?? root
         return account.mergingDetail(
-            level: intValue(root["level"]) ?? intValue(profile?["level"]) ?? 0,
-            listenSongs: intValue(root["listenSongs"]) ?? intValue(profile?["listenSongs"]) ?? 0,
-            follows: intValue(profile?["follows"]) ?? intValue(profile?["followCount"]) ?? intValue(root["follows"]) ?? 0,
-            followeds: intValue(profile?["followeds"]) ?? intValue(profile?["fans"]) ?? intValue(root["followeds"]) ?? 0
+            level: intValue(root["level"]) ?? intValue(profile["level"]) ?? 0,
+            listenSongs: intValue(root["listenSongs"]) ?? intValue(profile["listenSongs"]) ?? 0,
+            follows: intValue(profile["follows"]) ?? intValue(profile["followCount"]) ?? intValue(root["follows"]) ?? 0,
+            followeds: intValue(profile["followeds"]) ?? intValue(profile["fans"]) ?? intValue(root["followeds"]) ?? 0
         )
     }
 
