@@ -224,8 +224,11 @@ struct RecordShelfView: UIViewRepresentable {
                 targetScroll = dragStart - delta / dragStep
                 clampScroll()
             case .ended, .cancelled:
-                let predicted = gesture.predictedEndTranslation(in: view).x
-                targetScroll = dragStart - predicted / (dragStep * 1.8)
+                let translation = gesture.translation(in: view).x
+                let velocity = gesture.velocity(in: view).x
+                // 甩动最多再带 2.5 张，避免一下滑太远。
+                let fling = min(max(velocity / 700, -2.5), 2.5)
+                targetScroll = dragStart - translation / dragStep - fling
                 targetScroll = targetScroll.rounded()
                 clampScroll()
             default:
