@@ -1,5 +1,8 @@
 import AVFoundation
 import Foundation
+#if os(iOS)
+import UIKit
+#endif
 
 enum RepeatMode: String, CaseIterable {
     case off, all, one
