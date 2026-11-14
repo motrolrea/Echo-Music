@@ -62,7 +62,15 @@ struct NowPlayingView: View {
                 backdrop
 
                 if phoneLandscape {
+                    #if os(iOS)
+                    if settings.nowPlayingMode == .shelf {
+                        shelfLandscapeLayout(size: geo.size)
+                    } else {
+                        phoneLandscapeLayout(size: geo.size)
+                    }
+                    #else
                     phoneLandscapeLayout(size: geo.size)
+                    #endif
                 } else if isCompact {
                     compactLayout(size: geo.size)
                 } else {
@@ -427,6 +435,8 @@ struct NowPlayingView: View {
             amllCompactLayout(size: size)
         case .vinyl:
             vinylCompactLayout(size: size)
+        case .shelf:
+            shelfCompactLayout(size: size)
         }
         #else
         classicCompactLayout(size: size)
@@ -528,6 +538,49 @@ struct NowPlayingView: View {
         }
         .padding(.horizontal, 16)
     }
+
+    #if os(iOS)
+    private func shelfLandscapeLayout(size: CGSize) -> some View {
+        VStack(spacing: 8) {
+            landscapeTrackHeader
+                .frame(height: 44, alignment: .leading)
+            RecordShelfView(
+                tracks: player.activeQueue,
+                currentIndex: player.currentIndex,
+                currentArtwork: artworkImage,
+                onSelect: player.playQueueIndex
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: 2) {
+                NowPlayingScrubber(onShowQuality: { activeSheet = .quality })
+                CompactTransportControls()
+            }
+            .frame(height: 78)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+    }
+
+    private func shelfCompactLayout(size: CGSize) -> some View {
+        VStack(spacing: 12) {
+            compactTrackMetaView
+                .padding(.top, compactTitleTopPadding)
+                .padding(.trailing, 56)
+            RecordShelfView(
+                tracks: player.activeQueue,
+                currentIndex: player.currentIndex,
+                currentArtwork: artworkImage,
+                onSelect: player.playQueueIndex
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            NowPlayingScrubber(onShowQuality: { activeSheet = .quality })
+                .padding(.horizontal, 16)
+            CompactTransportControls()
+                .padding(.bottom, 12)
+        }
+        .padding(.horizontal, 12)
+    }
+    #endif
 
     private func vinylCompactLayout(size: CGSize) -> some View {
         let artworkDim = min(size.width - 72, size.height * 0.43, 310)

@@ -228,7 +228,7 @@ struct SettingsView: View {
                         Text(mode.displayName).tag(mode)
                     }
                 }
-                Text("选择播放页的布局风格；沉浸、经典、简洁、歌词和唱片模式互不覆盖。")
+                Text("选择播放页的布局风格；沉浸、经典、简洁、歌词、唱片和唱片架互不覆盖。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("锁屏沉浸封面", isOn: $settings.lockScreenImmersiveArtwork)

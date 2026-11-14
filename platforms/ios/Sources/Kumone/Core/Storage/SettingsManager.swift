@@ -338,6 +338,7 @@ enum NowPlayingMode: String, CaseIterable, Identifiable {
     case lyrics
     case amll
     case vinyl
+    case shelf
 
     var id: String { rawValue }
 
@@ -353,6 +354,7 @@ enum NowPlayingMode: String, CaseIterable, Identifiable {
         case .minimal: return String(localized: "简洁模式")
         case .lyrics, .amll: return String(localized: "Apple Music / AMLL")
         case .vinyl: return String(localized: "唱片模式")
+        case .shelf: return String(localized: "唱片架")
         }
     }
 }
