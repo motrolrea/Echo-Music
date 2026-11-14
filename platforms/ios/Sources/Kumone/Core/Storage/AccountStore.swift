@@ -154,6 +154,9 @@ final class AccountStore: ObservableObject {
             return
         }
         refreshCookieIfNeeded()
+        if let refreshed = try? await NeteaseAPI.userAccount() {
+            profile = refreshed
+        }
         await refreshLibrary()
         if let uid = profile?.userId {
             await ListeningSyncStore.shared.refreshRemoteRecords(uid: uid)

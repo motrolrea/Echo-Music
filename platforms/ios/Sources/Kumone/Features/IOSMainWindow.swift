@@ -327,9 +327,10 @@ public struct IOSMainWindow: View {
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
-                isActive: player.hasCurrentTrack,
+                isActive: player.hasCurrentTrack || (selectedTab == .explore && isBarCollapsed && !bilibiliChrome),
                 transitionNamespace: nowPlayingTransition,
-                colorScheme: resolvedColorScheme
+                colorScheme: resolvedColorScheme,
+                exploreSearch: selectedTab == .explore && isBarCollapsed && !bilibiliChrome
             ))
             .animation(AppAnimation.standard, value: player.hasCurrentTrack)
     }
@@ -732,16 +733,51 @@ private struct MiniPlayerAccessoryModifier: ViewModifier {
     let isActive: Bool
     let transitionNamespace: Namespace.ID
     let colorScheme: ColorScheme
+    var exploreSearch = false
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if isActive {
             content.tabViewBottomAccessory {
-                IOSMiniPlayerAccessory(transitionNamespace: transitionNamespace)
-                    .environment(\.colorScheme, colorScheme)
+                if exploreSearch {
+                    ExploreCollapsedSearchAccessory()
+                        .environment(\.colorScheme, colorScheme)
+                } else {
+                    IOSMiniPlayerAccessory(transitionNamespace: transitionNamespace)
+                        .environment(\.colorScheme, colorScheme)
+                }
             }
         } else {
             content
+        }
+    }
+}
+
+/// iOS 26 精选页下滑后，底栏上方那条留给搜索，不再收成迷你播放器。
+private struct ExploreCollapsedSearchAccessory: View {
+    @State private var showSearch = false
+
+    var body: some View {
+        Button {
+            Haptics.tap()
+            showSearch = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("搜索歌曲、歌单")
+                    .font(.system(size: 16))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.primary.opacity(0.78))
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("搜索歌曲和歌单")
+        .fullScreenCover(isPresented: $showSearch) {
+            NavigationStack { SearchView() }
         }
     }
 }

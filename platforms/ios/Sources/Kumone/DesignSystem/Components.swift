@@ -159,42 +159,68 @@ struct PlayCountBadge: View {
 struct VIPBadge: View {
     var body: some View {
         Text("VIP")
-            .font(.system(size: 8, weight: .heavy))
-            .foregroundStyle(
+            .font(.system(size: 8.5, weight: .bold))
+            .foregroundStyle(Theme.accent)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .overlay(
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .stroke(Theme.accent.opacity(0.8), lineWidth: 1)
+            )
+            .fixedSize()
+    }
+}
+
+/// Membership mark on a platform profile. Song VIP badges stay the plain outline.
+struct PlatformMembershipBadge: View {
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "crown.fill")
+                .font(.system(size: 8, weight: .bold))
+            Text("至尊会员")
+                .font(.system(size: 10, weight: .heavy))
+        }
+        .foregroundStyle(
+            LinearGradient(
+                colors: [Color(red: 0.28, green: 0.14, blue: 0.02), Color(red: 0.55, green: 0.28, blue: 0.04)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background {
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 1.0, green: 0.96, blue: 0.78),
+                            Color(red: 0.96, green: 0.78, blue: 0.34),
+                            Color(red: 0.78, green: 0.52, blue: 0.14)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(alignment: .top) {
+                    Capsule()
+                        .fill(.white.opacity(0.55))
+                        .frame(height: 6)
+                        .offset(y: 1)
+                }
+        }
+        .overlay {
+            Capsule().strokeBorder(
                 LinearGradient(
-                    colors: [Color(red: 0.42, green: 0.24, blue: 0.02), Color(red: 0.22, green: 0.12, blue: 0.01)],
+                    colors: [.white.opacity(0.9), Color(red: 0.55, green: 0.32, blue: 0.05).opacity(0.7)],
                     startPoint: .top,
                     endPoint: .bottom
-                )
+                ),
+                lineWidth: 0.8
             )
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1.5)
-            .background {
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(red: 1.0, green: 0.93, blue: 0.62),
-                                Color(red: 0.93, green: 0.72, blue: 0.28),
-                                Color(red: 0.72, green: 0.48, blue: 0.12)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .overlay(alignment: .top) {
-                        Capsule()
-                            .fill(.white.opacity(0.38))
-                            .frame(height: 5)
-                            .blur(radius: 0.4)
-                            .offset(y: 0.5)
-                    }
-            }
-            .overlay {
-                Capsule().strokeBorder(.white.opacity(0.55), lineWidth: 0.6)
-            }
-            .shadow(color: Color(red: 0.72, green: 0.48, blue: 0.12).opacity(0.35), radius: 1.5, y: 0.5)
-            .fixedSize()
+        }
+        .shadow(color: Color(red: 0.72, green: 0.45, blue: 0.08).opacity(0.45), radius: 3, y: 1)
+        .fixedSize()
     }
 }
 

@@ -687,7 +687,7 @@ struct MyProfileView: View {
                             }
                             HStack(spacing: 6) {
                                 if account.profile?.hasActiveVIP == true {
-                                    VIPBadge()
+                                    PlatformMembershipBadge()
                                 }
                                 Text(account.isLoggedIn ? (account.vipLabel ?? "非会员") : "登录后同步歌单和收藏")
                                     .font(.caption)
@@ -768,7 +768,7 @@ struct MyProfileView: View {
                         Text(loggedIn ? (name ?? title) : "未登录\(title)")
                             .font(.headline)
                             .lineLimit(1)
-                        if loggedIn, vip { VIPBadge() }
+                        if loggedIn, vip { PlatformMembershipBadge() }
                     }
                     Text(loggedIn ? (vip ? "会员" : "非会员") : "登录后同步这个平台的歌单")
                         .font(.caption)
@@ -811,7 +811,7 @@ struct MyProfileView: View {
                                 .font(.headline)
                                 .lineLimit(1)
                             if bilibili.isLoggedIn, bilibili.membershipTitle != nil {
-                                VIPBadge()
+                                PlatformMembershipBadge()
                             }
                             if bilibili.isLoggedIn, bilibili.level > 0 {
                                 Text("Lv.\(bilibili.level)")
@@ -1152,22 +1152,22 @@ private struct ListeningReportView: View {
                 .padding(.vertical, 22)
 
                 HStack(spacing: 0) {
-                    reportMetric("播放", "\(stats.totalPlayCount)")
+                    reportMetric("累计", minutesText(totalMinutes))
+                    reportDivider
+                    reportMetric("播放", "\(stats.totalPlayCount) 首")
                     reportDivider
                     reportMetric("连续", "\(stats.streakDays) 天")
-                    reportDivider
-                    reportMetric("今日", minutesText(todayMinutes))
                 }
                 .padding(.vertical, 8)
 
                 Divider().padding(.horizontal, 16)
 
                 HStack(spacing: 0) {
-                    reportMetric("近 7 天", minutesText(weekMinutes))
+                    reportMetric("今日", durationText(todayMinutes))
                     reportDivider
-                    reportMetric("日均", minutesText(averageMinutes))
+                    reportMetric("本周", durationText(weekMinutes))
                     reportDivider
-                    reportMetric("听歌天数", "\(listeningDays)")
+                    reportMetric("最久一天", durationText(peakMinutes))
                 }
                 .padding(.vertical, 8)
 
@@ -1232,11 +1232,10 @@ private struct ListeningReportView: View {
     }
 
     private var week: [(label: String, minutes: Double)] { stats.lastSevenDays() }
-    /// Days in the last week that actually have listening time.
-    private var listeningDays: Int { week.filter { $0.minutes > 0 }.count }
     private var weekMinutes: Double { week.reduce(0) { $0 + $1.minutes } }
     private var todayMinutes: Double { week.last?.minutes ?? 0 }
-    private var averageMinutes: Double { week.isEmpty ? 0 : weekMinutes / Double(week.count) }
+    private var totalMinutes: Double { Double(stats.totalSeconds) / 60 }
+    private var peakMinutes: Double { week.map(\.minutes).max() ?? 0 }
 
     private func barHeight(_ minutes: Double) -> CGFloat {
         let peak = max(week.map(\.minutes).max() ?? 0, 1)

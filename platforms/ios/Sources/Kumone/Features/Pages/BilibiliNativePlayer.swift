@@ -687,6 +687,7 @@ final class BiliPlayerLayerUIView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         playerLayer.frame = bounds
+        playerLayer.zPosition = 0
     }
 }
 
@@ -708,8 +709,10 @@ struct BiliPlayerLayerView: UIViewRepresentable {
     func makeUIView(context: Context) -> BiliPlayerLayerUIView {
         let view = BiliPlayerLayerUIView()
         view.backgroundColor = .black
+        view.isOpaque = true
         view.playerLayer.player = model.player
         view.playerLayer.videoGravity = .resizeAspect
+        view.playerLayer.zPosition = 0
         model.register(layer: view.playerLayer, fullscreen: isFullscreen)
         return view
     }
@@ -856,7 +859,9 @@ struct BiliNativePlayer: View {
             if showDanmaku, !audioOnly {
                 danmakuCanvas
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .allowsHitTesting(false)
                     .id(model.danmakuRefreshToken)
+                    .zIndex(20)
             }
             if let text = currentSubtitle {
                 VStack {
@@ -1399,6 +1404,9 @@ struct BiliDanmakuView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> BiliDanmakuUIView {
         let view = BiliDanmakuUIView()
+        view.isUserInteractionEnabled = false
+        view.backgroundColor = .clear
+        view.isOpaque = false
         view.player = model.player
         return view
     }
@@ -1454,6 +1462,9 @@ final class BiliDanmakuUIView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        isOpaque = false
         if window == nil {
             stop()
         } else if bounds.width > 1, bounds.height > 1 {
@@ -1570,6 +1581,7 @@ final class BiliDanmakuUIView: UIView {
                 layer.contentsScale = UIScreen.main.scale
                 layer.bounds = CGRect(origin: .zero, size: rendered.size)
                 layer.anchorPoint = .zero
+                layer.zPosition = 20
                 self.layer.addSublayer(layer)
                 layersByIndex[index] = layer
             }

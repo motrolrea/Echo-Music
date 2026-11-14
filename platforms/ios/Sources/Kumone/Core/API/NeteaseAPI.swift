@@ -11,6 +11,10 @@ enum NeteaseAPI {
         return try client.decoded(T.self, from: data)
     }
 
+    private static func weapiData(_ path: String, _ payload: [String: Any] = [:]) async throws -> Data {
+        try await client.weapi(path, payload)
+    }
+
     private static func eapi<T: Decodable>(
         _ type: T.Type, _ path: String, _ payload: [String: Any] = [:]
     ) async throws -> T {
@@ -113,25 +117,33 @@ enum NeteaseAPI {
         }
         // The account endpoint often omits level, follows and listen counts.
         // `/user/detail` carries them; keep the account profile if it fails.
-        if let detail = try? await weapi(UserDetailResponse.self, "/user/detail", ["uid": profile.userId]) {
-            return detail.merged(with: profile)
-        }
-        return profile
+        let detail = try? await weapiData("/user/detail", ["uid": profile.userId])
+        return mergeUserDetail(detail, into: profile)
     }
 
-    private struct UserDetailResponse: Decodable {
-        let profile: UserProfile?
-        let level: Int?
-        let listenSongs: Int?
+    /// `/user/detail` puts level and listenSongs on the root, and the follow
+    /// counts sometimes arrive as strings. A strict decode used to drop both.
+    private static func mergeUserDetail(_ data: Data?, into account: UserProfile) -> UserProfile {
+        guard let data,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return account
+        }
+        let profile = root["profile"] as? [String: Any]
+        return account.mergingDetail(
+            level: intValue(root["level"]) ?? intValue(profile?["level"]) ?? 0,
+            listenSongs: intValue(root["listenSongs"]) ?? intValue(profile?["listenSongs"]) ?? 0,
+            follows: intValue(profile?["follows"]) ?? intValue(profile?["followCount"]) ?? intValue(root["follows"]) ?? 0,
+            followeds: intValue(profile?["followeds"]) ?? intValue(profile?["fans"]) ?? intValue(root["followeds"]) ?? 0
+        )
+    }
 
-        func merged(with account: UserProfile) -> UserProfile {
-            let base = profile ?? account
-            return base.mergingDetail(
-                level: level ?? 0,
-                listenSongs: listenSongs ?? 0,
-                follows: profile?.follows ?? account.follows,
-                followeds: profile?.followeds ?? account.followeds
-            )
+    private static func intValue(_ value: Any?) -> Int? {
+        switch value {
+        case let number as Int: return number
+        case let number as Double: return Int(number)
+        case let number as NSNumber: return number.intValue
+        case let text as String: return Int(text)
+        default: return nil
         }
     }
 
