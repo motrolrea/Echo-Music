@@ -328,18 +328,25 @@ public struct IOSMainWindow: View {
                 // Keep one TabView identity while the accessory appears/disappears.
                 // This preserves the iOS 26 matched-transition zoom anchor.
                 .modifier(MiniPlayerAccessoryModifier(
-                    isActive: player.hasCurrentTrack && !exploreSearchCollapsed,
+                    isActive: player.hasCurrentTrack && !exploreUsesCustomBar,
                     transitionNamespace: nowPlayingTransition,
                     colorScheme: resolvedColorScheme
                 ))
                 .animation(AppAnimation.standard, value: player.hasCurrentTrack)
 
-            if exploreSearchCollapsed {
+            if exploreUsesCustomBar {
                 legacyBottomBar
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.24), value: exploreSearchCollapsed)
+        .animation(.easeInOut(duration: 0.24), value: exploreUsesCustomBar)
+        .animation(.easeInOut(duration: 0.26), value: bottomCollapse.isCollapsed)
+    }
+
+    /// 精选页固定使用自定义底栏。系统底栏的显隐若跟着滚动变化，会反复改动
+    /// 安全区，导致列表卡顿、要滑好几次才折叠；这里只在切换标签页时变。
+    private var exploreUsesCustomBar: Bool {
+        selectedTab == .explore && !bilibiliChrome
     }
 
     /// 精选页下滑后，底栏换成「当前页小球 + 拉长搜索」，迷你播放器留在上面。
@@ -369,8 +376,8 @@ public struct IOSMainWindow: View {
                         ExploreView()
                     }
                 }
-                // 系统底栏形状固定，精选下滑后改用自定义底栏绘制拉长的搜索条。
-                .toolbar(exploreSearchCollapsed ? .hidden : .visible, for: .tabBar)
+                // 系统底栏形状固定，精选页改用自定义底栏绘制拉长的搜索条。
+                .toolbar(exploreUsesCustomBar ? .hidden : .visible, for: .tabBar)
             }
 
             Tab(bilibiliChrome ? "动态" : "歌单", systemImage: bilibiliChrome ? "bolt.horizontal.circle" : "music.note.list", value: .playlists) {
@@ -414,19 +421,29 @@ public struct IOSMainWindow: View {
     /// 底行变成「当前页小球 + 向左拉长的搜索条」。
     @ViewBuilder
     private var legacyBottomBar: some View {
-        if exploreSearchCollapsed {
+        if exploreUsesCustomBar {
             VStack(spacing: 8) {
                 if player.hasCurrentTrack {
                     IOSMiniPlayerBar(presentation: .legacyOverlay)
                         .nowPlayingTransitionSource(in: nowPlayingTransition)
                         .padding(.horizontal, 12)
                 }
-                HStack(spacing: 10) {
-                    collapsedTabBall
-                    stretchedSearchBar
+                if exploreSearchCollapsed {
+                    HStack(spacing: 10) {
+                        collapsedTabBall
+                        stretchedSearchBar
+                    }
+                    .frame(maxWidth: 560)
+                    .padding(.horizontal, 18)
+                } else {
+                    HStack(spacing: 10) {
+                        GlassTabBar(items: barItems, selection: $selectedTab) { tab in
+                            popToRoot(tab)
+                        }
+                        searchBall(size: 52)
+                            .padding(.trailing, 12)
+                    }
                 }
-                .frame(maxWidth: 560)
-                .padding(.horizontal, 18)
             }
             .padding(.bottom, 6)
         } else if isBarCollapsed {
@@ -475,12 +492,13 @@ public struct IOSMainWindow: View {
         } label: {
             Image(systemName: currentTabIcon)
                 .font(.system(size: 19, weight: .semibold))
-                .foregroundStyle(.primary.opacity(0.9))
+                .foregroundStyle(Theme.accent)
                 .frame(width: 52, height: 52)
-                .mouMaterialBackground(.regularMaterial, in: Circle())
+                .background { Circle().fill(Theme.accent.opacity(0.20)) }
+                .compatGlass(interactive: true, in: Circle())
                 .clipShape(Circle())
                 .compositingGroup()
-                .overlay { Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5) }
+                .overlay { Circle().strokeBorder(Theme.accent.opacity(0.35), lineWidth: 0.5) }
                 .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
@@ -496,18 +514,18 @@ public struct IOSMainWindow: View {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
                 Text("搜索歌曲、歌单")
                     .font(.system(size: 16))
+                    .foregroundStyle(.primary.opacity(0.72))
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(.primary.opacity(0.72))
             .padding(.horizontal, 16)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .background { Capsule().fill(.regularMaterial) }
-            .clipShape(Capsule())
+            .compatGlass(interactive: true, in: Capsule())
             .contentShape(Capsule())
-            .overlay { Capsule().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5) }
+            .overlay { Capsule().strokeBorder(Theme.accent.opacity(0.22), lineWidth: 0.5) }
             .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
@@ -522,12 +540,11 @@ public struct IOSMainWindow: View {
         } label: {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: size > 52 ? 20 : 18, weight: .semibold))
-                .foregroundStyle(.primary.opacity(0.85))
+                .foregroundStyle(Theme.accent)
                 .frame(width: size, height: size)
-                .background { Circle().fill(.regularMaterial) }
-                .clipShape(Circle())
+                .compatGlass(interactive: true, in: Circle())
                 .contentShape(Circle())
-                .overlay { Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5) }
+                .overlay { Circle().strokeBorder(Theme.accent.opacity(0.22), lineWidth: 0.5) }
                 .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
@@ -826,7 +843,7 @@ struct IOSMiniPlayerBar: View {
     private var playerBarSurface: some View {
         if presentation.drawsBackground {
             content
-                .mouMaterialBackground(.regularMaterial, in: Capsule())
+                .compatGlass(interactive: false, in: Capsule())
                 .overlay {
                     Capsule()
                         .strokeBorder(.primary.opacity(0.08), lineWidth: 0.5)

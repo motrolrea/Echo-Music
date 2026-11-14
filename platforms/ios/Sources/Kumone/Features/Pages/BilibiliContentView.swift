@@ -289,7 +289,7 @@ struct BilibiliContentView: View {
             }
         }
         }
-        .navigationTitle(locked != nil || embedded ? "" : "哔哩哔哩")
+        .navigationTitle(locked == .account ? "我的" : (locked != nil || embedded ? "" : "哔哩哔哩"))
         .navigationBarTitleDisplayMode(locked != nil || embedded ? .inline : .large)
         .toolbar {
             if locked != nil || embedded {

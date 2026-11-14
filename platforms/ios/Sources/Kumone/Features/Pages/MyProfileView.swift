@@ -37,21 +37,40 @@ struct MyProfileView: View {
 
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                if aggregateOnHome {
-                    aggregateSections
+        Group {
+            if bilibiliActive, settings.bilibiliMode != .disabled {
+                // 哔哩哔哩平台的「我的」直接就是账号个人信息页。
+                if bilibili.isLoggedIn {
+                    BilibiliContentView(locked: .account)
                 } else {
-                    platformHome
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            bilibiliProfile
+                            PlayerClearanceSpacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
+                    }
+                    .scrollIndicators(.hidden)
                 }
-                PlayerClearanceSpacer()
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        if aggregateOnHome {
+                            aggregateSections
+                        } else {
+                            platformHome
+                        }
+                        PlayerClearanceSpacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
+                    .modifier(BeansScrollCollapseTracker())
+                }
+                .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
+                .scrollIndicators(.hidden)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .modifier(BeansScrollCollapseTracker())
         }
-        .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
-        .scrollIndicators(.hidden)
         .task {
             _ = await moumusicServer.start()
             await DeviceReporter.shared.reportHeartbeat()
@@ -846,33 +865,6 @@ struct MyProfileView: View {
                         follows: bilibili.following, fans: bilibili.fans
                     ))
                 }
-            }
-            if bilibili.isLoggedIn {
-                NavigationLink {
-                    BilibiliContentView(locked: .account)
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "person.text.rectangle")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Theme.accent)
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("账号内容")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("动态、私信、观看记录和收藏")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer(minLength: 8)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .mouMaterialBackground(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                }
-                .buttonStyle(.plain)
             }
             BilibiliCloudPlaylistsCard()
         }
