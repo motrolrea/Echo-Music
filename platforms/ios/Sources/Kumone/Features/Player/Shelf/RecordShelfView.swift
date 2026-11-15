@@ -57,7 +57,9 @@ struct RecordShelfView: UIViewRepresentable {
 
         private var scroll: CGFloat = 0
         private var targetScroll: CGFloat = 0
+        private var scrollVelocity: CGFloat = 0
         private var layoutMix: CGFloat = 0
+        private var layoutVelocity: CGFloat = 0
         private var expandedIndex: Int?
         private var lastCurrent = -1
         private var windowCenter = -1
@@ -74,7 +76,7 @@ struct RecordShelfView: UIViewRepresentable {
         private let stackPitch: CGFloat = 0.19
         private let bodyZ: CGFloat = 0.32
         private let depthZ: CGFloat = 0.035
-        private let albumScale: Float = 1.32
+        private let albumScale: Float = 1.52
         private let spineAngle = Float(87.5 * Double.pi / 180)
         private let frontAngle = Float(16 * Double.pi / 180)
         private let frontTiltX = Float(-15 * Double.pi / 180)
@@ -104,24 +106,38 @@ struct RecordShelfView: UIViewRepresentable {
         }
 
         @objc private func tick(_ link: CADisplayLink) {
-            let follow: CGFloat = 0.22
-            scroll += (targetScroll - scroll) * follow
-            if abs(targetScroll - scroll) < 0.0005 {
-                scroll = targetScroll
-            }
-            let layoutTarget: CGFloat = expandedIndex == nil ? 0 : 1
-            layoutMix += (layoutTarget - layoutMix) * 0.2
-            if abs(layoutTarget - layoutMix) < 0.001 {
-                layoutMix = layoutTarget
-            }
+            let dt = CGFloat(min(max(link.duration, 1.0 / 120.0), 1.0 / 30.0))
+
+            let scrollStep = springStep(scroll, scrollVelocity, target: targetScroll, dt: dt)
+            scroll = scrollStep.value
+            scrollVelocity = scrollStep.velocity
+
+            let layoutStep = springStep(layoutMix, layoutVelocity,
+                                        target: expandedIndex == nil ? 0 : 1, dt: dt)
+            layoutMix = layoutStep.value
+            layoutVelocity = layoutStep.velocity
+
             for album in albums {
                 let want: CGFloat = album.index == expandedIndex ? 1 : 0
-                album.mix += (want - album.mix) * 0.2
-                if abs(want - album.mix) < 0.001 {
-                    album.mix = want
-                }
+                let step = springStep(album.mix, album.velocity, target: want, dt: dt)
+                album.mix = step.value
+                album.velocity = step.velocity
                 apply(album)
             }
+        }
+
+        /// 轻阻尼弹簧：展开、收起和滑动都带一点回弹，不会生硬停住。
+        private func springStep(_ value: CGFloat, _ velocity: CGFloat,
+                                target: CGFloat, dt: CGFloat) -> (value: CGFloat, velocity: CGFloat) {
+            let stiffness: CGFloat = 180
+            let damping: CGFloat = 22
+            var nextVelocity = velocity + ((target - value) * stiffness - velocity * damping) * dt
+            var nextValue = value + nextVelocity * dt
+            if abs(target - nextValue) < 0.0008, abs(nextVelocity) < 0.01 {
+                nextValue = target
+                nextVelocity = 0
+            }
+            return (nextValue, nextVelocity)
         }
 
         // MARK: - 场景
@@ -135,10 +151,10 @@ struct RecordShelfView: UIViewRepresentable {
             camera.zNear = 0.01
             camera.zFar = 200
             cameraNode.camera = camera
-            cameraNode.position = SCNVector3(0, 0.07, 2.99)
+            cameraNode.position = SCNVector3(0, 0.07, 2.75)
 
             let target = SCNNode()
-            target.position = SCNVector3(0, 0.10, 0)
+            target.position = SCNVector3(0, 0.02, 0)
             scene.rootNode.addChildNode(target)
             let look = SCNLookAtConstraint(target: target)
             look.isGimbalLockEnabled = true
@@ -273,6 +289,8 @@ struct RecordShelfView: UIViewRepresentable {
                 targetScroll = CGFloat(center)
                 lastCurrent = center
                 windowCenter = -1
+                // 打开唱片架时，当前播放的那张先展开。
+                expandedIndex = center
             }
             if ids != trackIDs {
                 trackIDs = ids
@@ -281,9 +299,8 @@ struct RecordShelfView: UIViewRepresentable {
             if center != lastCurrent {
                 lastCurrent = center
                 targetScroll = CGFloat(center)
-                if expandedIndex != nil {
-                    expandedIndex = center
-                }
+                // 自动切到下一首时，跟着展开新的当前歌曲。
+                expandedIndex = center
             }
             ensureWindow(around: Int(scroll.rounded()), tracks: tracks)
 
@@ -397,14 +414,17 @@ struct RecordShelfView: UIViewRepresentable {
         /// 书脊纹理按歌曲缓存，滑动换窗口时不再重复绘制。
         private func spineTexture(for track: Track) -> UIImage {
             if let cached = spineCache[track.id] { return cached }
-            let image = spineImage(title: track.name, seed: Self.seed(for: track.name))
+            let image = spineImage(title: track.name,
+                                   artist: track.artistNames,
+                                   seed: Self.seed(for: track.name))
             spineCache[track.id] = image
             return image
         }
 
-        /// 书脊：底色 + 侧光渐变 + 竖排歌名。
-        private func spineImage(title: String, seed: Int) -> UIImage {
-            let size = CGSize(width: 64, height: 320)
+        /// 书脊：底色 + 侧光渐变 + 竖排「歌名 · 歌手」。
+        /// 纹理宽高比与书脊侧面一致（约 1:22），文字不会被压扁。
+        private func spineImage(title: String, artist: String, seed: Int) -> UIImage {
+            let size = CGSize(width: 48, height: 1024)
             let hue = CGFloat(seed % 360) / 360
             let base = UIColor(hue: hue, saturation: 0.42, brightness: 0.58, alpha: 1)
             let renderer = UIGraphicsImageRenderer(size: size)
@@ -425,16 +445,21 @@ struct RecordShelfView: UIViewRepresentable {
                                          end: CGPoint(x: size.width, y: 0),
                                          options: [])
                 }
+                // 竖排：把坐标系转成沿书脊从下往上阅读，再从底部向中间居中。
                 g.translateBy(x: size.width / 2, y: size.height / 2)
                 g.rotate(by: -CGFloat.pi / 2)
+                let paragraph = NSMutableParagraphStyle()
+                paragraph.alignment = .center
+                paragraph.lineBreakMode = .byTruncatingTail
                 let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 23, weight: .bold),
-                    .foregroundColor: UIColor.white.withAlphaComponent(0.94),
+                    .font: UIFont.systemFont(ofSize: 26, weight: .semibold),
+                    .foregroundColor: UIColor.white.withAlphaComponent(0.95),
+                    .paragraphStyle: paragraph,
                 ]
-                let text = title as NSString
-                let textSize = text.size(withAttributes: attributes)
-                text.draw(at: CGPoint(x: -textSize.width / 2, y: -textSize.height / 2),
-                          withAttributes: attributes)
+                let label = (artist.isEmpty ? title : "\(title)  ·  \(artist)") as NSString
+                let rect = CGRect(x: -size.height / 2, y: -size.width / 2,
+                                  width: size.height, height: size.width)
+                label.draw(in: rect, withAttributes: attributes)
             }
         }
     }
@@ -452,6 +477,7 @@ final class ShelfAlbum {
     let trackId: Int
     /// 0 = 书脊，1 = 完全展开的封面。
     var mix: CGFloat = 0
+    var velocity: CGFloat = 0
 
     init(index: Int, trackId: Int, size: CGFloat, thickness: CGFloat) {
         self.index = index

@@ -540,10 +540,26 @@ struct NowPlayingView: View {
     }
 
     #if os(iOS)
+    /// 唱片架沿用居中的歌名/歌手，左右留出关闭和更多按钮的空间，
+    /// VIP 标识在中央标题行内，不再压住角上的按钮。
+    private var shelfTrackHeader: some View {
+        VStack(spacing: 3) {
+            PlayerTitleRow(
+                name: player.currentTrack?.name ?? "",
+                isVIP: player.currentTrack?.isVIP == true,
+                titleSize: 20,
+                centered: true
+            )
+            PlayerArtistLink(font: .system(size: 13.5), opacity: 0.65, centered: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 92)
+    }
+
     private func shelfLandscapeLayout(size: CGSize) -> some View {
-        VStack(spacing: 8) {
-            landscapeTrackHeader
-                .frame(height: 44, alignment: .leading)
+        VStack(spacing: 10) {
+            shelfTrackHeader
+                .frame(height: 44)
             RecordShelfView(
                 tracks: player.activeQueue,
                 currentIndex: player.currentIndex,
@@ -551,21 +567,21 @@ struct NowPlayingView: View {
                 onSelect: player.playQueueIndex
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            VStack(spacing: 2) {
+            .padding(.bottom, 14)
+            VStack(spacing: 4) {
                 NowPlayingScrubber(onShowQuality: { activeSheet = .quality })
                 CompactTransportControls()
             }
-            .frame(height: 78)
+            .frame(height: 82)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 8)
     }
 
     private func shelfCompactLayout(size: CGSize) -> some View {
-        VStack(spacing: 12) {
-            compactTrackMetaView
+        VStack(spacing: 10) {
+            shelfTrackHeader
                 .padding(.top, compactTitleTopPadding)
-                .padding(.trailing, 56)
             RecordShelfView(
                 tracks: player.activeQueue,
                 currentIndex: player.currentIndex,
@@ -573,6 +589,7 @@ struct NowPlayingView: View {
                 onSelect: player.playQueueIndex
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.bottom, 10)
             NowPlayingScrubber(onShowQuality: { activeSheet = .quality })
                 .padding(.horizontal, 16)
             CompactTransportControls()

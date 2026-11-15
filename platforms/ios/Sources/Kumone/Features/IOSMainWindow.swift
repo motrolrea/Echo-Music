@@ -319,17 +319,69 @@ public struct IOSMainWindow: View {
     /// apply it conditionally.
     @available(iOS 26.0, *)
     private var iOS26TabInterface: some View {
-        iOS26TabView
-            // 精选页和其他页保持完整底栏，不跟随下滑折叠。
-            .tabBarMinimizeBehavior(selectedTab == .explore || !tabBarMinimizes ? .never : .onScrollDown)
-            // Keep one TabView identity while the accessory appears/disappears.
-            // This preserves the iOS 26 matched-transition zoom anchor.
-            .modifier(MiniPlayerAccessoryModifier(
-                isActive: player.hasCurrentTrack,
-                transitionNamespace: nowPlayingTransition,
-                colorScheme: resolvedColorScheme
-            ))
-            .animation(AppAnimation.standard, value: player.hasCurrentTrack)
+        ZStack(alignment: .bottom) {
+            iOS26TabView
+                // 精选页的折叠由自己的折叠行负责，避免系统再叠加一层收起动画。
+                .tabBarMinimizeBehavior(selectedTab == .explore || !tabBarMinimizes ? .never : .onScrollDown)
+                // Keep one TabView identity while the accessory appears/disappears.
+                // This preserves the iOS 26 matched-transition zoom anchor.
+                .modifier(MiniPlayerAccessoryModifier(
+                    isActive: player.hasCurrentTrack && !exploreCollapsed,
+                    transitionNamespace: nowPlayingTransition,
+                    colorScheme: resolvedColorScheme
+                ))
+                .animation(AppAnimation.standard, value: player.hasCurrentTrack)
+
+            if exploreCollapsed {
+                collapsedExploreBar
+            }
+        }
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: exploreCollapsed)
+    }
+
+    /// 精选页下滑后：底行变成「当前页小球 + 从右侧小球拉长的搜索条」，
+    /// 搜索条占住原来迷你播放器加搜索球的位置。
+    private var exploreCollapsed: Bool {
+        selectedTab == .explore && bottomCollapse.isCollapsed && !bilibiliChrome
+    }
+
+    private var collapsedExploreBar: some View {
+        HStack(spacing: 10) {
+            collapsedTabBall
+                .transition(.opacity)
+            stretchedSearchBar
+                // 从右往左伸出来，像从搜索小球拉长。
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+        }
+        .frame(maxWidth: 560)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 6)
+    }
+
+    /// 从右往左拉长的搜索条，宽度自动吃掉原本迷你播放器和搜索球的位置。
+    private var stretchedSearchBar: some View {
+        Button {
+            Haptics.tap()
+            showSearch = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                Text("搜索歌曲、歌单")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.primary.opacity(0.72))
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .compatGlass(interactive: true, in: Capsule())
+            .contentShape(Capsule())
+            .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("搜索歌曲和歌单")
     }
 
     @available(iOS 26.0, *)
@@ -353,6 +405,8 @@ public struct IOSMainWindow: View {
                         ExploreView()
                     }
                 }
+                // 折叠时换成自绘的「小球 + 拉长搜索条」，展开时仍是系统底栏。
+                .toolbar(exploreCollapsed ? .hidden : .visible, for: .tabBar)
             }
 
             Tab(bilibiliChrome ? "动态" : "歌单", systemImage: bilibiliChrome ? "bolt.horizontal.circle" : "music.note.list", value: .playlists) {
