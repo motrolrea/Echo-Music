@@ -213,6 +213,11 @@ final class ExploreViewModel: ObservableObject {
     }
 }
 
+extension Notification.Name {
+    /// 底部搜索小球 → 唤起精选页顶栏的搜索条。
+    static let exploreFocusSearch = Notification.Name("echo.exploreFocusSearch")
+}
+
 struct ExploreView: View {
     @StateObject private var model = ExploreViewModel.shared
     @EnvironmentObject private var settings: SettingsManager
@@ -335,6 +340,11 @@ struct ExploreView: View {
             .modifier(BeansScrollCollapseTracker())
         }
         .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
+        .onReceive(NotificationCenter.default.publisher(for: .exploreFocusSearch)) { _ in
+            // 底部搜索小球进来时，走的还是精选页自己的搜索条。
+            bottomCollapse.expandByUser()
+            searchFocused = true
+        }
         .refreshable { await model.refresh() }
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
