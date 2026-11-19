@@ -33,6 +33,7 @@ targets:
         # without modifying the generated project or the tracked manifest.
         PROVISIONING_PROFILE_SPECIFIER: $(MOU_APP_PROVISIONING_PROFILE)
         ENABLE_PREVIEWS: YES
+        INFOPLIST_KEY_NSHealthShareUsageDescription: "读取耳机音量与佩戴记录，用于统计各音频设备的使用时长。"
   EchoMusicWidget:
     type: app-extension
     platform: iOS

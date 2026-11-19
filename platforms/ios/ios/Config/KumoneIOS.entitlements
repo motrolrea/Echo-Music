@@ -9,6 +9,9 @@
 	<!-- Enables the small iCloud key-value backup used for local library data. -->
 	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
 	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
+	<!-- 读取耳机音量记录，统计各音频设备的佩戴时长。 -->
+	<key>com.apple.developer.healthkit</key>
+	<true/>
 	<!-- Base entitlements - add your app's entitlements here -->
 	<!-- AI agents can safely modify this file to add capabilities -->
 	
