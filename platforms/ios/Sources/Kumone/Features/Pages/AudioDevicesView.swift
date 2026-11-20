@@ -113,18 +113,26 @@ struct AudioDevicesView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button("请求健康数据权限") {
+            Button {
                 Task {
                     await store.requestAuthorization()
                     await store.load(range: range)
                 }
+            } label: {
+                if store.isRequesting {
+                    ProgressView()
+                        .frame(minWidth: 160, minHeight: 28)
+                } else {
+                    Text("请求健康数据权限")
+                }
             }
             .buttonStyle(.borderedProminent)
             .tint(Theme.accent)
+            .disabled(store.isRequesting)
             if let message = store.errorMessage {
                 Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
                     .multilineTextAlignment(.center)
             }
         }

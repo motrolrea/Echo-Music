@@ -40,6 +40,7 @@ final class AudioDeviceStatsStore: ObservableObject {
     @Published private(set) var devices: [Device] = []
     @Published private(set) var totalDuration: TimeInterval = 0
     @Published private(set) var isLoading = false
+    @Published private(set) var isRequesting = false
     @Published private(set) var isAuthorized = false
     @Published var errorMessage: String?
 
@@ -56,16 +57,29 @@ final class AudioDeviceStatsStore: ObservableObject {
             errorMessage = "这台设备不支持耳机音量数据"
             return false
         }
-        let granted: Bool = await withCheckedContinuation { continuation in
-            healthStore.requestAuthorization(toShare: [], read: [exposureType]) { success, _ in
-                continuation.resume(returning: success)
+        isRequesting = true
+        defer { isRequesting = false }
+        let outcome: Result<Bool, Error> = await withCheckedContinuation { continuation in
+            healthStore.requestAuthorization(toShare: [], read: [exposureType]) { success, error in
+                if let error {
+                    continuation.resume(returning: .failure(error))
+                } else {
+                    continuation.resume(returning: .success(success))
+                }
             }
         }
-        isAuthorized = granted
-        if !granted {
-            errorMessage = "没有获得健康数据权限，请在系统设置里允许读取耳机音量"
+        switch outcome {
+        case .failure(let error):
+            isAuthorized = false
+            errorMessage = "系统没有受理健康权限：\(error.localizedDescription)。全能签重签时必须保留 HealthKit，否则这个请求不会弹窗。"
+            return false
+        case .success(let success):
+            isAuthorized = success
+            if !success {
+                errorMessage = "系统拒绝了健康数据请求。请到「设置 → 隐私与安全性 → 健康」允许读取耳机音量；如果那里没有本应用，就是重签时 HealthKit 被去掉了。"
+            }
+            return success
         }
-        return granted
     }
 
     func load(range: Range) async {
@@ -93,11 +107,23 @@ final class AudioDeviceStatsStore: ObservableObject {
             healthStore.execute(query)
         }
 
+        if samples.isEmpty {
+            devices = []
+            totalDuration = 0
+            if errorMessage == nil {
+                errorMessage = "请求已结束，但没有读到耳机音量。如果刚才没有弹出系统授权框，就是安装包里的 HealthKit 权限被重签去掉了。"
+            }
+            return
+        }
+
         var buckets: [String: [(Date, Date)]] = [:]
         for case let sample as HKQuantitySample in samples {
-            let name = (sample.metadata?[HKMetadataKeyDeviceName] as? String)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let raw = (sample.device?.name ?? sample.device?.model)
+                ?? (sample.metadata?[HKMetadataKeyDeviceName] as? String)
+            let name = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let name, !name.isEmpty else { continue }
+            let host = ["iPhone", "iPad", "iPod", "Watch", "Apple TV", "Mac"]
+            if host.contains(where: { name.localizedCaseInsensitiveContains($0) }) { continue }
             buckets[name, default: []].append((sample.startDate, sample.endDate))
         }
 

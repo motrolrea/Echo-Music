@@ -29,6 +29,10 @@
     <true/>
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
+    <key>NSHealthShareUsageDescription</key>
+    <string>读取耳机音量与佩戴记录，用于统计各音频设备的使用时长。</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>本应用只读取耳机音量记录，不会写入健康数据。</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
