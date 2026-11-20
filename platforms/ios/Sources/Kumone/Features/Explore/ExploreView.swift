@@ -226,6 +226,8 @@ struct ExploreView: View {
     @State private var songResults: [Track] = []
     @State private var searchHistory = ExploreSearchHistory.load()
     @State private var songSearchTask: Task<Void, Never>?
+    /// 底栏收起后，搜索小球打开的就是这套精选搜索，不再依赖被挡住的顶栏搜索条。
+    @State private var ballSearchPresented = false
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -341,9 +343,13 @@ struct ExploreView: View {
         }
         .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
         .onReceive(NotificationCenter.default.publisher(for: .exploreFocusSearch)) { _ in
-            // 底部搜索小球进来时，走的还是精选页自己的搜索条。
-            bottomCollapse.expandByUser()
-            searchFocused = true
+            // 精选页下滑后点搜索小球：底栏保持收起，弹出和顶栏同一套搜索。
+            ballSearchPresented = true
+        }
+        .sheet(isPresented: $ballSearchPresented, onDismiss: {
+            searchFocused = false
+        }) {
+            exploreBallSearch
         }
         .refreshable { await model.refresh() }
         .navigationTitle("")
@@ -418,9 +424,73 @@ struct ExploreView: View {
         .onChange(of: model.platform) { _ in scheduleSongSearch() }
     }
 
+    /// 搜索小球里的界面，和顶栏搜索条用同一套歌曲 / 歌单搜索。
+    private var exploreBallSearch: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    exploreSearchField(interactive: true)
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                        .padding(.top, 8)
+                    if playlistQueryTrimmed.isEmpty, !searchHistory.isEmpty {
+                        searchHistoryRow
+                    }
+                    if !playlistQueryTrimmed.isEmpty, !songResults.isEmpty {
+                        HStack(alignment: .center, spacing: 10) {
+                            Text("歌曲")
+                                .font(.title2.weight(.semibold))
+                            Spacer(minLength: 0)
+                            #if os(iOS)
+                            TrackBatchDownloadButton(tracks: songResults)
+                            #endif
+                        }
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                        TrackListView(tracks: songResults, showsSummary: false, showsBatchDownload: false)
+                            .padding(.horizontal, Theme.Layout.contentInset - 10)
+                    }
+                    if !filteredOfficial.isEmpty || !filteredPlaylists.isEmpty {
+                        CardGrid {
+                            ForEach(filteredOfficial + filteredPlaylists) { playlist in
+                                NavigationLink(value: Destination.lxPlaylist(source: playlist.source, id: playlist.id)) {
+                                    CoverCardBody(
+                                        coverURL: playlist.coverURL?.resizedImageURL(384),
+                                        title: playlist.name,
+                                        subtitle: playlist.author ?? "",
+                                        playCount: playlist.playCount
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                    }
+                    if !playlistQueryTrimmed.isEmpty, filteredOfficial.isEmpty, filteredPlaylists.isEmpty, songResults.isEmpty {
+                        Text(songSearchTask == nil ? "没有匹配的歌曲或歌单" : "正在搜索…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 120)
+                    }
+                }
+            }
+            .navigationTitle("搜索歌曲、歌单")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { ballSearchPresented = false }
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .onAppear { searchFocused = true }
+    }
+
     private var exploreSearchBar: some View {
-        let collapsed = bottomCollapse.isCollapsed
-        return HStack(spacing: 8) {
+        exploreSearchField(interactive: !bottomCollapse.isCollapsed)
+    }
+
+    private func exploreSearchField(interactive: Bool) -> some View {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.secondary)
@@ -438,8 +508,8 @@ struct ExploreView: View {
         .overlay { Capsule().strokeBorder(.white.opacity(0.35), lineWidth: 0.8) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("搜索歌曲和歌单")
-        .opacity(collapsed ? 0 : 1)
-        .allowsHitTesting(!collapsed)
+        .opacity(interactive ? 1 : 0)
+        .allowsHitTesting(interactive)
     }
 
     private var barPlatform: LXCatalogPlatform {

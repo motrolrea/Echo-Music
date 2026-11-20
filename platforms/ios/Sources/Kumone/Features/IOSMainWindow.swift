@@ -304,9 +304,17 @@ public struct IOSMainWindow: View {
         }
         .onChange(of: selectedTab) { newValue in
             if newValue == .search {
-                // 搜索小球打开的是精选页自己的搜索，而不是另一个搜索页。
-                selectedTab = .explore
-                NotificationCenter.default.post(name: .exploreFocusSearch, object: nil)
+                // 只有精选页已经滑下去、底栏收成小球时，搜索小球才换成精选自己的搜索。
+                // 其他页面、以及精选页底栏还展开时，都走原来的全站搜索。
+                let exploreCollapsedSearch = lastPrimaryTab == .explore
+                    && bottomCollapse.isCollapsed
+                    && !bilibiliChrome
+                selectedTab = lastPrimaryTab
+                if exploreCollapsedSearch {
+                    NotificationCenter.default.post(name: .exploreFocusSearch, object: nil)
+                } else {
+                    showSearch = true
+                }
             } else {
                 lastPrimaryTab = newValue
             }
@@ -371,7 +379,7 @@ public struct IOSMainWindow: View {
                 tabStack(.profile) { MyProfileView() }
             }
 
-            // 搜索小球：点击后回到精选页并唤起它自己的顶栏搜索条。
+            // 搜索小球：精选页收起时换成精选搜索，其余情况仍是全站搜索。
             Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
                 Color.clear
             }
