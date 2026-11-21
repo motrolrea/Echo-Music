@@ -41,6 +41,10 @@ final class AudioDeviceStatsStore: ObservableObject {
         let name: String
         var duration: TimeInterval
         var share: Double
+        var sessionCount: Int
+        var averageSession: TimeInterval
+        var longestSession: TimeInterval
+        var averageDecibels: Double?
     }
 
     enum Range: String, CaseIterable, Identifiable {
@@ -146,7 +150,7 @@ final class AudioDeviceStatsStore: ObservableObject {
             return
         }
 
-        var buckets: [String: [(Date, Date)]] = [:]
+        var buckets: [String: [ExposureSlice]] = [:]
         for case let sample as HKQuantitySample in samples {
             let raw = (sample.device?.name ?? sample.device?.model)
                 ?? (sample.metadata?[HKMetadataKeyDeviceName] as? String)
@@ -154,15 +158,24 @@ final class AudioDeviceStatsStore: ObservableObject {
             guard let name, !name.isEmpty else { continue }
             let host = ["iPhone", "iPad", "iPod", "Watch", "Apple TV", "Mac"]
             if host.contains(where: { name.localizedCaseInsensitiveContains($0) }) { continue }
-            buckets[name, default: []].append((sample.startDate, sample.endDate))
+            guard sample.endDate > sample.startDate else { continue }
+            let decibels = sample.quantity.doubleValue(for: .decibelAWeightedSoundPressureLevel())
+            buckets[name, default: []].append(
+                ExposureSlice(start: sample.startDate, end: sample.endDate, decibels: decibels)
+            )
         }
 
-        // 健康数据里同一分钟可能有多条，先合并重叠区间再累加。
+        // 重叠只算一次。间隔超过 60 秒就另算一次佩戴。
         var aggregated: [Device] = buckets.map { entry in
-            Device(id: entry.key,
-                   name: entry.key,
-                   duration: Self.mergedDuration(entry.value),
-                   share: 0)
+            let stats = Self.sessionStats(entry.value)
+            return Device(id: entry.key,
+                          name: entry.key,
+                          duration: stats.duration,
+                          share: 0,
+                          sessionCount: stats.count,
+                          averageSession: stats.average,
+                          longestSession: stats.longest,
+                          averageDecibels: stats.averageDecibels)
         }
         aggregated.sort { $0.duration > $1.duration }
         let total = aggregated.reduce(0) { $0 + $1.duration }
@@ -175,26 +188,49 @@ final class AudioDeviceStatsStore: ObservableObject {
         errorMessage = nil
     }
 
-    private static func mergedDuration(_ intervals: [(Date, Date)]) -> TimeInterval {
-        let sorted = intervals.filter { $0.1 > $0.0 }.sorted { $0.0 < $1.0 }
-        var total: TimeInterval = 0
-        var currentStart: Date?
-        var currentEnd: Date?
-        for (start, end) in sorted {
-            if let existingEnd = currentEnd, start <= existingEnd {
-                currentEnd = max(existingEnd, end)
+    private struct ExposureSlice {
+        let start: Date
+        let end: Date
+        let decibels: Double
+    }
+
+    private struct SessionStats {
+        let duration: TimeInterval
+        let count: Int
+        let average: TimeInterval
+        let longest: TimeInterval
+        let averageDecibels: Double?
+    }
+
+    /// 先合并重叠，再按 60 秒空隙切开。音量按能量加权，不是把分贝直接平均。
+    private static func sessionStats(_ slices: [ExposureSlice]) -> SessionStats {
+        let sorted = slices.sorted { $0.start < $1.start }
+        var sessions: [(start: Date, end: Date, energy: Double, duration: TimeInterval)] = []
+        for slice in sorted {
+            let length = slice.end.timeIntervalSince(slice.start)
+            let energy = pow(10, slice.decibels / 10) * length
+            if var current = sessions.last, slice.start.timeIntervalSince(current.end) <= 60 {
+                let overlap = max(0, current.end.timeIntervalSince(slice.start))
+                current.end = max(current.end, slice.end)
+                current.energy += energy * (length > 0 ? max(length - overlap, 0) / length : 0)
+                current.duration += max(length - overlap, 0)
+                sessions[sessions.count - 1] = current
             } else {
-                if let begin = currentStart, let finish = currentEnd {
-                    total += finish.timeIntervalSince(begin)
-                }
-                currentStart = start
-                currentEnd = end
+                sessions.append((slice.start, slice.end, energy, length))
             }
         }
-        if let begin = currentStart, let finish = currentEnd {
-            total += finish.timeIntervalSince(begin)
-        }
-        return total
+        let duration = sessions.reduce(0) { $0 + $1.duration }
+        let longest = sessions.map(\.duration).max() ?? 0
+        let count = sessions.count
+        let energy = sessions.reduce(0) { $0 + $1.energy }
+        let averageDecibels = duration > 0 ? 10 * log10(energy / duration) : nil
+        return SessionStats(
+            duration: duration,
+            count: count,
+            average: count > 0 ? duration / Double(count) : 0,
+            longest: longest,
+            averageDecibels: averageDecibels
+        )
     }
 }
 #endif

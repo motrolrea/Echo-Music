@@ -30,9 +30,11 @@
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
     <key>NSHealthShareUsageDescription</key>
-    <string>读取耳机音量与佩戴记录，用于统计各音频设备的使用时长。</string>
+    <string>读取耳机音量、心率和活动能量，用于设备佩戴统计和锻炼记录。没有数据时不显示数值。</string>
     <key>NSHealthUpdateUsageDescription</key>
-    <string>本应用只读取耳机音量记录，不会写入健康数据。</string>
+    <string>结束锻炼时可以把这次运动写入健康 App。拒绝写入不影响本次页面上的记录。</string>
+    <key>NSMotionUsageDescription</key>
+    <string>锻炼时读取步数、距离、配速和楼层。这台手机不支持的项目会显示为无数据。</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>

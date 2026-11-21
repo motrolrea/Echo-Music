@@ -1085,6 +1085,12 @@ struct MyProfileView: View {
                 profileTileLabel("下载管理", icon: "arrow.down.circle.fill", tint: .blue)
             }
             .buttonStyle(.plain)
+            NavigationLink {
+                WorkoutView()
+            } label: {
+                profileTileLabel("锻炼", icon: "figure.run", tint: .green)
+            }
+            .buttonStyle(.plain)
         }
     }
 

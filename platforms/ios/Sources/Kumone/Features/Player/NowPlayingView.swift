@@ -961,12 +961,7 @@ struct NowPlayingView: View {
                 titleSize: 21,
                 centered: false
             )
-            PlayerMarqueeText(
-                "\(player.currentTrack?.artistNames ?? "") — \(player.currentTrack?.album.name ?? "")",
-                font: .system(size: 13.5),
-                color: .white.opacity(0.65),
-                uiFont: .systemFont(ofSize: 13.5)
-            )
+            PlayerArtistLink(font: .system(size: 13.5), opacity: 0.65, centered: false)
         }
         .frame(maxWidth: 400, alignment: .leading)
         #if os(iOS)
@@ -3527,15 +3522,11 @@ private struct PlayerTitleRow: View {
         // 长歌名仍占满剩余宽度并滚动，徽章固定在行尾。
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 6) {
-                PlayerMarqueeText(
-                    name,
-                    font: .system(size: titleSize, weight: .bold),
-                    color: .white,
-                    centered: false,
-                    uiFont: .boldSystemFont(ofSize: titleSize),
-                    fillsWidth: false
-                )
-                .fixedSize(horizontal: true, vertical: false)
+                Text(name)
+                    .font(.system(size: titleSize, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
                 if isVIP { VIPBadge() }
             }
             HStack(spacing: 6) {
@@ -3586,40 +3577,46 @@ private struct PlayerMarqueeText: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
-            let width = geo.size.width
-            let needed = (text as NSString).size(withAttributes: [.font: uiFont]).width
-            let overflows = needed > width + 2
-            ZStack(alignment: .leading) {
-                if overflows {
-                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
-                        let gap = width * 0.28
-                        let travel = needed + gap
-                        let duration = max(4.0, Double(travel) / 32)
-                        let phase = timeline.date.timeIntervalSinceReferenceDate
-                            .truncatingRemainder(dividingBy: duration)
-                        let shift = CGFloat(phase / duration) * travel
-                        HStack(spacing: gap) {
-                            marqueeLabel
-                            marqueeLabel
+        let needed = Self.measuredWidth(text, font: uiFont)
+        // 不占满行时按文字宽度排，避免 GeometryReader 被压窄后把短文本当成溢出。
+        if !fillsWidth {
+            marqueeLabel
+                .frame(width: needed, alignment: .leading)
+                .frame(height: ceil(uiFont.lineHeight))
+        } else {
+            GeometryReader { geo in
+                let width = max(geo.size.width, 1)
+                let overflows = needed > width + 2
+                ZStack(alignment: .leading) {
+                    if overflows {
+                        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                            let gap = max(28, width * 0.28)
+                            let travel = needed + gap
+                            let duration = max(4.0, Double(travel) / 32)
+                            let phase = timeline.date.timeIntervalSinceReferenceDate
+                                .truncatingRemainder(dividingBy: duration)
+                            let shift = CGFloat(phase / duration) * travel
+                            HStack(spacing: gap) {
+                                marqueeLabel
+                                marqueeLabel
+                            }
+                            .offset(x: -shift)
                         }
-                        .offset(x: -shift)
+                    } else {
+                        marqueeLabel
+                            .frame(width: width, alignment: centered ? .center : .leading)
                     }
-                } else {
-                    marqueeLabel
-                        .frame(width: width, alignment: centered ? .center : .leading)
                 }
+                .frame(width: width, height: geo.size.height, alignment: .leading)
+                .clipped()
             }
-            .frame(width: width, height: geo.size.height, alignment: .leading)
-            .clipped()
+            .frame(maxWidth: .infinity)
+            .frame(height: ceil(uiFont.lineHeight))
         }
-        .frame(
-            minWidth: 0,
-            maxWidth: fillsWidth
-                ? .infinity
-                : max((text as NSString).size(withAttributes: [.font: uiFont]).width, 1)
-        )
-        .frame(height: ceil(uiFont.lineHeight))
+    }
+
+    private static func measuredWidth(_ text: String, font: UIFont) -> CGFloat {
+        max(ceil((text as NSString).size(withAttributes: [.font: font]).width), 1)
     }
 
     private var marqueeLabel: some View {

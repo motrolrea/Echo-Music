@@ -343,12 +343,11 @@ public struct IOSMainWindow: View {
             .overlay(alignment: .bottomTrailing) {
                 if isBarCollapsed {
                     Button {
-                        Haptics.tap()
-                        NotificationCenter.default.post(name: .beansScrollToTop, object: nil)
+                        BeansScrollTop.perform()
                     } label: {
                         Image(systemName: "chevron.up")
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(.primary)
                             .frame(width: 52, height: 52)
                             .compatGlass(interactive: true, in: Circle())
                             .contentShape(Circle())
@@ -357,7 +356,8 @@ public struct IOSMainWindow: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("回到顶部")
-                    .padding(.trailing, 16)
+                    // 系统搜索球比内容边距更靠里，34 让 52pt 圆的圆心落在它正上方。
+                    .padding(.trailing, 34)
                     .padding(.bottom, 86)
                     .zIndex(20)
                 }
@@ -489,12 +489,11 @@ public struct IOSMainWindow: View {
     private func collapsedSearchStack(size: CGFloat) -> some View {
         VStack(spacing: 18) {
             Button {
-                Haptics.tap()
-                NotificationCenter.default.post(name: .beansScrollToTop, object: nil)
+                BeansScrollTop.perform()
             } label: {
                 Image(systemName: "chevron.up")
                     .font(.system(size: size > 52 ? 20 : 18, weight: .semibold))
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(.primary)
                     .frame(width: size, height: size)
                     .compatGlass(interactive: true, in: Circle())
                     .contentShape(Circle())
@@ -683,6 +682,58 @@ extension Notification.Name {
 
 enum BeansScrollTop {
     static let anchor = "beans.scroll.top"
+
+    /// 平滑滚到当前可见页的顶端，并在到顶后展开底栏和迷你播放器。
+    @MainActor
+    static func perform() {
+        Haptics.tap()
+        BottomBarCollapseStore.shared.beginProgrammaticScroll()
+        let scrolled = BeansVisibleScroll.scrollToTop()
+        if !scrolled {
+            NotificationCenter.default.post(name: .beansScrollToTop, object: nil)
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 520_000_000)
+            BottomBarCollapseStore.shared.finishProgrammaticScroll()
+        }
+    }
+}
+
+enum BeansVisibleScroll {
+    /// 只滚当前看得见的纵向大列表，跳过隐藏分页和横向货架。
+    @MainActor
+    static func scrollToTop() -> Bool {
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.windows.first(where: \.isKeyWindow) ?? scene.windows.first
+        else { return false }
+        let bounds = window.bounds
+        let candidates = window.scrollViews()
+            .filter { view in
+                guard view.isVertical, view.contentOffset.y > 1 else { return false }
+                let frame = view.convert(view.bounds, to: window)
+                let visible = frame.intersection(bounds)
+                return visible.width > bounds.width * 0.55 && visible.height > 180 && view.alpha > 0.4
+            }
+            .sorted { $0.bounds.height > $1.bounds.height }
+        guard let target = candidates.first else { return false }
+        target.setContentOffset(CGPoint(x: target.contentOffset.x, y: -target.adjustedContentInset.top), animated: true)
+        return true
+    }
+}
+
+private extension UIView {
+    func scrollViews() -> [UIScrollView] {
+        var found: [UIScrollView] = []
+        if let scroll = self as? UIScrollView { found.append(scroll) }
+        for child in subviews { found.append(contentsOf: child.scrollViews()) }
+        return found
+    }
+}
+
+private extension UIScrollView {
+    var isVertical: Bool {
+        alwaysBounceVertical || contentSize.height > bounds.height + 24
+    }
 }
 
 enum BeansScrollCollapse {
@@ -699,8 +750,16 @@ final class BottomBarCollapseStore: ObservableObject {
     @Published private(set) var hasScrolledDown = false
     /// 用户点小球手动展开后，滚回顶部前不再自动收起
     private var userExpanded = false
+    /// 回顶动画进行中。这段时间滚动偏移来回跳，不能跟着折叠。
+    private var programmaticScroll = false
 
     func update(offset: CGFloat) {
+        if programmaticScroll {
+            if offset <= BeansScrollCollapse.triggerOffset {
+                finishProgrammaticScroll()
+            }
+            return
+        }
         hasScrolledDown = offset > BeansScrollCollapse.triggerOffset
         let shouldCollapse = offset > BeansScrollCollapse.triggerOffset
         if shouldCollapse {
@@ -709,6 +768,17 @@ final class BottomBarCollapseStore: ObservableObject {
             userExpanded = false
         }
         setCollapsed(shouldCollapse)
+    }
+
+    func beginProgrammaticScroll() {
+        programmaticScroll = true
+    }
+
+    func finishProgrammaticScroll() {
+        programmaticScroll = false
+        userExpanded = false
+        hasScrolledDown = false
+        setCollapsed(false)
     }
 
     func expandByUser() {
