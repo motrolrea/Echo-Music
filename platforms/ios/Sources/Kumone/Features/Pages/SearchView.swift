@@ -660,21 +660,46 @@ struct SearchView: View {
 
     private var emptySearchPrompt: some View {
         VStack(alignment: .leading, spacing: 18) {
-            VStack(spacing: 12) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 48, weight: .light))
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 44)
-                Text("搜索歌曲、歌手、专辑或歌单")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                Text("使用上方搜索框开始，聚合搜索也可以切换到单个平台或哔哩哔哩。")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
+            if !history.entries.isEmpty {
+                HStack {
+                    Label("搜索历史", systemImage: "clock.arrow.circlepath")
+                        .font(.headline)
+                    Spacer()
+                    Button("清空") { history.clear() }
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 8)
 
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 10)], spacing: 10) {
+                    ForEach(history.entries, id: \.self) { item in
+                        HStack(spacing: 6) {
+                            Button {
+                                searchText = item
+                                performSearch(item)
+                            } label: {
+                                Text(item)
+                                    .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                history.remove(item)
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("删除 \(item)")
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 40)
+                        .background(.quaternary.opacity(0.45), in: Capsule())
+                    }
+                }
+            }
 
             if !model.hotKeywords.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
@@ -706,46 +731,6 @@ struct SearchView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                    }
-                }
-            }
-
-            if !history.entries.isEmpty {
-                HStack {
-                    Label("搜索历史", systemImage: "clock.arrow.circlepath")
-                        .font(.headline)
-                    Spacer()
-                    Button("清空") { history.clear() }
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 10)], spacing: 10) {
-                    ForEach(history.entries, id: \.self) { item in
-                        HStack(spacing: 6) {
-                            Button {
-                                searchText = item
-                                performSearch(item)
-                            } label: {
-                                Text(item)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.plain)
-
-                            Button {
-                                history.remove(item)
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.caption2.weight(.bold))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("删除搜索记录")
-                        }
-                        .padding(.horizontal, 12)
-                        .frame(minHeight: 44)
-                        .background(.quaternary.opacity(0.45), in: Capsule())
                     }
                 }
             }

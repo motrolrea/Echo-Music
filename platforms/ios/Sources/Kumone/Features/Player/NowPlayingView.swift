@@ -3523,19 +3523,35 @@ private struct PlayerTitleRow: View {
     var centered = false
 
     var body: some View {
-        HStack(spacing: 6) {
-            PlayerMarqueeText(
-                name,
-                font: .system(size: titleSize, weight: .bold),
-                color: .white,
-                centered: centered && !isVIP,
-                uiFont: .boldSystemFont(ofSize: titleSize)
-            )
-            .frame(maxWidth: .infinity, alignment: (centered && !isVIP) ? .center : .leading)
-            .layoutPriority(0)
-            if isVIP {
-                VIPBadge()
-                    .layoutPriority(1)
+        // 短歌名只占文字宽度，VIP 跟在字后面。拉成整行会把徽章顶到右侧按钮旁。
+        // 长歌名仍占满剩余宽度并滚动，徽章固定在行尾。
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                PlayerMarqueeText(
+                    name,
+                    font: .system(size: titleSize, weight: .bold),
+                    color: .white,
+                    centered: false,
+                    uiFont: .boldSystemFont(ofSize: titleSize),
+                    fillsWidth: false
+                )
+                .fixedSize(horizontal: true, vertical: false)
+                if isVIP { VIPBadge() }
+            }
+            HStack(spacing: 6) {
+                PlayerMarqueeText(
+                    name,
+                    font: .system(size: titleSize, weight: .bold),
+                    color: .white,
+                    centered: false,
+                    uiFont: .boldSystemFont(ofSize: titleSize),
+                    fillsWidth: true
+                )
+                .layoutPriority(0)
+                if isVIP {
+                    VIPBadge()
+                        .layoutPriority(1)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)

@@ -231,8 +231,10 @@ struct ExploreView: View {
     @FocusState private var searchFocused: Bool
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
+                Color.clear.frame(height: 1).id(BeansScrollTop.anchor)
 #if !os(iOS)
                 platformPicker
 #endif
@@ -342,6 +344,12 @@ struct ExploreView: View {
             .modifier(BeansScrollCollapseTracker())
         }
         .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
+        .onReceive(NotificationCenter.default.publisher(for: .beansScrollToTop)) { _ in
+            withAnimation(.easeInOut(duration: 0.28)) {
+                proxy.scrollTo(BeansScrollTop.anchor, anchor: .top)
+            }
+        }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .exploreFocusSearch)) { _ in
             // 精选页下滑后点搜索小球：底栏保持收起，弹出和顶栏同一套搜索。
             ballSearchPresented = true
@@ -425,13 +433,14 @@ struct ExploreView: View {
     }
 
     /// 搜索小球里的界面，和顶栏搜索条用同一套歌曲 / 歌单搜索。
+    /// 半屏占屏幕 80%，顶上只留系统小横条，不再放返回或完成按钮。
     private var exploreBallSearch: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
-                    exploreSearchField(interactive: true)
+                    exploreSearchField(interactive: true, showsClear: true)
                         .padding(.horizontal, Theme.Layout.contentInset)
-                        .padding(.top, 8)
+                        .padding(.top, 12)
                     if playlistQueryTrimmed.isEmpty, !searchHistory.isEmpty {
                         searchHistoryRow
                     }
@@ -472,24 +481,21 @@ struct ExploreView: View {
                     }
                 }
             }
-            .navigationTitle("搜索歌曲、歌单")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { ballSearchPresented = false }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .presentationDetents([.large])
+        .presentationDetents([.fraction(0.8)])
         .presentationDragIndicator(.visible)
         .onAppear { searchFocused = true }
     }
 
     private var exploreSearchBar: some View {
-        exploreSearchField(interactive: !bottomCollapse.isCollapsed)
+        exploreSearchField(interactive: !bottomCollapse.isCollapsed, showsClear: true)
+            .frame(minWidth: 210)
     }
 
-    private func exploreSearchField(interactive: Bool) -> some View {
+    private func exploreSearchField(interactive: Bool, showsClear: Bool) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .semibold))
@@ -500,6 +506,18 @@ struct ExploreView: View {
                 .submitLabel(.search)
                 .focused($searchFocused)
                 .onSubmit { rememberSearch() }
+            if showsClear, !playlistQuery.isEmpty {
+                Button {
+                    playlistQuery = ""
+                    songResults = []
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("清空搜索")
+            }
         }
         .padding(.horizontal, 12)
         .frame(height: 36)

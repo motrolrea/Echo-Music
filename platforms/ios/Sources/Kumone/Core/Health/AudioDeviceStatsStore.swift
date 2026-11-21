@@ -1,6 +1,36 @@
 #if os(iOS)
+import AVFoundation
 import Foundation
 import HealthKit
+
+/// 系统当前音频输出。只能知道设备和声道，不知道左右耳或充电盒电量。
+struct AudioRouteSnapshot {
+    let name: String
+    let detail: String
+
+    static func current() -> AudioRouteSnapshot {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        guard let port = outputs.first else {
+            return AudioRouteSnapshot(name: "没有外接音频设备", detail: "正在使用本机扬声器")
+        }
+        let channels = port.channels?.count ?? 0
+        let stereo = channels >= 2 ? "立体声" : "单声道"
+        return AudioRouteSnapshot(name: port.portName, detail: "\(port.portType.audioKind) · \(stereo)")
+    }
+}
+
+private extension AVAudioSession.Port {
+    var audioKind: String {
+        switch self {
+        case .bluetoothA2DP, .bluetoothLE, .bluetoothHFP: return "蓝牙"
+        case .headphones: return "有线耳机"
+        case .airPlay: return "隔空播放"
+        case .builtInSpeaker: return "本机扬声器"
+        case .builtInReceiver: return "听筒"
+        default: return "音频输出"
+        }
+    }
+}
 
 /// 从健康 App 的「耳机音量」记录里按设备型号聚合佩戴时长。
 /// 健康数据只在本机读取，不上传。

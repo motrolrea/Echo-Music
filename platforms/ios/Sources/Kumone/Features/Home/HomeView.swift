@@ -370,8 +370,10 @@ struct HomeView: View {
 
     var body: some View {
         GeometryReader { proxy in
+            ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    Color.clear.frame(height: 1).id(BeansScrollTop.anchor)
                     communityAnnouncement
 
                     standardHomeBody
@@ -386,6 +388,12 @@ struct HomeView: View {
             }
             .scrollBounceBehavior(.always)
             .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
+            .onReceive(NotificationCenter.default.publisher(for: .beansScrollToTop)) { _ in
+                withAnimation(.easeInOut(duration: 0.28)) {
+                    scrollProxy.scrollTo(BeansScrollTop.anchor, anchor: .top)
+                }
+            }
+            }
         }
         .navigationTitle("推荐")
         #if os(iOS)
@@ -1151,15 +1159,13 @@ struct FeatureCard: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                ZStack {
-                    Image(systemName: icon)
-                        .font(.system(size: 22, weight: .medium))
-                        .foregroundStyle(.white)
+                Group {
                     if showsDate {
-                        Text("\(Calendar.current.component(.day, from: .now))")
-                            .font(.system(size: 10, weight: .bold))
+                        dailyDateIcon
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 22, weight: .medium))
                             .foregroundStyle(.white)
-                            .offset(y: 3)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -1181,6 +1187,25 @@ struct FeatureCard: View {
                 .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
         )
         .contentShape(Rectangle())
+    }
+
+    /// 系统日历符号自带日期格点，看起来像背后的小白点。这里只画空框，日期居中。
+    private var dailyDateIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .strokeBorder(.white, lineWidth: 1.4)
+            VStack(spacing: 0) {
+                Capsule()
+                    .fill(.white)
+                    .frame(width: 10, height: 1.6)
+                    .offset(y: -7)
+                Text("\(Calendar.current.component(.day, from: .now))")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .offset(y: 1)
+            }
+        }
+        .frame(width: 22, height: 22)
     }
 }
 

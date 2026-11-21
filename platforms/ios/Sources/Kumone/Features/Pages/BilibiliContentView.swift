@@ -429,8 +429,10 @@ struct BilibiliContentView: View {
         }
     }
     private var dynamicSurface: some View {
+        ScrollViewReader { scrollProxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
+                Color.clear.frame(height: 1).id(BeansScrollTop.anchor)
                 if !bilibili.isLoggedIn {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("动态需要登录", systemImage: "person.crop.circle.badge.exclamationmark")
@@ -478,8 +480,16 @@ struct BilibiliContentView: View {
                 PlayerClearanceSpacer()
             }
             .padding(.top, 12)
+            .modifier(BeansScrollCollapseTracker())
+        }
+        .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
+        .onReceive(NotificationCenter.default.publisher(for: .beansScrollToTop)) { _ in
+            withAnimation(.easeInOut(duration: 0.28)) {
+                scrollProxy.scrollTo(BeansScrollTop.anchor, anchor: .top)
+            }
         }
         .scrollIndicators(.hidden)
+        }
     }
 
     @MainActor
@@ -497,8 +507,10 @@ struct BilibiliContentView: View {
     }
 
     private var accountSurface: some View {
+        ScrollViewReader { scrollProxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
+                Color.clear.frame(height: 1).id(BeansScrollTop.anchor)
                 if bilibili.isLoggedIn {
                     beansAccountSurface
                 } else {
@@ -520,8 +532,16 @@ struct BilibiliContentView: View {
                 PlayerClearanceSpacer()
             }
             .padding(.top, 12)
+            .modifier(BeansScrollCollapseTracker())
+        }
+        .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
+        .onReceive(NotificationCenter.default.publisher(for: .beansScrollToTop)) { _ in
+            withAnimation(.easeInOut(duration: 0.28)) {
+                scrollProxy.scrollTo(BeansScrollTop.anchor, anchor: .top)
+            }
         }
         .scrollIndicators(.hidden)
+        }
         .task {
             if bilibili.isLoggedIn {
                 accountStats = await BilibiliAccountStats.fetch(cookie: bilibili.cookie)

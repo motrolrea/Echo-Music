@@ -18,6 +18,7 @@ struct AudioDevicesView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
 
+                currentOutputCard
                 content
             }
             .padding(.vertical, 16)
@@ -49,6 +50,40 @@ struct AudioDevicesView: View {
                 .padding(.vertical, 8)
             }
         }
+    }
+
+    /// 当前输出只能从系统音频路由读到名称、类型和声道，读不到单耳、左右耳和耳机仓电量。
+    private var currentOutputCard: some View {
+        let output = AudioRouteSnapshot.current()
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("当前输出")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 12) {
+                Image(systemName: glyph(for: output.name))
+                    .font(.system(size: 22, weight: .medium))
+                    .frame(width: 36, height: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(output.name)
+                        .font(.system(size: 16, weight: .semibold))
+                        .lineLimit(1)
+                    Text(output.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Text(store.isAuthorized ? "已授权" : "未授权")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(store.isAuthorized ? .green : .orange)
+            }
+            Text("健康记录只能统计耳机音量和佩戴时长。单耳、左右耳、耳机仓电量、降噪和入耳检测都读不到。")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(16)
+        .padding(.horizontal, 4)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 16)
     }
 
     private var totalHeader: some View {

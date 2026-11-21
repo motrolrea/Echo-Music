@@ -304,10 +304,10 @@ public struct IOSMainWindow: View {
         }
         .onChange(of: selectedTab) { newValue in
             if newValue == .search {
-                // 只有精选页已经滑下去、底栏收成小球时，搜索小球才换成精选自己的搜索。
-                // 其他页面、以及精选页底栏还展开时，都走原来的全站搜索。
+                // 精选页只要内容已经滑下去，搜索小球就只开精选自己的半屏搜索。
+                // 不依赖底栏动画是否已经记成收起，避免偶尔落到全站搜索。
                 let exploreCollapsedSearch = lastPrimaryTab == .explore
-                    && bottomCollapse.isCollapsed
+                    && bottomCollapse.hasScrolledDown
                     && !bilibiliChrome
                 selectedTab = lastPrimaryTab
                 if exploreCollapsedSearch {
@@ -340,6 +340,28 @@ public struct IOSMainWindow: View {
                 colorScheme: resolvedColorScheme
             ))
             .animation(AppAnimation.standard, value: player.hasCurrentTrack)
+            .overlay(alignment: .bottomTrailing) {
+                if isBarCollapsed {
+                    Button {
+                        Haptics.tap()
+                        NotificationCenter.default.post(name: .beansScrollToTop, object: nil)
+                    } label: {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 52, height: 52)
+                            .compatGlass(interactive: true, in: Circle())
+                            .contentShape(Circle())
+                            .overlay { Circle().strokeBorder(.white.opacity(0.16), lineWidth: 0.5) }
+                            .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("回到顶部")
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 86)
+                    .zIndex(20)
+                }
+            }
     }
 
     @available(iOS 26.0, *)
@@ -417,7 +439,7 @@ public struct IOSMainWindow: View {
                     Spacer(minLength: 0)
                 }
 
-                searchBall(size: 52)
+                collapsedSearchStack(size: 52)
             }
             .frame(maxWidth: 560)
             .padding(.horizontal, 18)
@@ -463,11 +485,40 @@ public struct IOSMainWindow: View {
         .accessibilityLabel(currentTabTitle)
     }
 
+    /// 下滑后：回顶箭头在搜索小球正上方，中间留出一段空隙。
+    private func collapsedSearchStack(size: CGFloat) -> some View {
+        VStack(spacing: 18) {
+            Button {
+                Haptics.tap()
+                NotificationCenter.default.post(name: .beansScrollToTop, object: nil)
+            } label: {
+                Image(systemName: "chevron.up")
+                    .font(.system(size: size > 52 ? 20 : 18, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: size, height: size)
+                    .compatGlass(interactive: true, in: Circle())
+                    .contentShape(Circle())
+                    .overlay { Circle().strokeBorder(.white.opacity(0.16), lineWidth: 0.5) }
+                    .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("回到顶部")
+            searchBall(size: size, routeExploreWhenCollapsed: true)
+        }
+    }
+
     /// 独立悬浮搜索小球（与胶囊底栏分离）
-    private func searchBall(size: CGFloat) -> some View {
+    private func searchBall(size: CGFloat, routeExploreWhenCollapsed: Bool = false) -> some View {
         Button {
             Haptics.tap()
-            showSearch = true
+            if routeExploreWhenCollapsed,
+               selectedTab == .explore,
+               bottomCollapse.isCollapsed,
+               !bilibiliChrome {
+                NotificationCenter.default.post(name: .exploreFocusSearch, object: nil)
+            } else {
+                showSearch = true
+            }
         } label: {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: size > 52 ? 20 : 18, weight: .semibold))
@@ -625,6 +676,15 @@ private enum NowPlayingTransitionID {
 
 // MARK: - 底栏折叠追踪
 
+extension Notification.Name {
+    /// 底栏回顶按钮：当前页滚回顶端。
+    static let beansScrollToTop = Notification.Name("echo.beansScrollToTop")
+}
+
+enum BeansScrollTop {
+    static let anchor = "beans.scroll.top"
+}
+
 enum BeansScrollCollapse {
     static let coordinateSpace = "beans.bottomBarScroll"
     /// 内容向上滚过多少点后收起底栏
@@ -635,10 +695,13 @@ final class BottomBarCollapseStore: ObservableObject {
     static let shared = BottomBarCollapseStore()
 
     @Published private(set) var isCollapsed = false
+    /// 内容确实滑过一截。手动展开底栏时它仍为真，用来判断精选搜索小球该走哪套界面。
+    @Published private(set) var hasScrolledDown = false
     /// 用户点小球手动展开后，滚回顶部前不再自动收起
     private var userExpanded = false
 
     func update(offset: CGFloat) {
+        hasScrolledDown = offset > BeansScrollCollapse.triggerOffset
         let shouldCollapse = offset > BeansScrollCollapse.triggerOffset
         if shouldCollapse {
             guard !userExpanded else { return }

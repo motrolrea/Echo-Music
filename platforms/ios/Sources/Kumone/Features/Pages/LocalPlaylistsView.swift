@@ -10,8 +10,10 @@ struct LocalPlaylistsView: View {
     @State private var newName = ""
 
     var body: some View {
+        ScrollViewReader { scrollProxy in
         ScrollView {
             VStack(spacing: 12) {
+                Color.clear.frame(height: 1).id(BeansScrollTop.anchor)
                 NavigationLink(value: Destination.recents) {
                     recentPlaysRow
                 }
@@ -77,6 +79,14 @@ struct LocalPlaylistsView: View {
             }
             .padding(.top, 14)
             PlayerClearanceSpacer()
+            .modifier(BeansScrollCollapseTracker())
+        }
+        .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
+        .onReceive(NotificationCenter.default.publisher(for: .beansScrollToTop)) { _ in
+            withAnimation(.easeInOut(duration: 0.28)) {
+                scrollProxy.scrollTo(BeansScrollTop.anchor, anchor: .top)
+            }
+        }
         }
         .navigationTitle("本地歌单")
         .toolbar {
