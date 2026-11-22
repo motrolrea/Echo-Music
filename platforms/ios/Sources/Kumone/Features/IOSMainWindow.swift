@@ -839,7 +839,7 @@ final class BottomBarCollapseStore: ObservableObject {
         if suppressMinimize {
             guard !down else { return }
             suppressMinimize = false
-            BeansVisibleScroll.expandSystemTabBar()
+            Task { @MainActor in BeansVisibleScroll.expandSystemTabBar() }
         }
         if !down { userExpanded = false }
         if hasScrolledDown != down { hasScrolledDown = down }
