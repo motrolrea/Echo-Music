@@ -442,11 +442,10 @@ struct ExploreView: View {
                         .fill(Color.secondary.opacity(0.45))
                         .frame(width: 36, height: 5)
                         .frame(maxWidth: .infinity)
-                        .padding(.top, 28)
-                        .padding(.bottom, 18)
+                        .padding(.top, 6)
+                        .padding(.bottom, 4)
                     exploreSearchField(interactive: true, showsClear: true)
                         .padding(.horizontal, Theme.Layout.contentInset)
-                        .padding(.top, 22)
                     if playlistQueryTrimmed.isEmpty, !searchHistory.isEmpty {
                         searchHistoryRow
                     }

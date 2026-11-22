@@ -333,7 +333,7 @@ public struct IOSMainWindow: View {
     @available(iOS 26.0, *)
     private var iOS26TabInterface: some View {
         iOS26TabView
-            .tabBarMinimizeBehavior(tabBarMinimizes && !bottomCollapse.suppressMinimize ? .onScrollDown : .never)
+            .tabBarMinimizeBehavior(tabBarMinimizes ? .onScrollDown : .never)
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
@@ -342,7 +342,6 @@ public struct IOSMainWindow: View {
                 colorScheme: resolvedColorScheme
             ))
             .animation(AppAnimation.standard, value: player.hasCurrentTrack)
-            .animation(AppAnimation.standard, value: workoutChrome.active)
             .overlay(alignment: .bottomTrailing) {
                 if isBarCollapsed, !workoutChrome.active {
                     Button {
@@ -702,10 +701,9 @@ enum BeansScrollTop {
             while Date() < deadline, !BeansVisibleScroll.isNearTop() {
                 try? await Task.sleep(nanoseconds: 50_000_000)
             }
-            // 滚完再展开。中途展开会被系统当成仍在下滑，立刻折回去。
+            // 内容到顶后再展开一次。一开始就展开没有过渡，系统还会记住这个状态，后面下滑不再折叠。
             BeansVisibleScroll.expandSystemTabBar()
-            try? await Task.sleep(nanoseconds: 280_000_000)
-            BeansVisibleScroll.expandSystemTabBar()
+            try? await Task.sleep(nanoseconds: 450_000_000)
             BottomBarCollapseStore.shared.finishProgrammaticScroll()
         }
     }
@@ -815,8 +813,6 @@ final class BottomBarCollapseStore: ObservableObject {
     static let shared = BottomBarCollapseStore()
 
     @Published private(set) var isCollapsed = false
-    /// 回顶时暂时关掉系统的下滑折叠，否则代码滚动不会把播放器展开。
-    @Published private(set) var suppressMinimize = false
     /// 内容确实滑过一截。手动展开底栏时它仍为真，用来判断精选搜索小球该走哪套界面。
     @Published private(set) var hasScrolledDown = false
     /// 用户点小球手动展开后，滚回顶部前不再自动收起
@@ -835,12 +831,6 @@ final class BottomBarCollapseStore: ObservableObject {
         }
         if Date() < ignoreCollapseUntil { return }
         let down = offset > BeansScrollCollapse.triggerOffset
-        // 到顶后先保持展开。等确认已经在顶部，再恢复「下滑才折叠」，不能在到顶那一下折回去。
-        if suppressMinimize {
-            guard !down else { return }
-            suppressMinimize = false
-            Task { @MainActor in BeansVisibleScroll.expandSystemTabBar() }
-        }
         if !down { userExpanded = false }
         if hasScrolledDown != down { hasScrolledDown = down }
         if down, userExpanded { return }
@@ -850,7 +840,6 @@ final class BottomBarCollapseStore: ObservableObject {
     func beginProgrammaticScroll() {
         programmaticScroll = true
         userExpanded = true
-        suppressMinimize = true
         setCollapsed(false)
     }
 

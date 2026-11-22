@@ -6,26 +6,24 @@ struct WorkoutView: View {
     @EnvironmentObject private var player: PlayerService
     @Environment(\.colorScheme) private var colorScheme
     @StateObject private var session = WorkoutSessionStore()
-    @State private var focus: WorkoutSessionStore.Activity?
+    @State private var focus: WorkoutSessionStore.Activity = .walk
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                ForEach(WorkoutSessionStore.Activity.allCases) { item in
-                    if focus == nil || focus == item {
-                        activitySection(item)
-                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
-                    }
-                }
+                modeSwitcher
+                focusedHeader
+                liveSession
+                WorkoutPatternCard(activity: focus, records: session.records)
             }
             .padding(.horizontal, 22)
-            .padding(.top, 12)
+            .padding(.top, 8)
             .padding(.bottom, 36)
             .animation(.spring(response: 0.42, dampingFraction: 0.86), value: focus)
         }
         .scrollIndicators(.hidden)
         .background(Color(.systemBackground).ignoresSafeArea())
-        .navigationTitle(focus?.title ?? "锻炼")
+        .navigationTitle(focus.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
@@ -33,43 +31,55 @@ struct WorkoutView: View {
                 spinningDisc
             }
         }
-        .task {
-            WorkoutChrome.shared.active = true
-            defer { WorkoutChrome.shared.active = false }
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+        .onAppear {
+            session.select(focus)
+            // iOS 26 拆掉底栏附件会重建整个标签页，指示器从推荐滑回我的，锻炼也就进不去。
+            if #unavailable(iOS 26.0) {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { WorkoutChrome.shared.active = true }
+            }
+            Task { await session.importRecentHealthWorkouts() }
+        }
+        .onDisappear {
+            if #unavailable(iOS 26.0) {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { WorkoutChrome.shared.active = false }
             }
         }
     }
 
-    private func activitySection(_ item: WorkoutSessionStore.Activity) -> some View {
-        VStack(alignment: .leading, spacing: 22) {
-            Button {
-                guard !session.isRunning else { return }
-                focus = focus == item ? nil : item
-                session.select(item)
-            } label: {
-                VStack(spacing: 8) {
-                    Image(systemName: item.symbol)
-                        .font(.system(size: focus == item ? 28 : 22, weight: .regular))
-                    Text(item.title)
-                        .font(focus == item ? .title.weight(.semibold) : .headline)
-                    Text(focus == item ? "轻点返回" : "轻点开始")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+    private var modeSwitcher: some View {
+        HStack(spacing: 8) {
+            ForEach(WorkoutSessionStore.Activity.allCases) { item in
+                Button {
+                    guard !session.isRunning else { return }
+                    focus = item
+                    session.select(item)
+                } label: {
+                    Label(item.shortTitle, systemImage: item.symbol)
+                        .font(.subheadline.weight(focus == item ? .semibold : .regular))
+                        .foregroundStyle(focus == item ? Color(.systemBackground) : .primary)
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .background(focus == item ? Color.primary : Color.primary.opacity(0.08), in: Capsule())
                 }
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, focus == item ? 8 : 18)
+                .buttonStyle(.plain)
+                .disabled(session.isRunning && focus != item)
             }
-            .buttonStyle(.plain)
-
-            if focus == item {
-                liveSession
-            }
-
-            WorkoutPatternCard(activity: item, records: session.records)
         }
+    }
+
+    private var focusedHeader: some View {
+        VStack(spacing: 10) {
+            Image(systemName: focus.symbol)
+                .font(.system(size: 34, weight: .regular))
+            Text(focus.title)
+                .font(.title.weight(.semibold))
+        }
+        .foregroundStyle(.primary)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
     }
 
     private var liveSession: some View {
@@ -111,6 +121,27 @@ struct WorkoutView: View {
                     }
                 }
             }
+
+            Button {
+                player.showNowPlaying = true
+            } label: {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("添加媒体")
+                            .font(.subheadline.weight(.semibold))
+                        Text(player.currentTrack.map { "\($0.name) · \($0.artistNames)" } ?? "打开播放器选择这次听的歌")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "plus")
+                        .font(.headline)
+                }
+                .foregroundStyle(.primary)
+                .padding(.vertical, 4)
+            }
+            .buttonStyle(.plain)
 
             Button {
                 if session.isRunning {

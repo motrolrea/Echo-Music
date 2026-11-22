@@ -30,7 +30,7 @@
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
     <key>NSHealthShareUsageDescription</key>
-    <string>读取耳机音量、心率和活动能量，用于设备佩戴统计和锻炼记录。没有数据时不显示数值。</string>
+    <string>读取耳机音量、心率、活动能量，以及健康里的步行、跑步、骑行体能训练，用于设备统计和锻炼记录。没有数据时不显示数值。</string>
     <key>NSHealthUpdateUsageDescription</key>
     <string>结束锻炼时可以把这次运动写入健康 App。拒绝写入不影响本次页面上的记录。</string>
     <key>NSMotionUsageDescription</key>

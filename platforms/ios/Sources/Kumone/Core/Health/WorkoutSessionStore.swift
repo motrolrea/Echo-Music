@@ -39,9 +39,26 @@ final class WorkoutSessionStore: ObservableObject {
 
         var title: String {
             switch self {
+            case .walk: return "户外步行"
+            case .run: return "户外跑步"
+            case .cycle: return "户外骑行"
+            }
+        }
+
+        var shortTitle: String {
+            switch self {
             case .walk: return "步行"
             case .run: return "跑步"
             case .cycle: return "骑行"
+            }
+        }
+
+        static func matching(_ type: HKWorkoutActivityType) -> Activity? {
+            switch type {
+            case .walking: return .walk
+            case .running: return .run
+            case .cycling: return .cycle
+            default: return nil
             }
         }
 
@@ -148,6 +165,60 @@ final class WorkoutSessionStore: ObservableObject {
                                       steps: steps,
                                       distance: distance,
                                       energy: activeEnergy), at: 0)
+        persistRecords()
+    }
+
+    /// 读健康 App 近 7 天的户外步行、跑步、骑行。和本地记录按开始时间去重。
+    func importRecentHealthWorkouts() async {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        var readable: [HKObjectType] = [HKObjectType.workoutType()]
+        for identifier in [HKQuantityTypeIdentifier.distanceWalkingRunning, .distanceCycling, .activeEnergyBurned] {
+            if let type = HKObjectType.quantityType(forIdentifier: identifier) { readable.append(type) }
+        }
+        let granted = await withCheckedContinuation { continuation in
+            health.requestAuthorization(toShare: [HKObjectType.workoutType()], read: Set(readable)) { success, _ in
+                continuation.resume(returning: success)
+            }
+        }
+        guard granted else { return }
+        let start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? .distantPast
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
+        let workouts: [HKWorkout] = await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: HKObjectType.workoutType(),
+                                       predicate: predicate,
+                                       limit: 80,
+                                       sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]) { _, samples, _ in
+                continuation.resume(returning: (samples as? [HKWorkout]) ?? [])
+            }
+            health.execute(query)
+        }
+        var changed = false
+        for workout in workouts {
+            guard let activity = Activity.matching(workout.workoutActivityType) else { continue }
+            if records.contains(where: {
+                $0.activity == activity.rawValue && abs($0.startedAt.timeIntervalSince(workout.startDate)) < 5
+            }) { continue }
+            let distanceIdentifier: HKQuantityTypeIdentifier = workout.workoutActivityType == .cycling ? .distanceCycling : .distanceWalkingRunning
+            let distance = HKObjectType.quantityType(forIdentifier: distanceIdentifier)
+                .flatMap { workout.statistics(for: $0)?.sumQuantity()?.doubleValue(for: .meter()) }
+            let energy = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)
+                .flatMap { workout.statistics(for: $0)?.sumQuantity()?.doubleValue(for: .kilocalorie()) }
+            records.append(WorkoutRecord(id: UUID(),
+                                          activity: activity.rawValue,
+                                          startedAt: workout.startDate,
+                                          endedAt: workout.endDate,
+                                          steps: nil,
+                                          distance: distance,
+                                          energy: energy))
+            changed = true
+        }
+        if changed {
+            records.sort { $0.startedAt > $1.startedAt }
+            persistRecords()
+        }
+    }
+
+    private func persistRecords() {
         if records.count > 200 { records = Array(records.prefix(200)) }
         if let data = try? JSONEncoder().encode(records) {
             UserDefaults.standard.set(data, forKey: Self.recordsKey)
@@ -231,6 +302,7 @@ final class WorkoutSessionStore: ObservableObject {
         }
         let configuration = HKWorkoutConfiguration()
         configuration.activityType = activity.workoutType
+        configuration.locationType = .outdoor
         let builder = HKWorkoutBuilder(healthStore: health, configuration: configuration, device: .local())
         let began: Bool = await withCheckedContinuation { continuation in
             builder.beginCollection(withStart: start) { success, _ in
@@ -238,6 +310,21 @@ final class WorkoutSessionStore: ObservableObject {
             }
         }
         guard began else { return }
+        var samples: [HKSample] = []
+        let distanceIdentifier: HKQuantityTypeIdentifier = activity.workoutType == .cycling ? .distanceCycling : .distanceWalkingRunning
+        if let meters = distance, meters > 0,
+           let type = HKObjectType.quantityType(forIdentifier: distanceIdentifier) {
+            samples.append(HKQuantitySample(type: type, quantity: HKQuantity(unit: .meter(), doubleValue: meters), start: start, end: end))
+        }
+        if let kilocalories = activeEnergy, kilocalories > 0,
+           let type = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned) {
+            samples.append(HKQuantitySample(type: type, quantity: HKQuantity(unit: .kilocalorie(), doubleValue: kilocalories), start: start, end: end))
+        }
+        if !samples.isEmpty {
+            await withCheckedContinuation { continuation in
+                builder.add(samples) { _, _ in continuation.resume() }
+            }
+        }
         await withCheckedContinuation { continuation in
             builder.endCollection(withEnd: end) { _, _ in
                 builder.finishWorkout { _, _ in
