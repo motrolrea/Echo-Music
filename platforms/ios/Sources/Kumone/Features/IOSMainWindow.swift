@@ -707,8 +707,6 @@ enum BeansScrollTop {
             try? await Task.sleep(nanoseconds: 280_000_000)
             BeansVisibleScroll.expandSystemTabBar()
             BottomBarCollapseStore.shared.finishProgrammaticScroll()
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            BottomBarCollapseStore.shared.releaseMinimizeSuppression()
         }
     }
 }
@@ -837,6 +835,12 @@ final class BottomBarCollapseStore: ObservableObject {
         }
         if Date() < ignoreCollapseUntil { return }
         let down = offset > BeansScrollCollapse.triggerOffset
+        // 到顶后先保持展开。等确认已经在顶部，再恢复「下滑才折叠」，不能在到顶那一下折回去。
+        if suppressMinimize {
+            guard !down else { return }
+            suppressMinimize = false
+            BeansVisibleScroll.expandSystemTabBar()
+        }
         if !down { userExpanded = false }
         if hasScrolledDown != down { hasScrolledDown = down }
         if down, userExpanded { return }
@@ -848,10 +852,6 @@ final class BottomBarCollapseStore: ObservableObject {
         userExpanded = true
         suppressMinimize = true
         setCollapsed(false)
-    }
-
-    func releaseMinimizeSuppression() {
-        suppressMinimize = false
     }
 
     func finishProgrammaticScroll() {
