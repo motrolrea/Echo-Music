@@ -11,6 +11,78 @@ final class WorkoutChrome: ObservableObject {
     @Published var active = false
 }
 
+struct WorkoutSong: Codable, Identifiable, Equatable {
+    var id: String
+    var title: String
+    var artist: String
+    var coverURL: String?
+    var playedAt: Date
+}
+
+/// 锻炼过程中的一个采样点。配速是秒/米，越小越快。
+struct WorkoutSample: Codable, Equatable {
+    var at: Date
+    var distance: Double?
+    var pace: TimeInterval?
+    var heartRate: Double?
+    var steps: Int?
+    var energy: Double?
+    var floors: Int?
+}
+
+struct WorkoutPacePoint: Equatable {
+    var at: Date
+    var pace: TimeInterval
+}
+
+/// 用相邻采样点的距离差算出一段配速，比瞬时值稳。
+func workoutPacePoints(_ samples: [WorkoutSample]) -> [WorkoutPacePoint] {
+    let ordered = samples.sorted { $0.at < $1.at }
+    var points: [WorkoutPacePoint] = []
+    for pair in zip(ordered, ordered.dropFirst()) {
+        guard let start = pair.0.distance, let end = pair.1.distance else { continue }
+        let meters = end - start
+        let seconds = pair.1.at.timeIntervalSince(pair.0.at)
+        guard meters >= 12, seconds >= 8 else { continue }
+        let pace = seconds / meters
+        guard pace > 0.04, pace < 3 else { continue }
+        points.append(WorkoutPacePoint(at: pair.1.at, pace: pace))
+    }
+    return points
+}
+
+struct WorkoutSplit: Identifiable, Equatable {
+    var kilometer: Int
+    var pace: TimeInterval
+    var at: Date
+    var id: Int { kilometer }
+}
+
+func workoutSplits(_ samples: [WorkoutSample]) -> [WorkoutSplit] {
+    let ordered = samples.sorted { $0.at < $1.at }
+    guard let first = ordered.first, let origin = first.distance else { return [] }
+    var splits: [WorkoutSplit] = []
+    var mark = 1000.0
+    var anchor = first
+    for sample in ordered.dropFirst() {
+        guard let distance = sample.distance else { continue }
+        while distance - origin >= mark {
+            let meters = distance - (anchor.distance ?? origin)
+            let seconds = sample.at.timeIntervalSince(anchor.at)
+            if meters > 50, seconds > 20 {
+                let pace = seconds / meters
+                if pace > 0.04, pace < 3 {
+                    splits.append(WorkoutSplit(kilometer: Int(mark / 1000), pace: pace, at: sample.at))
+                }
+            }
+            anchor = sample
+            mark += 1000
+            if splits.count >= 80 { return splits }
+        }
+    }
+    return splits
+}
+
 struct WorkoutRecord: Codable, Identifiable, Equatable {
     var id: UUID
     var activity: String
@@ -19,6 +91,90 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
     var steps: Int?
     var distance: Double?
     var energy: Double?
+    var floors: Int?
+    var averagePace: TimeInterval?
+    var fastestPace: TimeInterval?
+    var fastestPaceAt: Date?
+    var slowestPace: TimeInterval?
+    var peakHeartRate: Double?
+    var peakHeartRateAt: Date?
+    var averageHeartRate: Double?
+    var songs: [WorkoutSong]
+    var samples: [WorkoutSample]
+
+    init(id: UUID, activity: String, startedAt: Date, endedAt: Date,
+         steps: Int? = nil, distance: Double? = nil, energy: Double? = nil,
+         floors: Int? = nil, averagePace: TimeInterval? = nil,
+         fastestPace: TimeInterval? = nil, fastestPaceAt: Date? = nil,
+         slowestPace: TimeInterval? = nil, peakHeartRate: Double? = nil,
+         peakHeartRateAt: Date? = nil, averageHeartRate: Double? = nil,
+         songs: [WorkoutSong] = [], samples: [WorkoutSample] = []) {
+        self.id = id
+        self.activity = activity
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.steps = steps
+        self.distance = distance
+        self.energy = energy
+        self.floors = floors
+        self.averagePace = averagePace
+        self.fastestPace = fastestPace
+        self.fastestPaceAt = fastestPaceAt
+        self.slowestPace = slowestPace
+        self.peakHeartRate = peakHeartRate
+        self.peakHeartRateAt = peakHeartRateAt
+        self.averageHeartRate = averageHeartRate
+        self.songs = songs
+        self.samples = samples
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        activity = try container.decode(String.self, forKey: .activity)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        endedAt = try container.decode(Date.self, forKey: .endedAt)
+        steps = try container.decodeIfPresent(Int.self, forKey: .steps)
+        distance = try container.decodeIfPresent(Double.self, forKey: .distance)
+        energy = try container.decodeIfPresent(Double.self, forKey: .energy)
+        floors = try container.decodeIfPresent(Int.self, forKey: .floors)
+        averagePace = try container.decodeIfPresent(TimeInterval.self, forKey: .averagePace)
+        fastestPace = try container.decodeIfPresent(TimeInterval.self, forKey: .fastestPace)
+        fastestPaceAt = try container.decodeIfPresent(Date.self, forKey: .fastestPaceAt)
+        slowestPace = try container.decodeIfPresent(TimeInterval.self, forKey: .slowestPace)
+        peakHeartRate = try container.decodeIfPresent(Double.self, forKey: .peakHeartRate)
+        peakHeartRateAt = try container.decodeIfPresent(Date.self, forKey: .peakHeartRateAt)
+        averageHeartRate = try container.decodeIfPresent(Double.self, forKey: .averageHeartRate)
+        songs = try container.decodeIfPresent([WorkoutSong].self, forKey: .songs) ?? []
+        samples = try container.decodeIfPresent([WorkoutSample].self, forKey: .samples) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(activity, forKey: .activity)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encode(endedAt, forKey: .endedAt)
+        try container.encodeIfPresent(steps, forKey: .steps)
+        try container.encodeIfPresent(distance, forKey: .distance)
+        try container.encodeIfPresent(energy, forKey: .energy)
+        try container.encodeIfPresent(floors, forKey: .floors)
+        try container.encodeIfPresent(averagePace, forKey: .averagePace)
+        try container.encodeIfPresent(fastestPace, forKey: .fastestPace)
+        try container.encodeIfPresent(fastestPaceAt, forKey: .fastestPaceAt)
+        try container.encodeIfPresent(slowestPace, forKey: .slowestPace)
+        try container.encodeIfPresent(peakHeartRate, forKey: .peakHeartRate)
+        try container.encodeIfPresent(peakHeartRateAt, forKey: .peakHeartRateAt)
+        try container.encodeIfPresent(averageHeartRate, forKey: .averageHeartRate)
+        try container.encode(songs, forKey: .songs)
+        try container.encode(samples, forKey: .samples)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, activity, startedAt, endedAt, steps, distance, energy, floors
+        case averagePace, fastestPace, fastestPaceAt, slowestPace
+        case peakHeartRate, peakHeartRateAt, averageHeartRate, songs, samples
+    }
 }
 
 /// 手动开始、手动结束的听歌锻炼。手机能测的才显示，测不到显示「—」。
@@ -28,6 +184,8 @@ final class WorkoutSessionStore: ObservableObject {
         let id: String
         let title: String
         let artist: String
+        let coverURL: String?
+        let playedAt: Date
     }
 
     enum Activity: String, CaseIterable, Identifiable {
@@ -99,7 +257,8 @@ final class WorkoutSessionStore: ObservableObject {
     private let health = HKHealthStore()
     private var timer: Timer?
     private var heartQuery: HKQuery?
-    private var savedSongIDs = Set<String>()
+    private var samples: [WorkoutSample] = []
+    private var lastSampleAt: Date?
     private var cancellable: AnyCancellable?
 
     init() {
@@ -126,8 +285,10 @@ final class WorkoutSessionStore: ObservableObject {
         heartRate = nil
         activeEnergy = nil
         songs = []
-        savedSongIDs = []
+        samples = []
+        lastSampleAt = nil
         status = "正在记录"
+        captureSample(force: true)
         remember(player.currentTrack)
         cancellable = player.$currentTrack
             .receive(on: DispatchQueue.main)
@@ -141,6 +302,7 @@ final class WorkoutSessionStore: ObservableObject {
 
     func stop() async {
         guard isRunning, let startedAt else { return }
+        captureSample(force: true)
         isRunning = false
         timer?.invalidate()
         timer = nil
@@ -158,17 +320,59 @@ final class WorkoutSessionStore: ObservableObject {
     }
 
     private func rememberRecord(from start: Date, to end: Date) {
+        let length = end.timeIntervalSince(start)
+        let average = (distance ?? 0) > 0 ? length / distance! : nil
+        let points = workoutPacePoints(samples)
+        let instant = samples.filter { sample in
+            guard let pace = sample.pace else { return false }
+            return pace > 0.04 && pace < 3
+        }
+        let fastest = points.min { $0.pace < $1.pace }
+            ?? instant.min { ($0.pace ?? 0) < ($1.pace ?? 0) }.map { WorkoutPacePoint(at: $0.at, pace: $0.pace ?? 0) }
+        let slowest = points.max { $0.pace < $1.pace }
+            ?? instant.max { ($0.pace ?? 0) < ($1.pace ?? 0) }.map { WorkoutPacePoint(at: $0.at, pace: $0.pace ?? 0) }
+        let hearts = samples.compactMap(\.heartRate)
+        let peakHeart = samples.filter { $0.heartRate != nil }.max { ($0.heartRate ?? 0) < ($1.heartRate ?? 0) }
         records.insert(WorkoutRecord(id: UUID(),
                                       activity: activity.rawValue,
                                       startedAt: start,
                                       endedAt: end,
                                       steps: steps,
                                       distance: distance,
-                                      energy: activeEnergy), at: 0)
+                                      energy: activeEnergy,
+                                      floors: floors,
+                                      averagePace: average,
+                                      fastestPace: fastest?.pace,
+                                      fastestPaceAt: fastest?.at,
+                                      slowestPace: slowest?.pace,
+                                      peakHeartRate: peakHeart?.heartRate,
+                                      peakHeartRateAt: peakHeart?.at,
+                                      averageHeartRate: hearts.isEmpty ? nil : hearts.reduce(0, +) / Double(hearts.count),
+                                      songs: songs.map {
+                                          WorkoutSong(id: $0.id, title: $0.title, artist: $0.artist,
+                                                      coverURL: $0.coverURL, playedAt: $0.playedAt)
+                                      },
+                                      samples: samples), at: 0)
         persistRecords()
     }
 
-    /// 读健康 App 近 7 天的户外步行、跑步、骑行。和本地记录按开始时间去重。
+    /// 大约每 15 秒留一个点，用来事后找最快的一段。
+    private func captureSample(force: Bool = false) {
+        guard isRunning || force else { return }
+        let now = Date()
+        if !force, let lastSampleAt, now.timeIntervalSince(lastSampleAt) < 15 { return }
+        lastSampleAt = now
+        samples.append(WorkoutSample(at: now,
+                                      distance: distance,
+                                      pace: pace,
+                                      heartRate: heartRate,
+                                      steps: steps,
+                                      energy: activeEnergy,
+                                      floors: floors))
+        if samples.count > 800 { samples.removeFirst(samples.count - 800) }
+    }
+
+    /// 读健康 App 近 90 天的户外步行、跑步、骑行。和本地记录按开始时间去重。
     func importRecentHealthWorkouts() async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         var readable: [HKObjectType] = [HKObjectType.workoutType()]
@@ -181,12 +385,12 @@ final class WorkoutSessionStore: ObservableObject {
             }
         }
         guard granted else { return }
-        let start = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? .distantPast
+        let start = Calendar.current.date(byAdding: .day, value: -90, to: Date()) ?? .distantPast
         let predicate = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
         let workouts: [HKWorkout] = await withCheckedContinuation { continuation in
             let query = HKSampleQuery(sampleType: HKObjectType.workoutType(),
                                        predicate: predicate,
-                                       limit: 80,
+                                       limit: 150,
                                        sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: false)]) { _, samples, _ in
                 continuation.resume(returning: (samples as? [HKWorkout]) ?? [])
             }
@@ -203,13 +407,15 @@ final class WorkoutSessionStore: ObservableObject {
                 .flatMap { workout.statistics(for: $0)?.sumQuantity()?.doubleValue(for: .meter()) }
             let energy = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)
                 .flatMap { workout.statistics(for: $0)?.sumQuantity()?.doubleValue(for: .kilocalorie()) }
+            let length = workout.endDate.timeIntervalSince(workout.startDate)
+            let pace = (distance ?? 0) > 0 ? length / distance! : nil
             records.append(WorkoutRecord(id: UUID(),
                                           activity: activity.rawValue,
                                           startedAt: workout.startDate,
                                           endedAt: workout.endDate,
-                                          steps: nil,
                                           distance: distance,
-                                          energy: energy))
+                                          energy: energy,
+                                          averagePace: pace))
             changed = true
         }
         if changed {
@@ -228,13 +434,18 @@ final class WorkoutSessionStore: ObservableObject {
     private func tick() {
         guard let startedAt, isRunning else { return }
         elapsed = Date().timeIntervalSince(startedAt)
+        captureSample()
     }
 
     private func remember(_ track: Track?) {
         guard isRunning, let track else { return }
         let key = "\(track.source ?? "local")-\(track.id)-\(track.name)"
-        guard savedSongIDs.insert(key).inserted else { return }
-        songs.append(PlayedSong(id: key, title: track.name, artist: track.artistNames))
+        if songs.last?.id.hasPrefix(key) == true { return }
+        songs.append(PlayedSong(id: "\(key)-\(Int(Date().timeIntervalSince1970))",
+                                 title: track.name,
+                                 artist: track.artistNames,
+                                 coverURL: track.album.picUrl,
+                                 playedAt: Date()))
     }
 
     private func startPedometer() {
