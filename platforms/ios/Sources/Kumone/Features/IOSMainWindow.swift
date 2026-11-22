@@ -1,6 +1,5 @@
 import SwiftUI
 #if os(iOS)
-import ObjectiveC
 import UIKit
 #endif
 
@@ -337,33 +336,12 @@ public struct IOSMainWindow: View {
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
-                isActive: player.hasCurrentTrack && !workoutChrome.active,
+                isActive: player.hasCurrentTrack,
+                hidesPlayer: workoutChrome.active,
                 transitionNamespace: nowPlayingTransition,
                 colorScheme: resolvedColorScheme
             ))
             .animation(AppAnimation.standard, value: player.hasCurrentTrack)
-            .overlay(alignment: .bottomTrailing) {
-                if isBarCollapsed, !workoutChrome.active {
-                    Button {
-                        BeansScrollTop.perform()
-                    } label: {
-                        Image(systemName: "chevron.up")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 52, height: 52)
-                            .compatGlass(interactive: true, in: Circle())
-                            .contentShape(Circle())
-                            .overlay { Circle().strokeBorder(.white.opacity(0.16), lineWidth: 0.5) }
-                            .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("回到顶部")
-                    // 系统搜索球比内容边距更靠里，34 让 52pt 圆的圆心落在它正上方。
-                    .padding(.trailing, 34)
-                    .padding(.bottom, 86)
-                    .zIndex(20)
-                }
-            }
     }
 
     @available(iOS 26.0, *)
@@ -443,7 +421,7 @@ public struct IOSMainWindow: View {
                     Spacer(minLength: 0)
                 }
 
-                collapsedSearchStack(size: 52)
+                searchBall(size: 52, routeExploreWhenCollapsed: true)
             }
             .frame(maxWidth: 560)
             .padding(.horizontal, 18)
@@ -487,27 +465,6 @@ public struct IOSMainWindow: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(currentTabTitle)
-    }
-
-    /// 下滑后：回顶箭头在搜索小球正上方，中间留出一段空隙。
-    private func collapsedSearchStack(size: CGFloat) -> some View {
-        VStack(spacing: 18) {
-            Button {
-                BeansScrollTop.perform()
-            } label: {
-                Image(systemName: "chevron.up")
-                    .font(.system(size: size > 52 ? 20 : 18, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: size, height: size)
-                    .compatGlass(interactive: true, in: Circle())
-                    .contentShape(Circle())
-                    .overlay { Circle().strokeBorder(.white.opacity(0.16), lineWidth: 0.5) }
-                    .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("回到顶部")
-            searchBall(size: size, routeExploreWhenCollapsed: true)
-        }
     }
 
     /// 独立悬浮搜索小球（与胶囊底栏分离）
@@ -679,130 +636,6 @@ private enum NowPlayingTransitionID {
 
 // MARK: - 底栏折叠追踪
 
-extension Notification.Name {
-    /// 底栏回顶按钮：当前页滚回顶端。
-    static let beansScrollToTop = Notification.Name("echo.beansScrollToTop")
-}
-
-enum BeansScrollTop {
-    static let anchor = "beans.scroll.top"
-
-    /// 平滑滚到当前可见页的顶端，并在到顶后展开底栏和迷你播放器。
-    @MainActor
-    static func perform() {
-        Haptics.tap()
-        BottomBarCollapseStore.shared.beginProgrammaticScroll()
-        let scrolled = BeansVisibleScroll.scrollToTop()
-        if !scrolled {
-            NotificationCenter.default.post(name: .beansScrollToTop, object: nil)
-        }
-        Task { @MainActor in
-            let deadline = Date().addingTimeInterval(0.9)
-            while Date() < deadline, !BeansVisibleScroll.isNearTop() {
-                try? await Task.sleep(nanoseconds: 50_000_000)
-            }
-            // 内容到顶后再展开一次。一开始就展开没有过渡，系统还会记住这个状态，后面下滑不再折叠。
-            BeansVisibleScroll.expandSystemTabBar()
-            try? await Task.sleep(nanoseconds: 450_000_000)
-            BottomBarCollapseStore.shared.finishProgrammaticScroll()
-        }
-    }
-}
-
-enum BeansVisibleScroll {
-    /// 只滚当前看得见的纵向大列表，跳过隐藏分页和横向货架。
-    @MainActor
-    static func scrollToTop() -> Bool {
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let window = scene.windows.first(where: \.isKeyWindow) ?? scene.windows.first
-        else { return false }
-        let bounds = window.bounds
-        let candidates = window.scrollViews()
-            .filter { view in
-                guard view.isVertical, view.contentOffset.y > 1 else { return false }
-                let frame = view.convert(view.bounds, to: window)
-                let visible = frame.intersection(bounds)
-                return visible.width > bounds.width * 0.55 && visible.height > 180 && view.alpha > 0.4
-            }
-            .sorted { $0.bounds.height > $1.bounds.height }
-        guard !candidates.isEmpty else { return false }
-        for target in candidates where target.bounds.height > bounds.height * 0.45 {
-            let top = CGPoint(x: target.contentOffset.x, y: -target.adjustedContentInset.top)
-            UIView.animate(withDuration: 0.55,
-                           delay: 0,
-                           usingSpringWithDamping: 0.9,
-                           initialSpringVelocity: 0.35,
-                           options: [.allowUserInteraction, .beginFromCurrentState, .curveEaseOut]) {
-                target.contentOffset = top
-            }
-        }
-        return true
-    }
-
-    @MainActor
-    static func isNearTop() -> Bool {
-        visibleVerticalScrolls().allSatisfy { $0.contentOffset.y <= $0.adjustedContentInset.top + 2 }
-    }
-
-    /// 系统底栏只认用户滑动。代码滚到顶后要明确叫它展开。
-    @MainActor
-    static func expandSystemTabBar() {
-        guard #available(iOS 26.0, *),
-              let root = keyWindow()?.rootViewController
-        else { return }
-        guard let controller = tabController(from: root) else { return }
-        let selector = NSSelectorFromString("setTabBarMinimized:animated:")
-        guard let method = class_getInstanceMethod(type(of: controller), selector) else { return }
-        typealias SetMinimized = @convention(c) (AnyObject, Selector, ObjCBool, ObjCBool) -> Void
-        let call = unsafeBitCast(method_getImplementation(method), to: SetMinimized.self)
-        call(controller, selector, ObjCBool(false), ObjCBool(true))
-    }
-
-    @MainActor
-    private static func visibleVerticalScrolls() -> [UIScrollView] {
-        guard let window = keyWindow() else { return [] }
-        let bounds = window.bounds
-        return window.scrollViews().filter { view in
-            guard view.isVertical else { return false }
-            let frame = view.convert(view.bounds, to: window)
-            let visible = frame.intersection(bounds)
-            return visible.width > bounds.width * 0.55 && visible.height > 180 && view.alpha > 0.4
-        }
-    }
-
-    @MainActor
-    private static func keyWindow() -> UIWindow? {
-        let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
-        return scene?.windows.first(where: \.isKeyWindow) ?? scene?.windows.first
-    }
-
-    private static func tabController(from controller: UIViewController) -> UITabBarController? {
-        if let tabs = controller as? UITabBarController { return tabs }
-        for child in controller.children {
-            if let tabs = tabController(from: child) { return tabs }
-        }
-        if let presented = controller.presentedViewController {
-            return tabController(from: presented)
-        }
-        return nil
-    }
-}
-
-private extension UIView {
-    func scrollViews() -> [UIScrollView] {
-        var found: [UIScrollView] = []
-        if let scroll = self as? UIScrollView { found.append(scroll) }
-        for child in subviews { found.append(contentsOf: child.scrollViews()) }
-        return found
-    }
-}
-
-private extension UIScrollView {
-    var isVertical: Bool {
-        alwaysBounceVertical || contentSize.height > bounds.height + 24
-    }
-}
-
 enum BeansScrollCollapse {
     static let coordinateSpace = "beans.bottomBarScroll"
     /// 内容向上滚过多少点后收起底栏
@@ -817,38 +650,13 @@ final class BottomBarCollapseStore: ObservableObject {
     @Published private(set) var hasScrolledDown = false
     /// 用户点小球手动展开后，滚回顶部前不再自动收起
     private var userExpanded = false
-    /// 回顶动画进行中。这段时间滚动偏移来回跳，不能跟着折叠。
-    private var programmaticScroll = false
-    /// 到顶后的一小段里，旧的滚动坐标还会报一次很大的偏移。
-    private var ignoreCollapseUntil = Date.distantPast
 
     func update(offset: CGFloat) {
-        if programmaticScroll {
-            if offset <= BeansScrollCollapse.triggerOffset {
-                finishProgrammaticScroll()
-            }
-            return
-        }
-        if Date() < ignoreCollapseUntil { return }
         let down = offset > BeansScrollCollapse.triggerOffset
         if !down { userExpanded = false }
         if hasScrolledDown != down { hasScrolledDown = down }
         if down, userExpanded { return }
         setCollapsed(down)
-    }
-
-    func beginProgrammaticScroll() {
-        programmaticScroll = true
-        userExpanded = true
-        setCollapsed(false)
-    }
-
-    func finishProgrammaticScroll() {
-        programmaticScroll = false
-        ignoreCollapseUntil = Date().addingTimeInterval(0.7)
-        userExpanded = false
-        hasScrolledDown = false
-        setCollapsed(false)
     }
 
     func expandByUser() {
@@ -896,14 +704,22 @@ private struct SoftScrollEdgeModifier: ViewModifier {
 @available(iOS 26.0, *)
 private struct MiniPlayerAccessoryModifier: ViewModifier {
     let isActive: Bool
+    let hidesPlayer: Bool
     let transitionNamespace: Namespace.ID
     let colorScheme: ColorScheme
     @ViewBuilder
     func body(content: Content) -> some View {
         if isActive {
+            // 锻炼时只收起内容，修饰符留着。拆掉修饰符会重建标签页，指示器从推荐滑回我的。
             content.tabViewBottomAccessory {
-                IOSMiniPlayerAccessory(transitionNamespace: transitionNamespace)
-                    .environment(\.colorScheme, colorScheme)
+                if hidesPlayer {
+                    Color.clear
+                        .frame(width: 0, height: 0)
+                        .accessibilityHidden(true)
+                } else {
+                    IOSMiniPlayerAccessory(transitionNamespace: transitionNamespace)
+                        .environment(\.colorScheme, colorScheme)
+                }
             }
         } else {
             content

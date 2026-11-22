@@ -33,20 +33,15 @@ struct WorkoutView: View {
         }
         .onAppear {
             session.select(focus)
-            // iOS 26 拆掉底栏附件会重建整个标签页，指示器从推荐滑回我的，锻炼也就进不去。
-            if #unavailable(iOS 26.0) {
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) { WorkoutChrome.shared.active = true }
-            }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { WorkoutChrome.shared.active = true }
             Task { await session.importRecentHealthWorkouts() }
         }
         .onDisappear {
-            if #unavailable(iOS 26.0) {
-                var transaction = Transaction()
-                transaction.disablesAnimations = true
-                withTransaction(transaction) { WorkoutChrome.shared.active = false }
-            }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { WorkoutChrome.shared.active = false }
         }
     }
 
@@ -71,11 +66,11 @@ struct WorkoutView: View {
     }
 
     private var focusedHeader: some View {
-        VStack(spacing: 10) {
+        HStack(spacing: 10) {
             Image(systemName: focus.symbol)
-                .font(.system(size: 34, weight: .regular))
+                .font(.system(size: 28, weight: .regular))
             Text(focus.title)
-                .font(.title.weight(.semibold))
+                .font(.title2.weight(.semibold))
         }
         .foregroundStyle(.primary)
         .frame(maxWidth: .infinity)
@@ -83,15 +78,17 @@ struct WorkoutView: View {
     }
 
     private var liveSession: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .center, spacing: 22) {
+            VStack(spacing: 4) {
                 Text(clock(session.elapsed))
-                    .font(.system(size: 56, weight: .semibold, design: .rounded))
+                    .font(.system(size: 44, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                 Text(session.status)
-                    .font(.subheadline)
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
             }
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 18) {
                 metric("步数", session.steps.map(String.init))
@@ -123,27 +120,6 @@ struct WorkoutView: View {
             }
 
             Button {
-                player.showNowPlaying = true
-            } label: {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("添加媒体")
-                            .font(.subheadline.weight(.semibold))
-                        Text(player.currentTrack.map { "\($0.name) · \($0.artistNames)" } ?? "打开播放器选择这次听的歌")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer(minLength: 8)
-                    Image(systemName: "plus")
-                        .font(.headline)
-                }
-                .foregroundStyle(.primary)
-                .padding(.vertical, 4)
-            }
-            .buttonStyle(.plain)
-
-            Button {
                 if session.isRunning {
                     Task { await session.stop() }
                 } else {
@@ -161,7 +137,7 @@ struct WorkoutView: View {
     }
 
     private func metric(_ title: String, _ value: String?) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(spacing: 4) {
             Text(value ?? "—")
                 .font(.system(size: 28, weight: .semibold, design: .rounded))
                 .monospacedDigit()
@@ -171,7 +147,8 @@ struct WorkoutView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
+        .multilineTextAlignment(.center)
     }
 
     private var spinningDisc: some View {

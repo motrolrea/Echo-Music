@@ -231,10 +231,8 @@ struct ExploreView: View {
     @FocusState private var searchFocused: Bool
 
     var body: some View {
-        ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
-                Color.clear.frame(height: 1).id(BeansScrollTop.anchor)
 #if !os(iOS)
                 platformPicker
 #endif
@@ -344,12 +342,6 @@ struct ExploreView: View {
             .modifier(BeansScrollCollapseTracker())
         }
         .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
-        .onReceive(NotificationCenter.default.publisher(for: .beansScrollToTop)) { _ in
-            withAnimation(.easeInOut(duration: 0.28)) {
-                proxy.scrollTo(BeansScrollTop.anchor, anchor: .top)
-            }
-        }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .exploreFocusSearch)) { _ in
             // 精选页下滑后点搜索小球：底栏保持收起，弹出和顶栏同一套搜索。
             ballSearchPresented = true

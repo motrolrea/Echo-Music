@@ -370,10 +370,8 @@ struct HomeView: View {
 
     var body: some View {
         GeometryReader { proxy in
-            ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    Color.clear.frame(height: 1).id(BeansScrollTop.anchor)
                     communityAnnouncement
 
                     standardHomeBody
@@ -388,12 +386,6 @@ struct HomeView: View {
             }
             .scrollBounceBehavior(.always)
             .coordinateSpace(name: BeansScrollCollapse.coordinateSpace)
-            .onReceive(NotificationCenter.default.publisher(for: .beansScrollToTop)) { _ in
-                withAnimation(.easeInOut(duration: 0.28)) {
-                    scrollProxy.scrollTo(BeansScrollTop.anchor, anchor: .top)
-                }
-            }
-            }
         }
         .navigationTitle("推荐")
         #if os(iOS)
