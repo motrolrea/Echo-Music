@@ -710,15 +710,23 @@ private struct MiniPlayerAccessoryModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if isActive {
-            // 锻炼时只收起内容，修饰符留着。拆掉修饰符会重建标签页，指示器从推荐滑回我的。
-            content.tabViewBottomAccessory {
-                if hidesPlayer {
-                    Color.clear
-                        .frame(width: 0, height: 0)
-                        .accessibilityHidden(true)
-                } else {
+            if #available(iOS 26.1, *) {
+                // 动态收起整个配件，连底座一起隐藏。修饰符保持不动，标签页身份不会重建。
+                content.tabViewBottomAccessory(isEnabled: !hidesPlayer) {
                     IOSMiniPlayerAccessory(transitionNamespace: transitionNamespace)
                         .environment(\.colorScheme, colorScheme)
+                }
+            } else {
+                // 26.0 只能收起内容；空配件仍会留下一层底座。
+                content.tabViewBottomAccessory {
+                    if hidesPlayer {
+                        Color.clear
+                            .frame(width: 0, height: 0)
+                            .accessibilityHidden(true)
+                    } else {
+                        IOSMiniPlayerAccessory(transitionNamespace: transitionNamespace)
+                            .environment(\.colorScheme, colorScheme)
+                    }
                 }
             }
         } else {

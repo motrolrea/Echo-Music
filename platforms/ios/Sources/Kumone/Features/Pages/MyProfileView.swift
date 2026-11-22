@@ -1083,6 +1083,16 @@ struct MyProfileView: View {
                 profileTileLabel("锻炼", icon: "figure.run", tint: .green)
             }
             .buttonStyle(.plain)
+            NavigationLink {
+                AudioDevicesView()
+            } label: {
+                profileTileLabel("音频设备", tint: .teal) {
+                    HeadphoneCaseGlyph()
+                        .frame(width: 22, height: 22)
+                        .foregroundStyle(Color.teal)
+                }
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -1094,10 +1104,17 @@ struct MyProfileView: View {
     }
 
     private func profileTileLabel(_ title: String, icon: String, tint: Color) -> some View {
-        VStack(spacing: 8) {
+        profileTileLabel(title, tint: tint) {
             Image(systemName: icon)
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(tint)
+        }
+    }
+
+    private func profileTileLabel<Icon: View>(_ title: String, tint: Color,
+                                              @ViewBuilder icon: () -> Icon) -> some View {
+        VStack(spacing: 8) {
+            icon()
                 .frame(width: 36, height: 36)
                 .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             Text(title)
@@ -1418,6 +1435,37 @@ private struct GoldShimmer: View {
         .onAppear {
             phase = -0.6
             withAnimation(.linear(duration: 2.2).repeatForever(autoreverses: false)) { phase = 1.1 }
+        }
+    }
+}
+
+/// 参考耳机充电盒轮廓二次创作的图标：圆角盒身、开盖缝、指示灯。
+private struct HeadphoneCaseGlyph: View {
+    var body: some View {
+        Canvas { context, size in
+            let width = size.width
+            let height = size.height
+            let stroke = StrokeStyle(lineWidth: max(1.3, width * 0.075),
+                                     lineCap: .round, lineJoin: .round)
+            let body = CGRect(x: width * 0.10, y: height * 0.28,
+                              width: width * 0.80, height: height * 0.52)
+            context.stroke(Path(roundedRect: body, cornerRadius: height * 0.16),
+                           with: .foreground, style: stroke)
+
+            var seam = Path()
+            seam.move(to: CGPoint(x: body.minX + width * 0.02, y: body.midY - height * 0.01))
+            seam.addLine(to: CGPoint(x: body.maxX - width * 0.02, y: body.midY - height * 0.01))
+            context.stroke(seam, with: .foreground, style: stroke)
+
+            var tab = Path()
+            tab.move(to: CGPoint(x: width * 0.38, y: body.midY - height * 0.01))
+            tab.addLine(to: CGPoint(x: width * 0.62, y: body.midY - height * 0.01))
+            context.stroke(tab, with: .foreground,
+                           style: StrokeStyle(lineWidth: max(2.0, width * 0.10), lineCap: .round))
+
+            let dot = CGRect(x: width * 0.485, y: body.midY + height * 0.12,
+                             width: width * 0.03, height: width * 0.03)
+            context.fill(Path(ellipseIn: dot), with: .foreground)
         }
     }
 }

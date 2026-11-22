@@ -209,19 +209,6 @@ struct SettingsView: View {
             }
 
 #if os(iOS)
-            settingsGroup("音频设备") {
-                NavigationLink {
-                    AudioDevicesView()
-                } label: {
-                    Label("音频设备统计", systemImage: "airpods")
-                }
-                .frame(minHeight: 44)
-                Text("从健康 App 的耳机音量记录统计各音频设备的佩戴时长；只在本机读取，不会上传。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
             settingsGroup("LX 音源") {
                 sourceManagerRow
                 Text("音源管理是独立页面：可导入文件或在线链接、切换当前音源，并测试 musicUrl 接口。")

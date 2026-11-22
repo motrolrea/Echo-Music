@@ -3,10 +3,11 @@ import Foundation
 import SwiftUI
 import UIKit
 
-/// 设置里的「音频设备」：按健康 App 的耳机音量记录统计各设备佩戴时长。
+/// 我的页面里的「音频设备」：按健康 App 的耳机音量记录统计各设备佩戴时长。
 struct AudioDevicesView: View {
     @StateObject private var store = AudioDeviceStatsStore()
     @State private var range: AudioDeviceStatsStore.Range = .week
+    @State private var showOutputInfo = false
 
     private var sessionTotal: Int { store.devices.reduce(0) { $0 + $1.sessionCount } }
     private var averageSession: TimeInterval {
@@ -17,7 +18,6 @@ struct AudioDevicesView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 picker
-                currentOutputRow
 
                 if !AudioDeviceStatsStore.isAvailable {
                     notice("这台设备不支持健康数据")
@@ -47,6 +47,37 @@ struct AudioDevicesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await store.load(range: range) }
         .task(id: range) { await store.load(range: range) }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                outputBadge
+            }
+        }
+        .alert("当前音频输出", isPresented: $showOutputInfo) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("\(currentOutput.name)\n\(currentOutput.detail)\n\(store.isAuthorized ? "健康数据已授权" : "健康数据未授权")")
+        }
+    }
+
+    private var currentOutput: AudioRouteSnapshot {
+        AudioRouteSnapshot.current()
+    }
+
+    private var outputBadge: some View {
+        Button { showOutputInfo = true } label: {
+            ZStack(alignment: .bottomTrailing) {
+                AudioArtworkStage(size: 34, radius: 10) {
+                    HeadphoneArtworkView(name: currentOutput.name, inset: 3)
+                }
+                Circle()
+                    .fill(store.isAuthorized ? Color.green : Color.orange)
+                    .frame(width: 7, height: 7)
+                    .overlay { Circle().stroke(Color(.systemBackground), lineWidth: 1.5) }
+                    .offset(x: 1, y: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("当前音频输出")
     }
 
     private var picker: some View {
@@ -56,30 +87,6 @@ struct AudioDevicesView: View {
             }
         }
         .pickerStyle(.segmented)
-    }
-
-    private var currentOutputRow: some View {
-        let output = AudioRouteSnapshot.current()
-        return HStack(spacing: 12) {
-            AudioArtworkStage(size: 42, radius: 12) {
-                HeadphoneArtworkView(name: output.name, inset: 4)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(output.name)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                Text(output.detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            Text(store.isAuthorized ? "已授权" : "未授权")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(store.isAuthorized ? .green : .orange)
-        }
-        .padding(13)
-        .audioCard()
     }
 
     private var todayCard: some View {
@@ -982,6 +989,11 @@ enum HeadphoneArtwork {
 
     static func assetName(for name: String, maxColor: String? = nil) -> String? {
         let lower = name.lowercased()
+        if lower.contains("earpods") {
+            if lower.contains("usb-c") || lower.contains("usb c") { return "earpods-usbc" }
+            if lower.contains("lightning") { return "earpods-lightning" }
+            return "earpods-35mm"
+        }
         guard lower.contains("airpods") else { return nil }
         if lower.contains("max") {
             return "airpods-max-\(maxColor ?? savedMaxColor(for: name))"
@@ -1123,7 +1135,8 @@ enum HeadphoneKind {
             return .speaker
         }
         if lower.contains("pro") { return .pro }
-        if lower.contains("airpods") || lower.contains("buds") || lower.contains("freebuds") {
+        if lower.contains("airpods") || lower.contains("earpods")
+            || lower.contains("buds") || lower.contains("freebuds") {
             return .buds
         }
         return .overEar

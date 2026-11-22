@@ -28,6 +28,7 @@ struct WorkoutSample: Codable, Equatable {
     var steps: Int?
     var energy: Double?
     var floors: Int?
+    var floorsDescended: Int?
 }
 
 struct WorkoutPacePoint: Equatable {
@@ -92,6 +93,7 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
     var distance: Double?
     var energy: Double?
     var floors: Int?
+    var floorsDescended: Int?
     var averagePace: TimeInterval?
     var fastestPace: TimeInterval?
     var fastestPaceAt: Date?
@@ -104,7 +106,7 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
 
     init(id: UUID, activity: String, startedAt: Date, endedAt: Date,
          steps: Int? = nil, distance: Double? = nil, energy: Double? = nil,
-         floors: Int? = nil, averagePace: TimeInterval? = nil,
+         floors: Int? = nil, floorsDescended: Int? = nil, averagePace: TimeInterval? = nil,
          fastestPace: TimeInterval? = nil, fastestPaceAt: Date? = nil,
          slowestPace: TimeInterval? = nil, peakHeartRate: Double? = nil,
          peakHeartRateAt: Date? = nil, averageHeartRate: Double? = nil,
@@ -117,6 +119,7 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
         self.distance = distance
         self.energy = energy
         self.floors = floors
+        self.floorsDescended = floorsDescended
         self.averagePace = averagePace
         self.fastestPace = fastestPace
         self.fastestPaceAt = fastestPaceAt
@@ -138,6 +141,7 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
         distance = try container.decodeIfPresent(Double.self, forKey: .distance)
         energy = try container.decodeIfPresent(Double.self, forKey: .energy)
         floors = try container.decodeIfPresent(Int.self, forKey: .floors)
+        floorsDescended = try container.decodeIfPresent(Int.self, forKey: .floorsDescended)
         averagePace = try container.decodeIfPresent(TimeInterval.self, forKey: .averagePace)
         fastestPace = try container.decodeIfPresent(TimeInterval.self, forKey: .fastestPace)
         fastestPaceAt = try container.decodeIfPresent(Date.self, forKey: .fastestPaceAt)
@@ -159,6 +163,7 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
         try container.encodeIfPresent(distance, forKey: .distance)
         try container.encodeIfPresent(energy, forKey: .energy)
         try container.encodeIfPresent(floors, forKey: .floors)
+        try container.encodeIfPresent(floorsDescended, forKey: .floorsDescended)
         try container.encodeIfPresent(averagePace, forKey: .averagePace)
         try container.encodeIfPresent(fastestPace, forKey: .fastestPace)
         try container.encodeIfPresent(fastestPaceAt, forKey: .fastestPaceAt)
@@ -171,7 +176,7 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, activity, startedAt, endedAt, steps, distance, energy, floors
+        case id, activity, startedAt, endedAt, steps, distance, energy, floors, floorsDescended
         case averagePace, fastestPace, fastestPaceAt, slowestPace
         case peakHeartRate, peakHeartRateAt, averageHeartRate, songs, samples
     }
@@ -245,6 +250,7 @@ final class WorkoutSessionStore: ObservableObject {
     @Published private(set) var distance: Double?
     @Published private(set) var pace: TimeInterval?
     @Published private(set) var floors: Int?
+    @Published private(set) var floorsDescended: Int?
     @Published private(set) var heartRate: Double?
     @Published private(set) var activeEnergy: Double?
     @Published private(set) var songs: [PlayedSong] = []
@@ -282,6 +288,7 @@ final class WorkoutSessionStore: ObservableObject {
         distance = CMPedometer.isDistanceAvailable() ? 0 : nil
         pace = nil
         floors = CMPedometer.isFloorCountingAvailable() ? 0 : nil
+        floorsDescended = CMPedometer.isFloorCountingAvailable() ? 0 : nil
         heartRate = nil
         activeEnergy = nil
         songs = []
@@ -341,6 +348,7 @@ final class WorkoutSessionStore: ObservableObject {
                                       distance: distance,
                                       energy: activeEnergy,
                                       floors: floors,
+                                      floorsDescended: floorsDescended,
                                       averagePace: average,
                                       fastestPace: fastest?.pace,
                                       fastestPaceAt: fastest?.at,
@@ -368,7 +376,8 @@ final class WorkoutSessionStore: ObservableObject {
                                       heartRate: heartRate,
                                       steps: steps,
                                       energy: activeEnergy,
-                                      floors: floors))
+                                      floors: floors,
+                                      floorsDescended: floorsDescended))
         if samples.count > 800 { samples.removeFirst(samples.count - 800) }
     }
 
@@ -376,7 +385,8 @@ final class WorkoutSessionStore: ObservableObject {
     func importRecentHealthWorkouts() async {
         guard HKHealthStore.isHealthDataAvailable() else { return }
         var readable: [HKObjectType] = [HKObjectType.workoutType()]
-        for identifier in [HKQuantityTypeIdentifier.distanceWalkingRunning, .distanceCycling, .activeEnergyBurned] {
+        for identifier in [HKQuantityTypeIdentifier.distanceWalkingRunning, .distanceCycling,
+                           .activeEnergyBurned, .heartRate, .flightsClimbed] {
             if let type = HKObjectType.quantityType(forIdentifier: identifier) { readable.append(type) }
         }
         let granted = await withCheckedContinuation { continuation in
@@ -407,6 +417,14 @@ final class WorkoutSessionStore: ObservableObject {
                 .flatMap { workout.statistics(for: $0)?.sumQuantity()?.doubleValue(for: .meter()) }
             let energy = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)
                 .flatMap { workout.statistics(for: $0)?.sumQuantity()?.doubleValue(for: .kilocalorie()) }
+            let heartType = HKObjectType.quantityType(forIdentifier: .heartRate)
+            let heartUnit = HKUnit.count().unitDivided(by: .minute())
+            let averageHeart = heartType
+                .flatMap { workout.statistics(for: $0)?.averageQuantity()?.doubleValue(for: heartUnit) }
+            let peakHeart = heartType
+                .flatMap { workout.statistics(for: $0)?.maximumQuantity()?.doubleValue(for: heartUnit) }
+            let floors = HKObjectType.quantityType(forIdentifier: .flightsClimbed)
+                .flatMap { workout.statistics(for: $0)?.sumQuantity()?.doubleValue(for: .count()) }
             let length = workout.endDate.timeIntervalSince(workout.startDate)
             let pace = (distance ?? 0) > 0 ? length / distance! : nil
             records.append(WorkoutRecord(id: UUID(),
@@ -415,7 +433,10 @@ final class WorkoutSessionStore: ObservableObject {
                                           endedAt: workout.endDate,
                                           distance: distance,
                                           energy: energy,
-                                          averagePace: pace))
+                                          floors: floors.map { Int($0.rounded()) },
+                                          averagePace: pace,
+                                          peakHeartRate: peakHeart,
+                                          averageHeartRate: averageHeart))
             changed = true
         }
         if changed {
@@ -461,6 +482,7 @@ final class WorkoutSessionStore: ObservableObject {
                 if let meters = data.distance?.doubleValue { self.distance = meters }
                 if let seconds = data.currentPace?.doubleValue, seconds > 0 { self.pace = seconds }
                 if let floors = data.floorsAscended?.intValue { self.floors = floors }
+                if let floors = data.floorsDescended?.intValue { self.floorsDescended = floors }
             }
         }
     }

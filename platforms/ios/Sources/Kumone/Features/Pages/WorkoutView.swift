@@ -104,11 +104,32 @@ struct WorkoutView: View {
                 metric("步数", session.steps.map(String.init))
                 metric("距离", meters(session.distance))
                 metric("配速", pace(session.pace))
-                metric("楼层", session.floors.map { "\($0)" })
+                metric("楼层 上/下", floorText)
                 metric("心率", session.heartRate.map { "\(Int($0.rounded()))" })
                 metric("能量", session.activeEnergy.map { "\(Int($0.rounded())) 千卡" })
             }
 
+            Button {
+                if session.isRunning {
+                    Task { await session.stop() }
+                } else {
+                    session.start(player: player)
+                }
+            } label: {
+                Text(session.isRunning ? "结束" : "开始")
+                    .font(.headline)
+                    .foregroundStyle(session.isRunning ? Color(.systemBackground) : .primary)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(session.isRunning ? Color.primary : Color.primary.opacity(0.08), in: Capsule())
+            }
+            .buttonStyle(.plain)
+
+            songsCard
+        }
+    }
+
+    private var songsCard: some View {
+        WorkoutCard {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 6) {
                     Image(systemName: "music.note")
@@ -135,23 +156,14 @@ struct WorkoutView: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                if session.isRunning {
-                    Task { await session.stop() }
-                } else {
-                    session.start(player: player)
-                }
-            } label: {
-                Text(session.isRunning ? "结束" : "开始")
-                    .font(.headline)
-                    .foregroundStyle(session.isRunning ? Color(.systemBackground) : .primary)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(session.isRunning ? Color.primary : Color.primary.opacity(0.08), in: Capsule())
-            }
-            .buttonStyle(.plain)
         }
+    }
+
+    private var floorText: String? {
+        guard session.floors != nil || session.floorsDescended != nil else { return nil }
+        let up = session.floors.map(String.init) ?? "—"
+        let down = session.floorsDescended.map(String.init) ?? "—"
+        return "\(up)/\(down)"
     }
 
     private func metric(_ title: String, _ value: String?) -> some View {
@@ -267,28 +279,35 @@ struct WorkoutView: View {
     }
 
     private var journal: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("记录")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            if rangedRecords.isEmpty {
-                Text("这个区间还没有记录")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 8)
-            } else {
-                ForEach(WorkoutDay.groups(rangedRecords)) { day in
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text(WorkoutText.day.string(from: day.date))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        ForEach(day.records) { record in
-                            NavigationLink {
-                                WorkoutRecordDetail(record: record)
-                            } label: {
-                                WorkoutJournalRow(record: record)
+        WorkoutCard {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("记录")
+                        .font(.title3.weight(.semibold))
+                    Spacer()
+                    Text("\(rangedRecords.count) 次")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if rangedRecords.isEmpty {
+                    Text("这个区间还没有记录")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 8)
+                } else {
+                    ForEach(WorkoutDay.groups(rangedRecords)) { day in
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text(WorkoutText.day.string(from: day.date))
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                            ForEach(day.records) { record in
+                                NavigationLink {
+                                    WorkoutRecordDetail(record: record)
+                                } label: {
+                                    WorkoutJournalRow(record: record)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -361,6 +380,17 @@ private struct WorkoutPatternCard<Header: View>: View {
     }
 }
 
+private struct WorkoutCard<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
 private struct PatternStats {
     let hours: [Double]
     let cells: [[Double]]
@@ -417,31 +447,79 @@ private struct WorkoutClock: View {
     let peakHour: Int
 
     var body: some View {
-        let peak = hours.max() ?? 0
-        Canvas { context, size in
-            let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let radius = min(size.width, size.height) * 0.36
-            for hour in 0..<24 {
-                let angle = CGFloat(hour) / 24 * .pi * 2 - .pi / 2
-                let strength = peak > 0 ? hours[hour] / peak : 0
-                var line = Path()
-                line.move(to: CGPoint(x: center.x + cos(angle) * radius * 0.72,
-                                       y: center.y + sin(angle) * radius * 0.72))
-                line.addLine(to: CGPoint(x: center.x + cos(angle) * radius,
-                                          y: center.y + sin(angle) * radius))
-                context.stroke(line,
-                               with: .color(Color.primary.opacity(0.16 + strength * 0.84)),
-                               style: StrokeStyle(lineWidth: hour == peakHour && peak > 0 ? 3 : 1.6, lineCap: .round))
+        GeometryReader { geo in
+            let size = geo.size
+            let peak = hours.max() ?? 0
+            ZStack {
+                Canvas { context, canvasSize in
+                    let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+                    let radius = min(canvasSize.width, canvasSize.height) * 0.26
+                    let ring = Path(ellipseIn: CGRect(x: center.x - radius,
+                                                      y: center.y - radius,
+                                                      width: radius * 2,
+                                                      height: radius * 2))
+                    context.stroke(ring,
+                                   with: .color(Color.primary.opacity(0.18)),
+                                   style: StrokeStyle(lineWidth: 1.6, lineCap: .round, dash: [1, 6]))
+
+                    for hour in 0..<24 {
+                        let angle = CGFloat(hour) / 24 * .pi * 2 - .pi / 2
+                        let strength = peak > 0 ? min(max(hours[hour] / peak, 0), 1) : 0
+                        let isPeak = hour == peakHour && peak > 0
+                        let inner = radius + 3
+                        let length = radius * (0.08 + CGFloat(strength) * 0.36)
+                            + (isPeak ? radius * 0.07 : 0)
+                        let width: CGFloat = isPeak ? 4.6 : 2.2 + CGFloat(strength) * 1.2
+                        var bar = Path()
+                        bar.move(to: CGPoint(x: center.x + cos(angle) * inner,
+                                             y: center.y + sin(angle) * inner))
+                        bar.addLine(to: CGPoint(x: center.x + cos(angle) * (inner + length),
+                                                y: center.y + sin(angle) * (inner + length)))
+                        if isPeak {
+                            context.stroke(bar,
+                                           with: .color(Color.primary.opacity(0.10)),
+                                           style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                        }
+                        context.stroke(bar,
+                                       with: .color(Color.primary.opacity(0.18 + strength * 0.82)),
+                                       style: StrokeStyle(lineWidth: width, lineCap: .round))
+                        if isPeak {
+                            let tip = CGPoint(x: center.x + cos(angle) * (inner + length),
+                                              y: center.y + sin(angle) * (inner + length))
+                            context.fill(Path(ellipseIn: CGRect(x: tip.x - 2.2, y: tip.y - 2.2,
+                                                                width: 4.4, height: 4.4)),
+                                         with: .color(Theme.accent))
+                        }
+                    }
+                }
+
+                VStack(spacing: 2) {
+                    Text(peak > 0 ? "\(peakHour) 点" : "—")
+                        .font(.system(size: 24, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                    Text("最高峰")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text("0")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .position(x: size.width / 2, y: size.height * 0.045)
+                Text("6")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .position(x: size.width * 0.955, y: size.height / 2)
+                Text("12")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .position(x: size.width / 2, y: size.height * 0.955)
+                Text("18")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .position(x: size.width * 0.045, y: size.height / 2)
             }
-        }
-        .overlay {
-            VStack(spacing: 2) {
-                Text(hours.max() ?? 0 > 0 ? "\(peakHour) 点" : "—")
-                    .font(.title2.weight(.semibold))
-                Text("一天中的高峰")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
+            .frame(width: size.width, height: size.height)
         }
     }
 }
@@ -455,11 +533,15 @@ private struct WorkoutHeatmap: View {
             HStack(spacing: 2) {
                 Text(" ")
                     .frame(width: 16)
-                Text("0")
+                Text("0时")
+                Spacer()
+                Text("6")
                 Spacer()
                 Text("12")
                 Spacer()
-                Text("23")
+                Text("18")
+                Spacer()
+                Text("24")
             }
             .font(.system(size: 9))
             .foregroundStyle(.tertiary)
@@ -538,156 +620,393 @@ private struct WorkoutRecordDetail: View {
     private var points: [WorkoutPacePoint] { workoutPacePoints(record.samples) }
     private var splits: [WorkoutSplit] { workoutSplits(record.samples) }
     private var fastestKilometer: Int? { splits.min { $0.pace < $1.pace }?.kilometer }
+    private var speedPoints: [WorkoutIntervalPoint] { workoutSpeedPoints(record.samples) }
+    private var heartPoints: [WorkoutIntervalPoint] { workoutHeartPoints(record.samples) }
+    private var cadencePoints: [WorkoutIntervalPoint] { workoutCadencePoints(record.samples) }
+    private var energyPoints: [WorkoutIntervalPoint] { workoutEnergyPoints(record.samples) }
+
+    private var fastestPace: WorkoutPacePoint? {
+        if let fastest = points.min(by: { $0.pace < $1.pace }) { return fastest }
+        if let pace = record.fastestPace {
+            return WorkoutPacePoint(at: record.fastestPaceAt ?? record.endedAt, pace: pace)
+        }
+        return nil
+    }
+
+    private var peakHeart: WorkoutIntervalPoint? {
+        if let peak = heartPoints.max(by: { $0.value < $1.value }) { return peak }
+        if let heart = record.peakHeartRate {
+            return WorkoutIntervalPoint(at: record.peakHeartRateAt ?? record.endedAt, value: heart)
+        }
+        return nil
+    }
+
+    private var peakCadence: WorkoutIntervalPoint? {
+        cadencePoints.max { $0.value < $1.value }
+    }
+
+    private var peakEnergy: WorkoutIntervalPoint? {
+        energyPoints.max { $0.value < $1.value }
+    }
+
+    private var fastestPaceCaption: String? {
+        if let fastest = points.min(by: { $0.pace < $1.pace }) {
+            return WorkoutText.time.string(from: fastest.at)
+        }
+        return record.fastestPace == nil ? nil : "来自健康记录"
+    }
+
+    private var peakHeartCaption: String? {
+        if let peak = heartPoints.max(by: { $0.value < $1.value }) {
+            return WorkoutText.time.string(from: peak.at)
+        }
+        return record.peakHeartRate == nil ? nil : "来自健康记录"
+    }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(workoutClock(record.endedAt.timeIntervalSince(record.startedAt)))
-                        .font(.system(size: 52, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                    Text("\(WorkoutText.day.string(from: record.startedAt))  \(WorkoutText.time.string(from: record.startedAt)) – \(WorkoutText.time.string(from: record.endedAt))")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text(workoutHeadline(record))
-                        .font(.body)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
+            VStack(spacing: 16) {
+                hero
+                peakSection
                 if points.count >= 2 {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("配速")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                        WorkoutPaceRiver(points: points)
-                            .frame(height: 92)
-                        Text("越靠上越快")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
+                    paceSection
                 }
-
                 if !splits.isEmpty {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("每公里")
-                            .font(.caption.weight(.semibold))
+                    splitsSection
+                }
+                statsSection
+                songsSection
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
+        }
+        .scrollIndicators(.hidden)
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .navigationTitle(WorkoutSessionStore.Activity(rawValue: record.activity)?.title ?? "锻炼")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var hero: some View {
+        WorkoutCard {
+            VStack(spacing: 8) {
+                Text(workoutClock(record.endedAt.timeIntervalSince(record.startedAt)))
+                    .font(.system(size: 46, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                Text("\(WorkoutText.day.string(from: record.startedAt))  \(WorkoutText.time.string(from: record.startedAt)) – \(WorkoutText.time.string(from: record.endedAt))")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Text(workoutHeadline(record))
+                    .font(.body)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
+        }
+    }
+
+    private var peakSection: some View {
+        WorkoutCard {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("峰值")
+                        .font(.title3.weight(.semibold))
+                    Spacer()
+                    Text("约 15 秒采样")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 20) {
+                    WorkoutPeakCell(title: "配速",
+                                    value: fastestPace.flatMap { workoutPaceText($0.pace) } ?? "—",
+                                    caption: fastestPaceCaption,
+                                    points: speedPoints)
+                    WorkoutPeakCell(title: "心率",
+                                    value: peakHeart.map { "\(Int($0.value.rounded())) bpm" } ?? "—",
+                                    caption: peakHeartCaption,
+                                    points: heartPoints)
+                    WorkoutPeakCell(title: "步频",
+                                    value: peakCadence.map { "\(Int($0.value.rounded())) 步/分" } ?? "—",
+                                    caption: peakCadence.map { WorkoutText.time.string(from: $0.at) },
+                                    points: cadencePoints)
+                    WorkoutPeakCell(title: "能量",
+                                    value: peakEnergy.map { String(format: "%.1f 千卡/分", $0.value) } ?? "—",
+                                    caption: peakEnergy.map { WorkoutText.time.string(from: $0.at) },
+                                    points: energyPoints)
+                }
+            }
+        }
+    }
+
+    private var paceSection: some View {
+        WorkoutCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("配速")
+                        .font(.title3.weight(.semibold))
+                    Spacer()
+                    if let fastest = fastestPace, let pace = workoutPaceText(fastest.pace) {
+                        Text("最快 \(pace) · \(WorkoutText.time.string(from: fastest.at))")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
-                            .padding(.bottom, 4)
-                        ForEach(splits) { split in
-                            HStack {
-                                Text("第 \(split.kilometer) 公里")
-                                Spacer()
-                                Text(workoutPaceText(split.pace) ?? "—")
-                                    .monospacedDigit()
-                                Text(WorkoutText.time.string(from: split.at))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 48, alignment: .trailing)
-                            }
-                            .font(split.kilometer == fastestKilometer ? .subheadline.weight(.semibold) : .subheadline)
-                            .padding(.vertical, 10)
-                            .overlay(alignment: .bottom) {
-                                Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5)
-                            }
+                    }
+                }
+                WorkoutPaceRiver(points: points)
+                    .frame(height: 100)
+                Text("越靠上越快")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private var splitsSection: some View {
+        WorkoutCard {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("每公里")
+                    .font(.title3.weight(.semibold))
+                    .padding(.bottom, 12)
+                ForEach(splits) { split in
+                    HStack {
+                        Text("第 \(split.kilometer) 公里")
+                        Spacer()
+                        Text(workoutPaceText(split.pace) ?? "—")
+                            .monospacedDigit()
+                        Text(WorkoutText.time.string(from: split.at))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 48, alignment: .trailing)
+                    }
+                    .font(split.kilometer == fastestKilometer ? .subheadline.weight(.semibold) : .subheadline)
+                    .padding(.vertical, 10)
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5)
+                    }
+                }
+            }
+        }
+    }
+
+    private var statsSection: some View {
+        WorkoutCard {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("统计")
+                    .font(.title3.weight(.semibold))
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 18) {
+                    ForEach(stats) { stat in
+                        VStack(spacing: 4) {
+                            Text(stat.value)
+                                .font(.headline.weight(.semibold))
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.65)
+                            Text(stat.title)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
+                        .frame(maxWidth: .infinity)
+                        .multilineTextAlignment(.center)
                     }
                 }
+            }
+        }
+    }
 
-                VStack(spacing: 0) {
-                    ForEach(facts) { fact in
-                        WorkoutQuietRow(title: fact.title, value: fact.value)
-                    }
+    private var songsSection: some View {
+        WorkoutCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "music.note")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("这次听过")
+                        .font(.system(size: 18, weight: .semibold))
                 }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "music.note")
-                            .font(.system(size: 15, weight: .semibold))
-                        Text("这次听过")
-                            .font(.system(size: 18, weight: .semibold))
-                    }
-                    if record.songs.isEmpty {
-                        Text("这次没有记下歌曲")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(record.songs) { song in
-                            HStack(spacing: 12) {
-                                WorkoutCover(url: song.coverURL, size: 44)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(song.title).lineLimit(1)
-                                    Text("\(WorkoutText.time.string(from: song.playedAt)) · \(song.artist)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
+                if record.songs.isEmpty {
+                    Text("这次没有记下歌曲")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(record.songs) { song in
+                        HStack(spacing: 12) {
+                            WorkoutCover(url: song.coverURL, size: 44)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(song.title).lineLimit(1)
+                                Text("\(WorkoutText.time.string(from: song.playedAt)) · \(song.artist)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
                         }
                     }
                 }
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 12)
-            .padding(.bottom, 36)
         }
-        .scrollIndicators(.hidden)
-        .background(Color(.systemBackground))
-        .navigationTitle(WorkoutSessionStore.Activity(rawValue: record.activity)?.title ?? "锻炼")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
-    private var facts: [WorkoutFact] {
+    private var stats: [WorkoutFact] {
         let length = record.endedAt.timeIntervalSince(record.startedAt)
         let minutes = length / 60
         var rows: [WorkoutFact] = []
         func add(_ title: String, _ value: String?) {
-            if let value { rows.append(WorkoutFact(title: title, value: value)) }
+            rows.append(WorkoutFact(title: title, value: value ?? "—"))
         }
         add("时长", workoutDuration(length))
         add("距离", workoutMetersText(record.distance))
-        if let steps = record.steps { add("步数", "\(steps)") }
+        add("步数", record.steps.map(String.init))
         add("平均配速", workoutPaceText(record.averagePace))
         add("最快配速", workoutPaceText(record.fastestPace))
         add("最慢配速", workoutPaceText(record.slowestPace))
         if let steps = record.steps, minutes >= 0.5 {
             add("步频", "\(Int((Double(steps) / minutes).rounded())) 步/分")
+        } else {
+            add("步频", nil)
         }
         if let steps = record.steps, let distance = record.distance, steps > 0 {
             add("步幅", String(format: "%.2f 米", distance / Double(steps)))
+        } else {
+            add("步幅", nil)
         }
-        if let peak = record.peakHeartRate {
-            var text = "\(Int(peak.rounded()))"
-            if let at = record.peakHeartRateAt { text += " · \(WorkoutText.time.string(from: at))" }
-            add("心率峰值", text)
-        }
-        if let average = record.averageHeartRate { add("平均心率", "\(Int(average.rounded()))") }
-        if let energy = record.energy { add("能量", "\(Int(energy.rounded())) 千卡") }
-        if let floors = record.floors { add("楼层", "\(floors)") }
+        add("心率峰值", record.peakHeartRate.map { "\(Int($0.rounded())) bpm" })
+        add("平均心率", record.averageHeartRate.map { "\(Int($0.rounded())) bpm" })
+        add("能量", record.energy.map { "\(Int($0.rounded())) 千卡" })
+        add("上楼", record.floors.map(String.init))
+        add("下楼", record.floorsDescended.map(String.init))
         return rows
     }
+}
+
+private struct WorkoutPeakCell: View {
+    let title: String
+    let value: String
+    let caption: String?
+    let points: [WorkoutIntervalPoint]
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.weight(.semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+            Text(caption ?? "没有逐点数据")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+            WorkoutMiniBars(points: points)
+                .frame(height: 30)
+        }
+        .frame(maxWidth: .infinity)
+        .multilineTextAlignment(.center)
+    }
+}
+
+private struct WorkoutMiniBars: View {
+    let points: [WorkoutIntervalPoint]
+
+    var body: some View {
+        Canvas { context, size in
+            let bars = workoutDownsample(points)
+            guard bars.count >= 2 else {
+                var line = Path()
+                line.move(to: CGPoint(x: 0, y: size.height * 0.82))
+                line.addLine(to: CGPoint(x: size.width, y: size.height * 0.82))
+                context.stroke(line,
+                               with: .color(Color.primary.opacity(0.08)),
+                               style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                return
+            }
+            let maxValue = max(bars.map(\.value).max() ?? 0, 0.0001)
+            let gap: CGFloat = 2
+            let width = max((size.width - gap * CGFloat(bars.count - 1)) / CGFloat(bars.count), 1)
+            for (index, point) in bars.enumerated() {
+                let ratio = point.value / maxValue
+                let height = max(size.height * CGFloat(ratio), 1.5)
+                let rect = CGRect(x: CGFloat(index) * (width + gap),
+                                  y: size.height - height,
+                                  width: width,
+                                  height: height)
+                let isPeak = point.value >= maxValue * 0.999
+                context.fill(Path(roundedRect: rect, cornerRadius: min(width / 2, 2)),
+                             with: .color(isPeak ? Theme.accent : Color.primary.opacity(0.16 + ratio * 0.5)))
+            }
+        }
+    }
+}
+
+private struct WorkoutIntervalPoint: Identifiable {
+    let at: Date
+    let value: Double
+    var id: Date { at }
+}
+
+private func workoutDownsample(_ points: [WorkoutIntervalPoint], maxCount: Int = 32) -> [WorkoutIntervalPoint] {
+    guard points.count > maxCount else { return points }
+    let stride = Double(points.count) / Double(maxCount)
+    return (0..<maxCount).compactMap { index in
+        let start = Int(Double(index) * stride)
+        let end = min(Int(Double(index + 1) * stride), points.count)
+        guard start < end else { return nil }
+        let slice = points[start..<end]
+        let average = slice.map(\.value).reduce(0, +) / Double(slice.count)
+        guard let last = slice.last else { return nil }
+        return WorkoutIntervalPoint(at: last.at, value: average)
+    }
+}
+
+private func workoutSpeedPoints(_ samples: [WorkoutSample]) -> [WorkoutIntervalPoint] {
+    workoutPacePoints(samples).map {
+        WorkoutIntervalPoint(at: $0.at, value: 1 / max($0.pace, 0.0001))
+    }
+}
+
+private func workoutHeartPoints(_ samples: [WorkoutSample]) -> [WorkoutIntervalPoint] {
+    samples.compactMap { sample in
+        guard let heart = sample.heartRate else { return nil }
+        return WorkoutIntervalPoint(at: sample.at, value: heart)
+    }
+}
+
+private func workoutCadencePoints(_ samples: [WorkoutSample]) -> [WorkoutIntervalPoint] {
+    let ordered = samples.sorted { $0.at < $1.at }
+    var points: [WorkoutIntervalPoint] = []
+    for pair in zip(ordered, ordered.dropFirst()) {
+        guard let startSteps = pair.0.steps, let endSteps = pair.1.steps else { continue }
+        let minutes = pair.1.at.timeIntervalSince(pair.0.at) / 60
+        guard minutes > 0.05 else { continue }
+        let cadence = Double(max(endSteps - startSteps, 0)) / minutes
+        guard cadence > 20, cadence < 260 else { continue }
+        points.append(WorkoutIntervalPoint(at: pair.1.at, value: cadence))
+    }
+    return points
+}
+
+private func workoutEnergyPoints(_ samples: [WorkoutSample]) -> [WorkoutIntervalPoint] {
+    let ordered = samples.sorted { $0.at < $1.at }
+    var points: [WorkoutIntervalPoint] = []
+    var lastEnergy: Double?
+    var lastEnergyAt: Date?
+    for sample in ordered {
+        guard let energy = sample.energy else { continue }
+        if let last = lastEnergy, let lastAt = lastEnergyAt, energy > last {
+            let minutes = sample.at.timeIntervalSince(lastAt) / 60
+            if minutes > 0.1 {
+                points.append(WorkoutIntervalPoint(at: sample.at, value: (energy - last) / minutes))
+                lastEnergy = energy
+                lastEnergyAt = sample.at
+            }
+        } else if lastEnergy == nil {
+            lastEnergy = energy
+            lastEnergyAt = sample.at
+        }
+    }
+    return points
 }
 
 private struct WorkoutFact: Identifiable {
     let title: String
     let value: String
     var id: String { title }
-}
-
-private struct WorkoutQuietRow: View {
-    let title: String
-    let value: String
-
-    var body: some View {
-        VStack(spacing: 10) {
-            HStack {
-                Text(title).foregroundStyle(.secondary)
-                Spacer()
-                Text(value).monospacedDigit()
-            }
-            .font(.subheadline)
-            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5)
-        }
-        .padding(.vertical, 2)
-    }
 }
 
 private struct WorkoutPaceRiver: View {
