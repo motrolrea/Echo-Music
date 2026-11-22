@@ -433,14 +433,20 @@ struct ExploreView: View {
     }
 
     /// 搜索小球里的界面，和顶栏搜索条用同一套歌曲 / 歌单搜索。
-    /// 半屏占屏幕 80%，顶上只留系统小横条，不再放返回或完成按钮。
+    /// 半屏占屏幕 90%。系统小横条太贴顶，改成自己留出上下间距。
     private var exploreBallSearch: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.45))
+                        .frame(width: 36, height: 5)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 28)
+                        .padding(.bottom, 18)
                     exploreSearchField(interactive: true, showsClear: true)
                         .padding(.horizontal, Theme.Layout.contentInset)
-                        .padding(.top, 12)
+                        .padding(.top, 22)
                     if playlistQueryTrimmed.isEmpty, !searchHistory.isEmpty {
                         searchHistoryRow
                     }
@@ -485,8 +491,8 @@ struct ExploreView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
         }
-        .presentationDetents([.fraction(0.8)])
-        .presentationDragIndicator(.visible)
+        .presentationDetents([.fraction(0.9)])
+        .presentationDragIndicator(.hidden)
         .onAppear { searchFocused = true }
     }
 

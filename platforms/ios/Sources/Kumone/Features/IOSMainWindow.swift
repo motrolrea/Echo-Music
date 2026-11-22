@@ -1,5 +1,6 @@
 import SwiftUI
 #if os(iOS)
+import ObjectiveC
 import UIKit
 #endif
 
@@ -16,6 +17,7 @@ public struct IOSMainWindow: View {
     @StateObject private var backupStore = AppDataBackupManager.shared
     @ObservedObject private var deviceReporter = DeviceReporter.shared
     @StateObject private var bottomCollapse = BottomBarCollapseStore.shared
+    @StateObject private var workoutChrome = WorkoutChrome.shared
     @AppStorage("moumusic.tabBarMinimize") private var tabBarMinimizes = true
     @AppStorage(AppAppearanceKeys.floatingEffects) private var floatingEffects = false
     @ObservedObject private var backgroundStore = BackgroundImageStore.shared
@@ -331,17 +333,18 @@ public struct IOSMainWindow: View {
     @available(iOS 26.0, *)
     private var iOS26TabInterface: some View {
         iOS26TabView
-            .tabBarMinimizeBehavior(tabBarMinimizes ? .onScrollDown : .never)
+            .tabBarMinimizeBehavior(tabBarMinimizes && !bottomCollapse.suppressMinimize ? .onScrollDown : .never)
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
-                isActive: player.hasCurrentTrack,
+                isActive: player.hasCurrentTrack && !workoutChrome.active,
                 transitionNamespace: nowPlayingTransition,
                 colorScheme: resolvedColorScheme
             ))
             .animation(AppAnimation.standard, value: player.hasCurrentTrack)
+            .animation(AppAnimation.standard, value: workoutChrome.active)
             .overlay(alignment: .bottomTrailing) {
-                if isBarCollapsed {
+                if isBarCollapsed, !workoutChrome.active {
                     Button {
                         BeansScrollTop.perform()
                     } label: {
@@ -427,7 +430,9 @@ public struct IOSMainWindow: View {
     /// 胶囊底栏 + 迷你播放器 dock（仅旧系统走这里；iOS 26 用系统底栏）。
     @ViewBuilder
     private var legacyBottomBar: some View {
-        if isBarCollapsed {
+        if workoutChrome.active {
+            EmptyView()
+        } else if isBarCollapsed {
             HStack(spacing: 10) {
                 collapsedTabBall
 
@@ -693,8 +698,17 @@ enum BeansScrollTop {
             NotificationCenter.default.post(name: .beansScrollToTop, object: nil)
         }
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 520_000_000)
+            let deadline = Date().addingTimeInterval(0.9)
+            while Date() < deadline, !BeansVisibleScroll.isNearTop() {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            // 滚完再展开。中途展开会被系统当成仍在下滑，立刻折回去。
+            BeansVisibleScroll.expandSystemTabBar()
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            BeansVisibleScroll.expandSystemTabBar()
             BottomBarCollapseStore.shared.finishProgrammaticScroll()
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            BottomBarCollapseStore.shared.releaseMinimizeSuppression()
         }
     }
 }
@@ -715,9 +729,66 @@ enum BeansVisibleScroll {
                 return visible.width > bounds.width * 0.55 && visible.height > 180 && view.alpha > 0.4
             }
             .sorted { $0.bounds.height > $1.bounds.height }
-        guard let target = candidates.first else { return false }
-        target.setContentOffset(CGPoint(x: target.contentOffset.x, y: -target.adjustedContentInset.top), animated: true)
+        guard !candidates.isEmpty else { return false }
+        for target in candidates where target.bounds.height > bounds.height * 0.45 {
+            let top = CGPoint(x: target.contentOffset.x, y: -target.adjustedContentInset.top)
+            UIView.animate(withDuration: 0.55,
+                           delay: 0,
+                           usingSpringWithDamping: 0.9,
+                           initialSpringVelocity: 0.35,
+                           options: [.allowUserInteraction, .beginFromCurrentState, .curveEaseOut]) {
+                target.contentOffset = top
+            }
+        }
         return true
+    }
+
+    @MainActor
+    static func isNearTop() -> Bool {
+        visibleVerticalScrolls().allSatisfy { $0.contentOffset.y <= $0.adjustedContentInset.top + 2 }
+    }
+
+    /// 系统底栏只认用户滑动。代码滚到顶后要明确叫它展开。
+    @MainActor
+    static func expandSystemTabBar() {
+        guard #available(iOS 26.0, *),
+              let root = keyWindow()?.rootViewController
+        else { return }
+        guard let controller = tabController(from: root) else { return }
+        let selector = NSSelectorFromString("setTabBarMinimized:animated:")
+        guard let method = class_getInstanceMethod(type(of: controller), selector) else { return }
+        typealias SetMinimized = @convention(c) (AnyObject, Selector, ObjCBool, ObjCBool) -> Void
+        let call = unsafeBitCast(method_getImplementation(method), to: SetMinimized.self)
+        call(controller, selector, ObjCBool(false), ObjCBool(true))
+    }
+
+    @MainActor
+    private static func visibleVerticalScrolls() -> [UIScrollView] {
+        guard let window = keyWindow() else { return [] }
+        let bounds = window.bounds
+        return window.scrollViews().filter { view in
+            guard view.isVertical else { return false }
+            let frame = view.convert(view.bounds, to: window)
+            let visible = frame.intersection(bounds)
+            return visible.width > bounds.width * 0.55 && visible.height > 180 && view.alpha > 0.4
+        }
+    }
+
+    @MainActor
+    private static func keyWindow() -> UIWindow? {
+        let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+        return scene?.windows.first(where: \.isKeyWindow) ?? scene?.windows.first
+    }
+
+    private static func tabController(from controller: UIViewController) -> UITabBarController? {
+        if let tabs = controller as? UITabBarController { return tabs }
+        for child in controller.children {
+            if let tabs = tabController(from: child) { return tabs }
+        }
+        if let presented = controller.presentedViewController {
+            return tabController(from: presented)
+        }
+        return nil
     }
 }
 
@@ -746,12 +817,16 @@ final class BottomBarCollapseStore: ObservableObject {
     static let shared = BottomBarCollapseStore()
 
     @Published private(set) var isCollapsed = false
+    /// 回顶时暂时关掉系统的下滑折叠，否则代码滚动不会把播放器展开。
+    @Published private(set) var suppressMinimize = false
     /// 内容确实滑过一截。手动展开底栏时它仍为真，用来判断精选搜索小球该走哪套界面。
     @Published private(set) var hasScrolledDown = false
     /// 用户点小球手动展开后，滚回顶部前不再自动收起
     private var userExpanded = false
     /// 回顶动画进行中。这段时间滚动偏移来回跳，不能跟着折叠。
     private var programmaticScroll = false
+    /// 到顶后的一小段里，旧的滚动坐标还会报一次很大的偏移。
+    private var ignoreCollapseUntil = Date.distantPast
 
     func update(offset: CGFloat) {
         if programmaticScroll {
@@ -760,22 +835,28 @@ final class BottomBarCollapseStore: ObservableObject {
             }
             return
         }
-        hasScrolledDown = offset > BeansScrollCollapse.triggerOffset
-        let shouldCollapse = offset > BeansScrollCollapse.triggerOffset
-        if shouldCollapse {
-            guard !userExpanded else { return }
-        } else {
-            userExpanded = false
-        }
-        setCollapsed(shouldCollapse)
+        if Date() < ignoreCollapseUntil { return }
+        let down = offset > BeansScrollCollapse.triggerOffset
+        if !down { userExpanded = false }
+        if hasScrolledDown != down { hasScrolledDown = down }
+        if down, userExpanded { return }
+        setCollapsed(down)
     }
 
     func beginProgrammaticScroll() {
         programmaticScroll = true
+        userExpanded = true
+        suppressMinimize = true
+        setCollapsed(false)
+    }
+
+    func releaseMinimizeSuppression() {
+        suppressMinimize = false
     }
 
     func finishProgrammaticScroll() {
         programmaticScroll = false
+        ignoreCollapseUntil = Date().addingTimeInterval(0.7)
         userExpanded = false
         hasScrolledDown = false
         setCollapsed(false)

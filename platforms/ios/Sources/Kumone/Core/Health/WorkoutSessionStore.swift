@@ -4,6 +4,23 @@ import CoreMotion
 import Foundation
 import HealthKit
 
+/// 锻炼页打开时收起底栏和迷你播放器，只留封面上的唱片。
+@MainActor
+final class WorkoutChrome: ObservableObject {
+    static let shared = WorkoutChrome()
+    @Published var active = false
+}
+
+struct WorkoutRecord: Codable, Identifiable, Equatable {
+    var id: UUID
+    var activity: String
+    var startedAt: Date
+    var endedAt: Date
+    var steps: Int?
+    var distance: Double?
+    var energy: Double?
+}
+
 /// 手动开始、手动结束的听歌锻炼。手机能测的才显示，测不到显示「—」。
 @MainActor
 final class WorkoutSessionStore: ObservableObject {
@@ -56,7 +73,10 @@ final class WorkoutSessionStore: ObservableObject {
     @Published private(set) var heartRate: Double?
     @Published private(set) var activeEnergy: Double?
     @Published private(set) var songs: [PlayedSong] = []
+    @Published private(set) var records: [WorkoutRecord] = []
     @Published private(set) var status = "点开始后才会记录"
+
+    private static let recordsKey = "echo.workout.records"
 
     private let pedometer = CMPedometer()
     private let health = HKHealthStore()
@@ -64,6 +84,13 @@ final class WorkoutSessionStore: ObservableObject {
     private var heartQuery: HKQuery?
     private var savedSongIDs = Set<String>()
     private var cancellable: AnyCancellable?
+
+    init() {
+        if let data = UserDefaults.standard.data(forKey: Self.recordsKey),
+           let saved = try? JSONDecoder().decode([WorkoutRecord].self, from: data) {
+            records = saved
+        }
+    }
 
     func select(_ activity: Activity) {
         guard !isRunning else { return }
@@ -106,9 +133,25 @@ final class WorkoutSessionStore: ObservableObject {
             health.stop(heartQuery)
             self.heartQuery = nil
         }
-        elapsed = Date().timeIntervalSince(startedAt)
-        await saveWorkout(from: startedAt, to: Date())
+        let endedAt = Date()
+        elapsed = endedAt.timeIntervalSince(startedAt)
+        rememberRecord(from: startedAt, to: endedAt)
+        await saveWorkout(from: startedAt, to: endedAt)
         status = "已结束"
+    }
+
+    private func rememberRecord(from start: Date, to end: Date) {
+        records.insert(WorkoutRecord(id: UUID(),
+                                      activity: activity.rawValue,
+                                      startedAt: start,
+                                      endedAt: end,
+                                      steps: steps,
+                                      distance: distance,
+                                      energy: activeEnergy), at: 0)
+        if records.count > 200 { records = Array(records.prefix(200)) }
+        if let data = try? JSONEncoder().encode(records) {
+            UserDefaults.standard.set(data, forKey: Self.recordsKey)
+        }
     }
 
     private func tick() {

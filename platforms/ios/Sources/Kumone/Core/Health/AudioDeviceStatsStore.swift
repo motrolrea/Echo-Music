@@ -45,6 +45,15 @@ final class AudioDeviceStatsStore: ObservableObject {
         var averageSession: TimeInterval
         var longestSession: TimeInterval
         var averageDecibels: Double?
+        var peakDecibels: Double?
+        var loudDuration: TimeInterval
+        var lastUsed: Date?
+        var daysUsed: Int
+        var peakPeriod: String
+        var peakShare: Double
+        var weekdayAverage: TimeInterval
+        var weekendAverage: TimeInterval
+        var loudEvents: Int
     }
 
     enum Range: String, CaseIterable, Identifiable {
@@ -73,6 +82,7 @@ final class AudioDeviceStatsStore: ObservableObject {
 
     @Published private(set) var devices: [Device] = []
     @Published private(set) var totalDuration: TimeInterval = 0
+    @Published private(set) var loudEvents = 0
     @Published private(set) var isLoading = false
     @Published private(set) var isRequesting = false
     @Published private(set) var isAuthorized = false
@@ -86,6 +96,15 @@ final class AudioDeviceStatsStore: ObservableObject {
         HKObjectType.quantityType(forIdentifier: .headphoneAudioExposure)
     }
 
+    private var readableTypes: Set<HKObjectType> {
+        var types = Set<HKObjectType>()
+        if let exposureType { types.insert(exposureType) }
+        if let events = HKObjectType.categoryType(forIdentifier: .headphoneAudioExposureEvent) {
+            types.insert(events)
+        }
+        return types
+    }
+
     func requestAuthorization() async -> Bool {
         guard let exposureType else {
             errorMessage = "这台设备不支持耳机音量数据"
@@ -94,7 +113,7 @@ final class AudioDeviceStatsStore: ObservableObject {
         isRequesting = true
         defer { isRequesting = false }
         let outcome: Result<Bool, Error> = await withCheckedContinuation { continuation in
-            healthStore.requestAuthorization(toShare: [], read: [exposureType]) { success, error in
+            healthStore.requestAuthorization(toShare: [], read: readableTypes) { success, error in
                 if let error {
                     continuation.resume(returning: .failure(error))
                 } else {
@@ -141,7 +160,10 @@ final class AudioDeviceStatsStore: ObservableObject {
             healthStore.execute(query)
         }
 
-        if samples.isEmpty {
+        let eventCounts = await loudEventCounts(range: range)
+        loudEvents = eventCounts.values.reduce(0, +)
+
+        if samples.isEmpty, loudEvents == 0 {
             devices = []
             totalDuration = 0
             if errorMessage == nil {
@@ -175,7 +197,16 @@ final class AudioDeviceStatsStore: ObservableObject {
                           sessionCount: stats.count,
                           averageSession: stats.average,
                           longestSession: stats.longest,
-                          averageDecibels: stats.averageDecibels)
+                          averageDecibels: stats.averageDecibels,
+                          peakDecibels: stats.peakDecibels,
+                          loudDuration: stats.loudDuration,
+                          lastUsed: stats.lastUsed,
+                          daysUsed: stats.daysUsed,
+                          peakPeriod: stats.peakPeriod,
+                          peakShare: stats.peakShare,
+                          weekdayAverage: stats.weekdayAverage,
+                          weekendAverage: stats.weekendAverage,
+                          loudEvents: eventCounts[entry.key, default: 0])
         }
         aggregated.sort { $0.duration > $1.duration }
         let total = aggregated.reduce(0) { $0 + $1.duration }
@@ -200,6 +231,14 @@ final class AudioDeviceStatsStore: ObservableObject {
         let average: TimeInterval
         let longest: TimeInterval
         let averageDecibels: Double?
+        let peakDecibels: Double?
+        let loudDuration: TimeInterval
+        let lastUsed: Date?
+        let daysUsed: Int
+        let peakPeriod: String
+        let peakShare: Double
+        let weekdayAverage: TimeInterval
+        let weekendAverage: TimeInterval
     }
 
     /// 先合并重叠，再按 60 秒空隙切开。音量按能量加权，不是把分贝直接平均。
@@ -224,13 +263,58 @@ final class AudioDeviceStatsStore: ObservableObject {
         let count = sessions.count
         let energy = sessions.reduce(0) { $0 + $1.energy }
         let averageDecibels = duration > 0 ? 10 * log10(energy / duration) : nil
+        let calendar = Calendar.current
+        var hourTotals = Array(repeating: 0.0, count: 24)
+        var dayTotals: [Date: TimeInterval] = [:]
+        for session in sessions {
+            let hour = calendar.component(.hour, from: session.start)
+            hourTotals[hour] += session.duration
+            let day = calendar.startOfDay(for: session.start)
+            dayTotals[day, default: 0] += session.duration
+        }
+        let peakHour = hourTotals.enumerated().max { $0.element < $1.element }?.offset ?? 0
+        let windowStart = peakHour
+        let windowDuration = hourTotals[windowStart] + hourTotals[(windowStart + 1) % 24]
+        let weekday = dayTotals.filter { !calendar.isDateInWeekend($0.key) }
+        let weekend = dayTotals.filter { calendar.isDateInWeekend($0.key) }
+        let weekdayAverage = weekday.isEmpty ? 0 : weekday.values.reduce(0, +) / Double(weekday.count)
+        let weekendAverage = weekend.isEmpty ? 0 : weekend.values.reduce(0, +) / Double(weekend.count)
+        let loudDuration = sorted.filter { $0.decibels >= 80 }.reduce(0) { $0 + $1.end.timeIntervalSince($1.start) }
         return SessionStats(
             duration: duration,
             count: count,
             average: count > 0 ? duration / Double(count) : 0,
             longest: longest,
-            averageDecibels: averageDecibels
+            averageDecibels: averageDecibels,
+            peakDecibels: sorted.map(\.decibels).max(),
+            loudDuration: loudDuration,
+            lastUsed: sessions.map(\.end).max(),
+            daysUsed: dayTotals.count,
+            peakPeriod: String(format: "%02d:00 – %02d:00", windowStart, (windowStart + 2) % 24),
+            peakShare: duration > 0 ? windowDuration / duration : 0,
+            weekdayAverage: weekdayAverage,
+            weekendAverage: weekendAverage
         )
+    }
+
+    private func loudEventCounts(range: Range) async -> [String: Int] {
+        guard let events = HKObjectType.categoryType(forIdentifier: .headphoneAudioExposureEvent) else { return [:] }
+        let predicate = HKQuery.predicateForSamples(withStart: range.startDate, end: Date(), options: .strictStartDate)
+        let samples: [HKSample] = await withCheckedContinuation { continuation in
+            let query = HKSampleQuery(sampleType: events, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, result, _ in
+                continuation.resume(returning: result ?? [])
+            }
+            healthStore.execute(query)
+        }
+        var counts: [String: Int] = [:]
+        for sample in samples {
+            let raw = (sample.device?.name ?? sample.device?.model)
+                ?? (sample.metadata?[HKMetadataKeyDeviceName] as? String)
+            let name = raw?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = (name?.isEmpty == false) ? name! : "未标明设备"
+            counts[key, default: 0] += 1
+        }
+        return counts
     }
 }
 #endif

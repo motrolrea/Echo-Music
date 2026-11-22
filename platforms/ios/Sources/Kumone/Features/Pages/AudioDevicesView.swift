@@ -76,7 +76,7 @@ struct AudioDevicesView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(store.isAuthorized ? .green : .orange)
             }
-            Text("健康记录只能统计耳机音量和佩戴时长。单耳、左右耳、耳机仓电量、降噪和入耳检测都读不到。")
+            Text("还能统计最高音量、80 分贝以上的时长、最近佩戴、使用天数、最常时段、工作日和周末日均，以及系统音量提醒。单耳、左右耳、耳机仓电量、降噪和入耳检测读不到。")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
@@ -127,6 +127,16 @@ struct AudioDevicesView: View {
                 statLine("平均每次", durationText(device.averageSession))
                 statLine("最长一次", durationText(device.longestSession))
                 statLine("平均音量", volumeText(device.averageDecibels))
+                statLine("最高音量", volumeText(device.peakDecibels))
+                statLine("80 分贝以上", durationText(device.loudDuration))
+                statLine("最近佩戴", dayText(device.lastUsed))
+                statLine("使用天数", "\(device.daysUsed) 天")
+                statLine("最常佩戴", device.sessionCount > 0
+                         ? "\(device.peakPeriod) · \(Int((device.peakShare * 100).rounded()))%"
+                         : "—")
+                statLine("工作日日均", durationText(device.weekdayAverage))
+                statLine("周末日均", durationText(device.weekendAverage))
+                statLine("音量提醒", "\(device.loudEvents) 次")
             }
 
             ProgressView(value: device.share)
@@ -198,6 +208,14 @@ struct AudioDevicesView: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
+    }
+
+    private func dayText(_ date: Date?) -> String {
+        guard let date else { return "—" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = Calendar.current.isDateInToday(date) ? "今天 HH:mm" : "M月d日 HH:mm"
+        return formatter.string(from: date)
     }
 
     private func volumeText(_ decibels: Double?) -> String {
