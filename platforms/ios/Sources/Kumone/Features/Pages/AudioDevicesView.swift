@@ -63,18 +63,32 @@ struct AudioDevicesView: View {
         AudioRouteSnapshot.current()
     }
 
+    private var outputSymbol: String {
+        let name = currentOutput.name.lowercased()
+        if name.contains("airpods") || name.contains("earpods") || name.contains("buds") {
+            return "airpods"
+        }
+        if name.contains("speaker") || name.contains("iphone") || name.contains("ipad")
+            || name.contains("扬声器") || name.contains("听筒") {
+            return "hifispeaker.fill"
+        }
+        return "headphones"
+    }
+
     private var outputBadge: some View {
         Button { showOutputInfo = true } label: {
-            ZStack(alignment: .bottomTrailing) {
-                AudioArtworkStage(size: 34, radius: 10) {
-                    HeadphoneArtworkView(name: currentOutput.name, inset: 3)
-                }
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: outputSymbol)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 24, height: 24)
                 Circle()
                     .fill(store.isAuthorized ? Color.green : Color.orange)
                     .frame(width: 7, height: 7)
                     .overlay { Circle().stroke(Color(.systemBackground), lineWidth: 1.5) }
-                    .offset(x: 1, y: 1)
             }
+            .padding(3)
+            .frame(width: 30, height: 30)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("当前音频输出")

@@ -5,7 +5,7 @@ import SwiftUI
 struct WorkoutView: View {
     @EnvironmentObject private var player: PlayerService
     @Environment(\.colorScheme) private var colorScheme
-    @StateObject private var session = WorkoutSessionStore()
+    @ObservedObject private var session = WorkoutSessionStore.shared
     @State private var focus: WorkoutSessionStore.Activity = .walk
     @State private var span: WorkoutSpan = .week
     @State private var customStart = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
@@ -42,7 +42,11 @@ struct WorkoutView: View {
             }
         }
         .onAppear {
-            session.select(focus)
+            if session.isRunning {
+                focus = session.activity
+            } else {
+                session.select(focus)
+            }
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) { WorkoutChrome.shared.active = true }
@@ -96,6 +100,11 @@ struct WorkoutView: View {
                 Text(session.status)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                if session.isRunning {
+                    Text("离开页面也会继续计时")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
             .frame(maxWidth: .infinity)
             .multilineTextAlignment(.center)

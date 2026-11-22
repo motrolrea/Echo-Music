@@ -185,6 +185,9 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
 /// 手动开始、手动结束的听歌锻炼。手机能测的才显示，测不到显示「—」。
 @MainActor
 final class WorkoutSessionStore: ObservableObject {
+    /// 全局一份。离开锻炼页后计时、计步和健康查询继续跑。
+    static let shared = WorkoutSessionStore()
+
     struct PlayedSong: Identifiable, Equatable {
         let id: String
         let title: String
