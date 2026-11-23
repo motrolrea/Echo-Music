@@ -70,7 +70,7 @@ struct AudioDevicesView: View {
         }
         if name.contains("speaker") || name.contains("iphone") || name.contains("ipad")
             || name.contains("扬声器") || name.contains("听筒") {
-            return "hifispeaker.fill"
+            return "speaker.wave.2"
         }
         return "headphones"
     }
@@ -379,6 +379,7 @@ struct AudioDevicesView: View {
     private var limitationNote: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text("数据来自健康 App 的耳机音量记录，只在本机读取。电量、降噪和左右耳由系统独占，第三方 App 读不到。")
+            Text("系统授权框显示的是安装包里的应用名和图标；如果看到旧名字或空白图标，请先卸载旧版本，并在「设置 → 健康」里删除旧授权后重新安装。")
             if let start = store.statisticsStart {
                 Text("本次读取覆盖 \(AudioDateText.fullDay.string(from: start)) 至今。")
             }
@@ -393,11 +394,11 @@ struct AudioDevicesView: View {
 
     private var credit: some View {
         VStack(spacing: 5) {
-            Text("感谢 PodsStats")
+            Text("灵感与部分源码来自 PodsStats")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            Text("开发者 谭皓轩")
-            Text("提供灵感与源码，并授权使用")
+            Text("由开发者 谭皓轩 提供")
+            Text("开发者小红书账号：baikaihao")
         }
         .font(.caption2)
         .foregroundStyle(.tertiary)
@@ -470,10 +471,12 @@ struct AudioDevicesView: View {
 private struct AudioDeviceDetailView: View {
     let device: AudioDeviceStatsStore.Device
     @State private var maxColor: String
+    @State private var earPodsConnector: String
 
     init(device: AudioDeviceStatsStore.Device) {
         self.device = device
         _maxColor = State(initialValue: HeadphoneArtwork.savedMaxColor(for: device.name))
+        _earPodsConnector = State(initialValue: HeadphoneArtwork.savedEarPodsConnector(for: device.name))
     }
 
     var body: some View {
@@ -498,7 +501,10 @@ private struct AudioDeviceDetailView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center, spacing: 18) {
                 AudioArtworkStage(size: 120, radius: 30) {
-                    HeadphoneArtworkView(name: device.name, maxColor: maxColor, inset: 10)
+                    HeadphoneArtworkView(name: device.name,
+                                         maxColor: maxColor,
+                                         earPodsConnector: earPodsConnector,
+                                         inset: 10)
                 }
                 VStack(alignment: .leading, spacing: 5) {
                     Text(device.name)
@@ -521,6 +527,40 @@ private struct AudioDeviceDetailView: View {
             if case .max = HeadphoneKind.match(device.name) {
                 maxColorPicker
             }
+            if isEarPods {
+                earPodsConnectorPicker
+            }
+        }
+    }
+
+    private var isEarPods: Bool {
+        let lower = device.name.lowercased()
+        return lower.contains("earpods") || lower.contains("earphones")
+    }
+
+    private var earPodsConnectorPicker: some View {
+        HStack(spacing: 8) {
+            Text("接口")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            ForEach(HeadphoneArtwork.earPodsConnectors) { option in
+                Button {
+                    earPodsConnector = option.id
+                    HeadphoneArtwork.saveEarPodsConnector(option.id, for: device.name)
+                } label: {
+                    Text(option.name)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(earPodsConnector == option.id ? Color(.systemBackground) : .primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(earPodsConnector == option.id
+                                    ? Color.primary
+                                    : Color.primary.opacity(0.08),
+                                    in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
         }
     }
 
@@ -965,17 +1005,21 @@ private struct AudioArtworkStage<Content: View>: View {
 private struct HeadphoneArtworkView: View {
     let name: String
     var maxColor: String? = nil
+    var earPodsConnector: String? = nil
     var inset: CGFloat = 6
 
     var body: some View {
-        if let image = HeadphoneArtwork.image(for: name, maxColor: maxColor) {
+        if let image = HeadphoneArtwork.image(for: name,
+                                              maxColor: maxColor,
+                                              earPodsConnector: earPodsConnector) {
             image
                 .resizable()
                 .scaledToFit()
                 .padding(inset)
         } else {
-            HeadphoneGlyph(kind: HeadphoneKind.match(name))
-                .padding(inset * 1.8)
+            Image(systemName: HeadphoneArtwork.fallbackSymbol(for: name))
+                .font(.system(size: max(inset * 3.2, 12), weight: .regular))
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -983,6 +1027,11 @@ private struct HeadphoneArtworkView: View {
 /// 按健康记录里的型号名匹配原创设备图。
 enum HeadphoneArtwork {
     struct MaxColorOption: Identifiable {
+        let id: String
+        let name: String
+    }
+
+    struct EarPodsConnectorOption: Identifiable {
         let id: String
         let name: String
     }
@@ -995,40 +1044,65 @@ enum HeadphoneArtwork {
         MaxColorOption(id: "orange", name: "橙色"),
     ]
 
-    static func image(for name: String, maxColor: String? = nil) -> Image? {
-        guard let asset = assetName(for: name, maxColor: maxColor),
+    static let earPodsConnectors: [EarPodsConnectorOption] = [
+        EarPodsConnectorOption(id: "usbc", name: "USB-C"),
+        EarPodsConnectorOption(id: "lightning", name: "Lightning"),
+    ]
+
+    static func image(for name: String,
+                      maxColor: String? = nil,
+                      earPodsConnector: String? = nil) -> Image? {
+        guard let asset = assetName(for: name,
+                                    maxColor: maxColor,
+                                    earPodsConnector: earPodsConnector),
               UIImage(named: asset, in: .main, compatibleWith: nil) != nil else { return nil }
         return Image(asset, bundle: .main)
     }
 
-    static func assetName(for name: String, maxColor: String? = nil) -> String? {
+    static func assetName(for name: String,
+                          maxColor: String? = nil,
+                          earPodsConnector: String? = nil) -> String? {
         let lower = name.lowercased()
-        if lower.contains("earpods") {
-            if lower.contains("usb-c") || lower.contains("usb c") { return "earpods-usbc" }
+        if lower.contains("earpods") || lower.contains("earphones") {
+            if lower.contains("3.5") || lower.contains("headphone plug") { return nil }
             if lower.contains("lightning") { return "earpods-lightning" }
-            return "earpods-35mm"
+            if lower.contains("usb-c") || lower.contains("usb c")
+                || lower.contains("type-c") || lower.contains("typec") {
+                return "earpods-usbc"
+            }
+            return "earpods-\(earPodsConnector ?? savedEarPodsConnector(for: name))"
         }
-        guard lower.contains("airpods") else { return nil }
-        if lower.contains("max") {
-            return "airpods-max-\(maxColor ?? savedMaxColor(for: name))"
-        }
-        if lower.contains("pro") {
-            switch generation(in: lower) {
-            case 3: return "airpods-pro-3"
-            case 2: return "airpods-pro-2"
-            default: return "airpods-pro-1"
+        if lower.contains("airpods") {
+            if lower.contains("max") {
+                return "airpods-max-\(maxColor ?? savedMaxColor(for: name))"
+            }
+            if lower.contains("pro") {
+                switch generation(in: lower) {
+                case 3: return "airpods-pro-3"
+                case 2: return "airpods-pro-2"
+                default: return "airpods-pro-1"
+                }
+            }
+            let generation = generation(in: lower)
+            if generation == 5, lower.contains("无线") || lower.contains("wireless") {
+                return "airpods-5-wireless"
+            }
+            switch generation {
+            case 2: return "airpods-2"
+            case 3: return "airpods-3"
+            case 4: return "airpods-4"
+            case 5: return "airpods-5"
+            default: return "airpods-2"
             }
         }
-        let generation = generation(in: lower)
-        if generation == 5, lower.contains("无线") || lower.contains("wireless") {
-            return "airpods-5-wireless"
-        }
-        switch generation {
-        case 2: return "airpods-2"
-        case 3: return "airpods-3"
-        case 4: return "airpods-4"
-        case 5: return "airpods-5"
-        default: return "airpods-2"
+        return DeviceArtworkCatalog.assetName(for: name)
+    }
+
+    static func fallbackSymbol(for name: String) -> String {
+        switch HeadphoneKind.match(name) {
+        case .speaker: return "hifispeaker"
+        case .pro, .buds: return "airpods"
+        default: return "headphones"
         }
     }
 
@@ -1040,8 +1114,20 @@ enum HeadphoneArtwork {
         UserDefaults.standard.set(color, forKey: maxColorKey(name))
     }
 
+    static func savedEarPodsConnector(for name: String) -> String {
+        UserDefaults.standard.string(forKey: earPodsKey(name)) ?? "usbc"
+    }
+
+    static func saveEarPodsConnector(_ connector: String, for name: String) {
+        UserDefaults.standard.set(connector, forKey: earPodsKey(name))
+    }
+
     private static func maxColorKey(_ name: String) -> String {
         "moumusic.airpodsMaxColor.\(name)"
+    }
+
+    private static func earPodsKey(_ name: String) -> String {
+        "moumusic.earpodsConnector.\(name)"
     }
 
     private static func generation(in name: String) -> Int? {

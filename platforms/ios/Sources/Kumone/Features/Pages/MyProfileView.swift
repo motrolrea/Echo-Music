@@ -654,8 +654,9 @@ struct MyProfileView: View {
                     title: "酷狗音乐",
                     stats: platformStats(level: kugou.level, playlists: nil, hearts: nil, listens: 0, follows: kugou.follows, fans: kugou.fans)
                 ) { showKugouLogin = true }
-                PlatformAccountPlaylists(platform: .kg)
-                    .padding(.horizontal, -16)
+                playlistSectionCard {
+                    PlatformAccountPlaylists(platform: .kg)
+                }
             case .tx:
                 sessionProfile(
                     name: qqMusic.profileName,
@@ -666,8 +667,9 @@ struct MyProfileView: View {
                     title: "QQ 音乐",
                     stats: platformStats(level: qqMusic.level, playlists: nil, hearts: nil, listens: 0, follows: qqMusic.follows, fans: qqMusic.fans)
                 ) { showQQMusicLogin = true }
-                PlatformAccountPlaylists(platform: .tx)
-                    .padding(.horizontal, -16)
+                playlistSectionCard {
+                    PlatformAccountPlaylists(platform: .tx)
+                }
             default:
                 MouGlassCard {
                     Text("\(activeProfilePlatform.displayName) 还没有个人主页，下面这些是本机记录。")
@@ -991,28 +993,39 @@ struct MyProfileView: View {
     @ViewBuilder
     private func playlistGroup(_ title: String, _ playlists: [PlaylistSummary]) -> some View {
         if !playlists.isEmpty {
-            Text(title)
-                .font(.headline.weight(.semibold))
-                .padding(.horizontal, 4)
-            ForEach(playlists) { playlist in
-                NavigationLink(value: Destination.playlist(playlist.id)) {
-                    HStack(spacing: 12) {
-                        CachedAsyncImage(url: playlist.coverURL?.resizedImageURL(160)) {
-                            RoundedRectangle(cornerRadius: 8).fill(.secondary.opacity(0.2))
+            VStack(alignment: .leading, spacing: 10) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                ForEach(playlists) { playlist in
+                    NavigationLink(value: Destination.playlist(playlist.id)) {
+                        HStack(spacing: 12) {
+                            CachedAsyncImage(url: playlist.coverURL?.resizedImageURL(160)) {
+                                RoundedRectangle(cornerRadius: 8).fill(.secondary.opacity(0.2))
+                            }
+                            .frame(width: 48, height: 48)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(playlist.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                Text("\(playlist.trackCount) 首").font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                         }
-                        .frame(width: 48, height: 48)
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(playlist.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                            Text("\(playlist.trackCount) 首").font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
                     }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
+            .padding(14)
+            .background(.ultraThinMaterial,
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
+    }
+
+    private func playlistSectionCard<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(14)
+            .background(.ultraThinMaterial,
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private struct ProfileStat: Identifiable {
