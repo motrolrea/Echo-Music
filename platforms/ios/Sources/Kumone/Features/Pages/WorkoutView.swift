@@ -1,5 +1,7 @@
 #if os(iOS)
+import MapKit
 import SwiftUI
+import UIKit
 
 /// 听歌锻炼。底栏收起，右上角只留一张旋转封面。
 struct WorkoutView: View {
@@ -132,6 +134,8 @@ struct WorkoutView: View {
                     .background(session.isRunning ? Color.primary : Color.primary.opacity(0.08), in: Capsule())
             }
             .buttonStyle(.plain)
+
+            WorkoutMapCard(location: session.location, isRunning: session.isRunning)
 
             songsCard
         }
@@ -386,6 +390,112 @@ private struct WorkoutPatternCard<Header: View>: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// 实时地图：起点、当前点和走过的路线，镜头跟着最新定位。
+private struct WorkoutMapCard: View {
+    @ObservedObject var location: WorkoutLocationTracker
+    let isRunning: Bool
+    @State private var camera: MapCameraPosition = .automatic
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        WorkoutCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "map")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("实时地图")
+                        .font(.system(size: 18, weight: .semibold))
+                    Spacer()
+                    if isRunning, !location.route.isEmpty {
+                        Label("跟随中", systemImage: "location.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Theme.accent)
+                    }
+                }
+                mapContent
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var mapContent: some View {
+        if location.authorizationStatus == .denied || location.authorizationStatus == .restricted {
+            placeholder(icon: "location.slash",
+                        title: "定位未开启",
+                        subtitle: "在设置里允许 Echo Music 使用定位，才能显示实时路线。",
+                        showSettings: true)
+        } else if location.route.isEmpty {
+            placeholder(icon: "location",
+                        title: isRunning ? "正在等待定位" : "起点会在开始后记录",
+                        subtitle: isRunning ? "走到室外或稍等几秒，路线会自动出现。" : "开始锻炼后，这里会跟着你走。",
+                        showSettings: false)
+        } else {
+            Map(position: $camera) {
+                if let start = location.route.first {
+                    Annotation("起点", coordinate: start) {
+                        mapDot(color: .green)
+                    }
+                }
+                if location.route.count > 1 {
+                    MapPolyline(coordinates: location.route)
+                        .stroke(Theme.accent, lineWidth: 4)
+                }
+                if let current = location.route.last {
+                    Annotation("当前位置", coordinate: current) {
+                        mapDot(color: Theme.accent)
+                    }
+                }
+            }
+            .mapStyle(.standard(elevation: .flat))
+            .frame(height: 190)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .onAppear { followLatest() }
+            .onChange(of: location.route.count) { _, _ in followLatest() }
+        }
+    }
+
+    private func followLatest() {
+        guard let current = location.route.last else { return }
+        withAnimation(.easeInOut(duration: 0.6)) {
+            camera = .camera(MapCamera(centerCoordinate: current, distance: 900))
+        }
+    }
+
+    private func placeholder(icon: String, title: String, subtitle: String, showSettings: Bool) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 24, weight: .regular))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            if showSettings {
+                Button("去设置") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        openURL(url)
+                    }
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.bordered)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 150)
+        .background(Color.primary.opacity(0.05),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func mapDot(color: Color) -> some View {
+        Circle()
+            .fill(color)
+            .frame(width: 14, height: 14)
+            .overlay { Circle().stroke(.white, lineWidth: 2) }
+            .shadow(color: .black.opacity(0.2), radius: 3)
     }
 }
 

@@ -189,28 +189,56 @@ enum DeviceArtworkCatalog {
         Entry(asset: "dev-176", normalized: "oneplusbuds4深空灰"),
         Entry(asset: "dev-177", normalized: "oneplusbudsace3星际黑"),
         Entry(asset: "dev-178", normalized: "oneplusbudsace3钛空银"),
+        Entry(asset: "dev-179", normalized: "oppoencoair4pro白色"),
     ]
 
     static func assetName(for deviceName: String) -> String? {
         let target = normalize(deviceName)
         guard target.count >= 4 else { return nil }
-        var best: (entry: Entry, prefix: Int, suffix: Int, neutral: Bool)?
+        let targetColor = colorToken(in: deviceName)
+        var best: (entry: Entry, prefix: Int, score: Int, suffix: Int)?
         for entry in entries {
             let prefix = commonPrefixLength(target, entry.normalized)
             guard prefix >= 8 else { continue }
             let suffix = entry.normalized.count - prefix
-            let neutral = neutralWords.contains { entry.normalized.contains($0) }
+            let score: Int
+            if let targetColor {
+                score = entry.normalized.contains(targetColor) ? 2 : -1
+            } else if entry.normalized.contains("白") || entry.normalized.contains("white") {
+                score = 1
+            } else if neutralWords.contains(where: { entry.normalized.contains($0) }) {
+                score = 0
+            } else {
+                score = -1
+            }
             guard let current = best else {
-                best = (entry: entry, prefix: prefix, suffix: suffix, neutral: neutral)
+                best = (entry: entry, prefix: prefix, score: score, suffix: suffix)
                 continue
             }
             if prefix > current.prefix
-                || (prefix == current.prefix && suffix < current.suffix)
-                || (prefix == current.prefix && suffix == current.suffix && neutral && !current.neutral) {
-                best = (entry: entry, prefix: prefix, suffix: suffix, neutral: neutral)
+                || (prefix == current.prefix && score > current.score)
+                || (prefix == current.prefix && score == current.score && suffix < current.suffix) {
+                best = (entry: entry, prefix: prefix, score: score, suffix: suffix)
             }
         }
         return best?.entry.asset
+    }
+
+    /// 型号名里去掉末尾颜色，例如 “OPPO Enco Air4 Pro 白色” → “OPPO Enco Air4 Pro”。
+    static func displayName(for name: String) -> String {
+        let pattern = #"\s+[\u4E00-\u9FFF]{0,4}[白黑蓝紫金银灰绿粉橙红青黄]色?$"#
+        if let range = name.range(of: pattern, options: .regularExpression) {
+            return String(name[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return name
+    }
+
+    private static func colorToken(in name: String) -> String? {
+        let chinese = ["白", "黑", "蓝", "紫", "金", "银", "灰", "绿", "粉", "橙", "红", "青", "黄"]
+        if let token = chinese.first(where: { name.contains($0) }) { return token }
+        let lower = name.lowercased()
+        let english = ["white", "black", "blue", "purple", "gold", "silver", "gray", "green", "pink", "orange"]
+        return english.first { lower.contains($0) }
     }
 
     private static let neutralWords = ["白", "黑", "灰", "银", "white", "black", "gray", "silver"]

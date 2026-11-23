@@ -187,6 +187,7 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
 final class WorkoutSessionStore: ObservableObject {
     /// 全局一份。离开锻炼页后计时、计步和健康查询继续跑。
     static let shared = WorkoutSessionStore()
+    let location = WorkoutLocationTracker()
 
     struct PlayedSong: Identifiable, Equatable {
         let id: String
@@ -298,6 +299,8 @@ final class WorkoutSessionStore: ObservableObject {
         samples = []
         lastSampleAt = nil
         status = "正在记录"
+        location.reset()
+        location.start()
         captureSample(force: true)
         remember(player.currentTrack)
         cancellable = player.$currentTrack
@@ -318,6 +321,7 @@ final class WorkoutSessionStore: ObservableObject {
         timer = nil
         cancellable = nil
         pedometer.stopUpdates()
+        location.stop()
         if let heartQuery {
             health.stop(heartQuery)
             self.heartQuery = nil

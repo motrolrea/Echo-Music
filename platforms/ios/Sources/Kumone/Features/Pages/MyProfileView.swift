@@ -747,9 +747,13 @@ struct MyProfileView: View {
             }
             if account.isLoggedIn {
                 let favorites = account.userPlaylists.filter(\.isLikedSongsList)
-                playlistGroup("我喜欢的音乐", favorites)
-                playlistGroup("收藏的歌单", Array(account.subscribedPlaylists.prefix(8)))
-                playlistGroup("我创建的歌单", Array(account.createdPlaylists.prefix(8)))
+                playlistSectionCard {
+                    VStack(alignment: .leading, spacing: 18) {
+                        playlistGroup("我喜欢的音乐", favorites)
+                        playlistGroup("收藏的歌单", Array(account.subscribedPlaylists.prefix(8)))
+                        playlistGroup("我创建的歌单", Array(account.createdPlaylists.prefix(8)))
+                    }
+                }
             }
         }
         .task {
@@ -1015,9 +1019,6 @@ struct MyProfileView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(14)
-            .background(.ultraThinMaterial,
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
 
@@ -1026,6 +1027,7 @@ struct MyProfileView: View {
             .padding(14)
             .background(.ultraThinMaterial,
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private struct ProfileStat: Identifiable {

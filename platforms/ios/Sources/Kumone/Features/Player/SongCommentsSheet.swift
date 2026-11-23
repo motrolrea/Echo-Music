@@ -28,6 +28,7 @@ struct SongCommentsSheet: View {
     @State private var postStatus: String?
     @State private var postStatusIsError = false
     @State private var showWebComment = false
+    @State private var needsWebComment = false
 
     private var visibleComments: [DisplayComment] {
         let selected = sort == .hot ? hotComments : latestComments
@@ -173,14 +174,17 @@ struct SongCommentsSheet: View {
                     .font(.caption)
                     .foregroundStyle(postStatusIsError ? .red : .secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if postStatusIsError, postStatus.contains("拒绝了当前设备"), let songID = neteaseSongID {
+                if postStatusIsError, needsWebComment, let songID = neteaseSongID {
                     Button {
                         showWebComment = true
                     } label: {
-                        Label("改用网易云网页版发表（可完成验证）", systemImage: "safari")
-                            .font(.caption.weight(.semibold))
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Label("用网易云网页版发表", systemImage: "safari.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                            .background(Theme.accent, in: Capsule())
                     }
+                    .buttonStyle(.plain)
                     .sheet(isPresented: $showWebComment) {
                         NeteaseWebCommentSheet(songID: songID)
                     }
@@ -251,6 +255,7 @@ struct SongCommentsSheet: View {
         latestComments = []
         metadataNotice = nil
         postStatus = nil
+        needsWebComment = false
         canPost = isBilibili ? BilibiliSessionStore.shared.isLoggedIn : NeteaseClient.shared.isLoggedIn
 
         if isBilibili {
@@ -326,9 +331,11 @@ struct SongCommentsSheet: View {
                 await loadComments()
                 postStatus = "评论已发送到哔哩哔哩。"
                 postStatusIsError = false
+                needsWebComment = false
             } catch {
                 postStatus = "评论发送失败，请检查 B 站登录状态后重试。"
                 postStatusIsError = true
+                needsWebComment = false
             }
             return
         }
@@ -348,12 +355,15 @@ struct SongCommentsSheet: View {
             await loadComments()
             postStatus = "评论已发送到网易云。"
             postStatusIsError = false
+            needsWebComment = false
         } catch is CancellationError {
             return
         } catch {
             let message = error.localizedDescription
-            postStatus = message.contains("更换设备") || message.contains("安全验证")
-                ? "网易云拒绝了当前设备的评论请求，请先在官方网易云客户端完成一次安全验证后再试。"
+            let rejected = message.contains("更换设备") || message.contains("安全验证")
+            needsWebComment = rejected
+            postStatus = rejected
+                ? "网易云拦截了第三方客户端直接发表评论，需要先完成一次设备安全验证。点下面用网页版发表即可。"
                 : message
             postStatusIsError = true
             canPost = NeteaseClient.shared.isLoggedIn

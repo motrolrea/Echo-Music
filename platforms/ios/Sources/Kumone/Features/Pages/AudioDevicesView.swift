@@ -55,7 +55,7 @@ struct AudioDevicesView: View {
         .alert("当前音频输出", isPresented: $showOutputInfo) {
             Button("好", role: .cancel) {}
         } message: {
-            Text("\(currentOutput.name)\n\(currentOutput.detail)\n\(store.isAuthorized ? "健康数据已授权" : "健康数据未授权")")
+            Text("\(DeviceArtworkCatalog.displayName(for: currentOutput.name))\n\(currentOutput.detail)\n\(store.isAuthorized ? "健康数据已授权" : "健康数据未授权")")
         }
     }
 
@@ -111,7 +111,7 @@ struct AudioDevicesView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 if let name = store.todayTopDevice, store.todayTopDuration > 0 {
-                    Text("今天用得最多 · \(name)")
+                    Text("今天用得最多 · \(DeviceArtworkCatalog.displayName(for: name))")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .lineLimit(1)
@@ -305,7 +305,7 @@ struct AudioDevicesView: View {
 
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
-                    Text(device.name)
+                    Text(DeviceArtworkCatalog.displayName(for: device.name))
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     if device.rank == 1 {
@@ -493,7 +493,7 @@ private struct AudioDeviceDetailView: View {
             .padding(.vertical, 18)
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .navigationTitle(device.name)
+        .navigationTitle(DeviceArtworkCatalog.displayName(for: device.name))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -507,7 +507,7 @@ private struct AudioDeviceDetailView: View {
                                          inset: 10)
                 }
                 VStack(alignment: .leading, spacing: 5) {
-                    Text(device.name)
+                    Text(DeviceArtworkCatalog.displayName(for: device.name))
                         .font(.headline)
                         .lineLimit(2)
                     Text(audioDurationText(device.duration))

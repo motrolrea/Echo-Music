@@ -36,6 +36,7 @@ targets:
         INFOPLIST_KEY_NSHealthShareUsageDescription: "读取耳机音量、心率、活动能量和楼层，用于设备佩戴统计和锻炼记录。没有数据时不显示数值。"
         INFOPLIST_KEY_NSHealthUpdateUsageDescription: "结束锻炼时可以把这次运动写入健康 App。拒绝写入不影响本次页面上的记录。"
         INFOPLIST_KEY_NSMotionUsageDescription: "锻炼时读取步数、距离、配速和楼层。这台手机不支持的项目会显示为无数据。"
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "用于在锻炼时显示实时地图和记录路线。只有开始锻炼后才会读取定位。"
   EchoMusicWidget:
     type: app-extension
     platform: iOS
