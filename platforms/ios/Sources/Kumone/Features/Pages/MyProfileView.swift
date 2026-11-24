@@ -35,6 +35,7 @@ struct MyProfileView: View {
     @ObservedObject private var stats = ListeningStatsStore.shared
     @State private var signedInTarget: SignedInTarget?
     @State private var showAccountPlaylists = false
+    @State private var showSupportCode = false
     private enum SignedInTarget: String, Identifiable { case qq, kugou, bilibili; var id: String { rawValue } }
 
 
@@ -63,6 +64,7 @@ struct MyProfileView: View {
                         } else {
                             platformHome
                         }
+                        supportCard
                         PlayerClearanceSpacer()
                     }
                     .padding(.horizontal, 16)
@@ -1157,6 +1159,80 @@ struct MyProfileView: View {
         .frame(maxWidth: .infinity, minHeight: 92)
         .padding(.vertical, 8)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var supportCard: some View {
+        Button { showSupportCode = true } label: {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("赞助与支持")
+                            .font(.title3.weight(.semibold))
+                        Text("如果 Echo Music 对你有帮助，欢迎请开发者喝一杯咖啡。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.pink)
+                        .frame(width: 40, height: 40)
+                        .background(.white.opacity(0.16), in: Circle())
+                }
+                HStack {
+                    Text("微信赞赏码")
+                        .font(.caption.weight(.semibold))
+                    Spacer()
+                    Text("查看")
+                        .font(.caption.weight(.semibold))
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.bold))
+                }
+                .foregroundStyle(.secondary)
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(colors: [Color(red: 0.16, green: 0.18, blue: 0.24),
+                                        Color(red: 0.28, green: 0.22, blue: 0.34)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing),
+                in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+            )
+            .foregroundStyle(.white)
+        }
+        .buttonStyle(.plain)
+        .sheet(isPresented: $showSupportCode) {
+            NavigationStack {
+                VStack(spacing: 18) {
+                    Image("EchoSupportWechat")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 280)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    Text("感谢你的支持")
+                        .font(.title3.weight(.semibold))
+                    Text("使用微信扫码即可赞赏。建议在备注里留下你的名字、账号或 UID，方便后续回馈。")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Text("赞赏完全自愿，不影响任何功能。")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(.systemGroupedBackground))
+                .navigationTitle("赞助与支持")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("完成") { showSupportCode = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
     }
 
     private var appearanceCard: some View {

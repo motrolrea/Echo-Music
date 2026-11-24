@@ -1142,9 +1142,7 @@ enum LXCatalogService {
         case .mg:
             return (try? await recommendedMiguSonglists(limit: limit)) ?? []
         case .sd:
-            // The car protocol exposes scene radios (feed modes) instead of a
-            // playlist catalogue; those are rendered by the Feed surface.
-            return []
+            return (try? await qishuiFeedPlaylists(limit: limit)) ?? []
         case .aggregate:
             throw LXCatalogError.unsupported
         }
@@ -1188,9 +1186,19 @@ enum LXCatalogService {
                 ? try await searchSonglists(category, platform: platform, page: page, limit: limit)
                 : result
         case .sd:
-            return []
+            return (try? await searchSonglists(category, platform: platform, page: page, limit: limit)) ?? []
         case .aggregate:
             throw LXCatalogError.unsupported
+        }
+    }
+
+    /// 汽水没有公开的歌单广场，推荐页用场景电台，点进去就是这个场景的歌曲。
+    private static func qishuiFeedPlaylists(limit: Int) async throws -> [LXPlaylistSummary] {
+        let modes = try await QishuiCatalogService.feedModes()
+        return modes.prefix(max(1, limit)).map {
+            LXPlaylistSummary(id: "feed:\($0.id)", name: $0.name, coverURL: $0.coverURL,
+                              playCount: 0, trackCount: 0, description: $0.group,
+                              author: "汽水音乐", source: .sd)
         }
     }
 
@@ -1354,9 +1362,20 @@ enum LXCatalogService {
         case .tx: return try await searchQQSonglists(keyword, page: page, limit: limit)
         case .wy: return try await searchNeteaseSonglists(keyword, page: page, limit: limit)
         case .mg: return try await searchMiguSonglists(keyword, page: page, limit: limit)
-        case .sd: return []
+        case .sd: return try await searchQishuiSonglists(keyword, page: page, limit: limit)
         case .aggregate: throw LXCatalogError.unsupported
         }
+    }
+
+    private static func searchQishuiSonglists(_ keyword: String, page: Int, limit: Int) async throws -> [LXPlaylistSummary] {
+        let tracks = try await QishuiCatalogService.search(keyword, limit: max(limit, 12),
+                                                           offset: max(0, page - 1) * limit)
+        guard !tracks.isEmpty else { return [] }
+        return [
+            LXPlaylistSummary(id: "search:\(keyword)", name: keyword, coverURL: tracks.first?.album.picUrl,
+                              playCount: 0, trackCount: tracks.count, description: "汽水搜索",
+                              author: "汽水音乐", source: .sd),
+        ]
     }
 
     private static func searchNeteaseSonglists(_ keyword: String, page: Int, limit: Int) async throws -> [LXPlaylistSummary] {
@@ -1568,6 +1587,24 @@ enum LXCatalogService {
 
     static func playlistDetail(source: LXCatalogPlatform, id: String) async throws -> LXPlaylistDetail {
         if id.hasPrefix("top:") { return try await toplistDetail(source: source, id: String(id.dropFirst(4))) }
+        if source == .sd, id.hasPrefix("feed:") {
+            let scene = String(id.dropFirst(5))
+            let modes = (try? await QishuiCatalogService.feedModes()) ?? []
+            let mode = modes.first { $0.id == scene }
+            let tracks = try await QishuiCatalogService.feed(scene: scene, limit: 30)
+            guard !tracks.isEmpty else { throw LXCatalogError.invalidResponse }
+            return LXPlaylistDetail(id: id, name: mode?.name ?? "汽水场景", coverURL: mode?.coverURL ?? tracks.first?.album.picUrl,
+                                    description: nil, author: "汽水音乐", playCount: 0,
+                                    tracks: tracks, source: .sd)
+        }
+        if source == .sd, id.hasPrefix("search:") {
+            let keyword = String(id.dropFirst(7))
+            let tracks = try await QishuiCatalogService.search(keyword, limit: 30)
+            guard !tracks.isEmpty else { throw LXCatalogError.invalidResponse }
+            return LXPlaylistDetail(id: id, name: keyword, coverURL: tracks.first?.album.picUrl,
+                                    description: "汽水搜索", author: "汽水音乐", playCount: 0,
+                                    tracks: tracks, source: .sd)
+        }
         switch source {
         case .wy:
             guard let neteaseID = Int(id) else { throw LXCatalogError.invalidResponse }

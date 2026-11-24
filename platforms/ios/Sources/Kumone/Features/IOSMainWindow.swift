@@ -329,10 +329,8 @@ public struct IOSMainWindow: View {
     /// Leaving the modifier on with empty content still renders an empty,
     /// translucent accessory platter above the tab bar when idle (#35), so we
     /// apply it conditionally.
-    /// 精选页自己画底栏：播放器一直展开，下滑只把四个功能收成小球、搜索拉长。
-    private var exploreCustomBar: Bool {
-        selectedTab == .explore && !bilibiliChrome && !workoutChrome.active
-    }
+    /// 精选页沿用系统底栏，不再另画一条。
+    private var exploreCustomBar: Bool { false }
 
     /// 精选下滑时播放器保持展开，只把功能栏收成小球。其他页仍走系统折叠。
     private var exploreKeepsPlayerOpen: Bool {
@@ -350,7 +348,7 @@ public struct IOSMainWindow: View {
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
-                isActive: player.hasCurrentTrack && !exploreCustomBar,
+                isActive: player.hasCurrentTrack,
                 hidesPlayer: workoutChrome.active,
                 transitionNamespace: nowPlayingTransition,
                 colorScheme: resolvedColorScheme
@@ -399,6 +397,7 @@ public struct IOSMainWindow: View {
             Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
                 Color.clear
             }
+            .tabBarMinimizeBehavior(selectedTab == .explore ? .never : .automatic)
         }
         .toolbarBackground(.hidden, for: .tabBar)
         .background(Color.clear)
