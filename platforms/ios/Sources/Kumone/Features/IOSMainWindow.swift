@@ -435,11 +435,7 @@ public struct IOSMainWindow: View {
                     Spacer(minLength: 0)
                 }
 
-                if exploreKeepsPlayerOpen {
-                    exploreSearchCapsule
-                } else {
-                    searchBall(size: 52, routeExploreWhenCollapsed: true)
-                }
+                searchBall(size: 52, routeExploreWhenCollapsed: true)
             }
             .frame(maxWidth: 560)
             .padding(.horizontal, 18)
