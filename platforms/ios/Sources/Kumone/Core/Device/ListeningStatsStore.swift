@@ -48,6 +48,10 @@ final class ListeningStatsStore: ObservableObject {
         }
     }
 
+    func minutes(on date: Date) -> Double {
+        (daily[Self.dayKey(date)] ?? 0) / 60
+    }
+
     /// 最近 7 天（含今天）的听歌分钟数与星期标签，旧 → 新。
     func lastSevenDays() -> [(label: String, minutes: Double)] {
         let cal = Calendar.current

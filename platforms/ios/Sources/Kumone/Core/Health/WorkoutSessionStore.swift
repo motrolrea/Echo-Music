@@ -1,5 +1,6 @@
 #if os(iOS)
 import Combine
+import CoreLocation
 import CoreMotion
 import Foundation
 import HealthKit
@@ -103,6 +104,8 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
     var averageHeartRate: Double?
     var songs: [WorkoutSong]
     var samples: [WorkoutSample]
+    /// 纬度、经度成对保存。旧记录没有这条，解码成空路线。
+    var route: [Double]
 
     init(id: UUID, activity: String, startedAt: Date, endedAt: Date,
          steps: Int? = nil, distance: Double? = nil, energy: Double? = nil,
@@ -110,7 +113,8 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
          fastestPace: TimeInterval? = nil, fastestPaceAt: Date? = nil,
          slowestPace: TimeInterval? = nil, peakHeartRate: Double? = nil,
          peakHeartRateAt: Date? = nil, averageHeartRate: Double? = nil,
-         songs: [WorkoutSong] = [], samples: [WorkoutSample] = []) {
+         songs: [WorkoutSong] = [], samples: [WorkoutSample] = [],
+         route: [Double] = []) {
         self.id = id
         self.activity = activity
         self.startedAt = startedAt
@@ -129,6 +133,7 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
         self.averageHeartRate = averageHeartRate
         self.songs = songs
         self.samples = samples
+        self.route = route
     }
 
     init(from decoder: Decoder) throws {
@@ -151,6 +156,7 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
         averageHeartRate = try container.decodeIfPresent(Double.self, forKey: .averageHeartRate)
         songs = try container.decodeIfPresent([WorkoutSong].self, forKey: .songs) ?? []
         samples = try container.decodeIfPresent([WorkoutSample].self, forKey: .samples) ?? []
+        route = try container.decodeIfPresent([Double].self, forKey: .route) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -173,12 +179,19 @@ struct WorkoutRecord: Codable, Identifiable, Equatable {
         try container.encodeIfPresent(averageHeartRate, forKey: .averageHeartRate)
         try container.encode(songs, forKey: .songs)
         try container.encode(samples, forKey: .samples)
+        try container.encode(route, forKey: .route)
+    }
+
+    var coordinates: [CLLocationCoordinate2D] {
+        stride(from: 0, to: route.count - 1, by: 2).map {
+            CLLocationCoordinate2D(latitude: route[$0], longitude: route[$0 + 1])
+        }
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, activity, startedAt, endedAt, steps, distance, energy, floors, floorsDescended
         case averagePace, fastestPace, fastestPaceAt, slowestPace
-        case peakHeartRate, peakHeartRateAt, averageHeartRate, songs, samples
+        case peakHeartRate, peakHeartRateAt, averageHeartRate, songs, samples, route
     }
 }
 
@@ -367,7 +380,8 @@ final class WorkoutSessionStore: ObservableObject {
                                           WorkoutSong(id: $0.id, title: $0.title, artist: $0.artist,
                                                       coverURL: $0.coverURL, playedAt: $0.playedAt)
                                       },
-                                      samples: samples), at: 0)
+                                      samples: samples,
+                                      route: location.route.flatMap { [$0.latitude, $0.longitude] }), at: 0)
         persistRecords()
     }
 
@@ -500,7 +514,10 @@ final class WorkoutSessionStore: ObservableObject {
               let energy = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)
         else { return }
         let granted = await withCheckedContinuation { continuation in
-            health.requestAuthorization(toShare: [HKObjectType.workoutType()], read: [heart, energy]) { success, _ in
+            var read: Set<HKObjectType> = [heart, energy]
+            if let steps = HKObjectType.quantityType(forIdentifier: .stepCount) { read.insert(steps) }
+            if let distance = HKObjectType.quantityType(forIdentifier: .distanceWalkingRunning) { read.insert(distance) }
+            health.requestAuthorization(toShare: [HKObjectType.workoutType()], read: read) { success, _ in
                 continuation.resume(returning: success)
             }
         }

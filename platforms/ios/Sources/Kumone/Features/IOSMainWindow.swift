@@ -329,10 +329,19 @@ public struct IOSMainWindow: View {
     /// Leaving the modifier on with empty content still renders an empty,
     /// translucent accessory platter above the tab bar when idle (#35), so we
     /// apply it conditionally.
+    /// 精选下滑时播放器保持展开，只把功能栏收成小球。其他页仍走系统折叠。
+    private var exploreKeepsPlayerOpen: Bool {
+        selectedTab == .explore && !bilibiliChrome && bottomCollapse.hasScrolledDown
+    }
+
     @available(iOS 26.0, *)
     private var iOS26TabInterface: some View {
         iOS26TabView
-            .tabBarMinimizeBehavior(tabBarMinimizes ? .onScrollDown : .never)
+            .toolbar(exploreKeepsPlayerOpen ? .hidden : .automatic, for: .tabBar)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if exploreKeepsPlayerOpen { exploreCollapsedBar }
+            }
+            .tabBarMinimizeBehavior(tabBarMinimizes && !exploreKeepsPlayerOpen ? .onScrollDown : .never)
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
@@ -413,7 +422,7 @@ public struct IOSMainWindow: View {
             HStack(spacing: 10) {
                 collapsedTabBall
 
-                if player.hasCurrentTrack {
+                if player.hasCurrentTrack, !exploreKeepsPlayerOpen {
                     IOSMiniPlayerBar(presentation: .collapsed)
                         .frame(maxWidth: .infinity)
                         .transition(.opacity)
@@ -421,7 +430,11 @@ public struct IOSMainWindow: View {
                     Spacer(minLength: 0)
                 }
 
-                searchBall(size: 52, routeExploreWhenCollapsed: true)
+                if exploreKeepsPlayerOpen {
+                    exploreSearchCapsule
+                } else {
+                    searchBall(size: 52, routeExploreWhenCollapsed: true)
+                }
             }
             .frame(maxWidth: 560)
             .padding(.horizontal, 18)
@@ -445,6 +458,40 @@ public struct IOSMainWindow: View {
             }
             .padding(.bottom, 6)
         }
+    }
+
+    /// 精选下滑后的底栏：左边四个功能收成一个小球，右边搜索拉成胶囊。
+    private var exploreCollapsedBar: some View {
+        HStack(spacing: 10) {
+            collapsedTabBall
+            Spacer(minLength: 0)
+            exploreSearchCapsule
+        }
+        .padding(.horizontal, 18)
+        .padding(.bottom, 6)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private var exploreSearchCapsule: some View {
+        Button {
+            Haptics.tap()
+            NotificationCenter.default.post(name: .exploreFocusSearch, object: nil)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("搜索音乐")
+                    .font(.subheadline.weight(.medium))
+            }
+            .foregroundStyle(Theme.accent)
+            .padding(.horizontal, 18)
+            .frame(height: 52)
+            .compatGlass(interactive: true, in: Capsule())
+            .overlay { Capsule().strokeBorder(.white.opacity(0.16), lineWidth: 0.5) }
+            .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("搜索音乐")
     }
 
     /// 折叠后的当前页小球（点击展开底栏）

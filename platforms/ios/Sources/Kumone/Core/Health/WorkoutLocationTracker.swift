@@ -10,6 +10,7 @@ final class WorkoutLocationTracker: NSObject, ObservableObject, CLLocationManage
 
     private let manager = CLLocationManager()
     private var wantsUpdates = false
+    private var lastAccepted: CLLocation?
 
     override init() {
         super.init()
@@ -40,6 +41,19 @@ final class WorkoutLocationTracker: NSObject, ObservableObject, CLLocationManage
 
     func reset() {
         route.removeAll()
+        lastAccepted = nil
+    }
+
+    /// 丢掉室内乱跳和瞬移点。精度放宽到 100 米，但两点之间的速度不合理就不画。
+    static func shouldAccept(_ location: CLLocation, after previous: CLLocation?) -> Bool {
+        guard location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 100 else { return false }
+        guard let previous else { return true }
+        let meters = location.distance(from: previous)
+        let seconds = location.timestamp.timeIntervalSince(previous.timestamp)
+        guard meters >= 4 else { return false }
+        guard seconds >= 0.8 else { return false }
+        // 户外骑行上限约 25 米/秒。超过就是定位跳点，不写入路线。
+        return meters / seconds <= 25
     }
 
     func requestAuthorization() {
@@ -58,14 +72,12 @@ final class WorkoutLocationTracker: NSObject, ObservableObject, CLLocationManage
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last,
-              location.horizontalAccuracy >= 0,
-              location.horizontalAccuracy <= 60 else { return }
-        if let last = route.last {
-            let previous = CLLocation(latitude: last.latitude, longitude: last.longitude)
-            guard location.distance(from: previous) >= 4 else { return }
+        for location in locations {
+            guard Self.shouldAccept(location, after: lastAccepted) else { continue }
+            lastAccepted = location
+            route.append(location.coordinate)
+            if route.count > 2400 { route.removeFirst(route.count - 2400) }
         }
-        route.append(location.coordinate)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}

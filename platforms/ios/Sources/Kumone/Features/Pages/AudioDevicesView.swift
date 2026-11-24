@@ -378,8 +378,7 @@ struct AudioDevicesView: View {
 
     private var limitationNote: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("数据来自健康 App 的耳机音量记录，只在本机读取。电量、降噪和左右耳由系统独占，第三方 App 读不到。")
-            Text("系统授权框显示的是安装包里的应用名和图标；如果看到旧名字或空白图标，请先卸载旧版本，并在「设置 → 健康」里删除旧授权后重新安装。")
+            Text("数据来自健康 App 的耳机音量记录，只在本机读取。")
             if let start = store.statisticsStart {
                 Text("本次读取覆盖 \(AudioDateText.fullDay.string(from: start)) 至今。")
             }
@@ -993,12 +992,24 @@ private struct AudioArtworkStage<Content: View>: View {
             .frame(width: size, height: size)
             .background {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(Color.primary.opacity(0.055))
+                    .fill(
+                        LinearGradient(colors: [Color.primary.opacity(0.03), Color.primary.opacity(0.08)],
+                                       startPoint: .top, endPoint: .bottom)
+                    )
+            }
+            .overlay(alignment: .top) {
+                // 死图做不了真 3D，用顶部高光和轻微透视做出立体感。
+                LinearGradient(colors: [.white.opacity(0.28), .clear],
+                               startPoint: .top, endPoint: .center)
+                    .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+                    .allowsHitTesting(false)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5)
             }
+            .rotation3DEffect(.degrees(7), axis: (x: 1, y: -0.25, z: 0), perspective: 0.45)
+            .shadow(color: .black.opacity(0.16), radius: size * 0.08, y: size * 0.045)
     }
 }
 
@@ -1047,6 +1058,7 @@ enum HeadphoneArtwork {
     static let earPodsConnectors: [EarPodsConnectorOption] = [
         EarPodsConnectorOption(id: "usbc", name: "USB-C"),
         EarPodsConnectorOption(id: "lightning", name: "Lightning"),
+        EarPodsConnectorOption(id: "35mm", name: "3.5mm"),
     ]
 
     static func image(for name: String,
@@ -1064,7 +1076,7 @@ enum HeadphoneArtwork {
                           earPodsConnector: String? = nil) -> String? {
         let lower = name.lowercased()
         if lower.contains("earpods") || lower.contains("earphones") {
-            if lower.contains("3.5") || lower.contains("headphone plug") { return nil }
+            if lower.contains("3.5") || lower.contains("headphone plug") { return "earpods-35mm" }
             if lower.contains("lightning") { return "earpods-lightning" }
             if lower.contains("usb-c") || lower.contains("usb c")
                 || lower.contains("type-c") || lower.contains("typec") {

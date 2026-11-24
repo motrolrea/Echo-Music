@@ -1195,9 +1195,15 @@ struct MyProfileView: View {
     }
 }
 
+private enum ListeningBlockSpan { case threeDays, week, month, custom }
+
 private struct ListeningReportView: View {
     @ObservedObject private var stats = ListeningStatsStore.shared
     @State private var selectedDay: Int?
+    @State private var blockSpan: ListeningBlockSpan = .week
+    @State private var blockStart = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+    @State private var blockEnd = Date()
+    @State private var showBlockRange = false
 
     var body: some View {
         ScrollView {
@@ -1212,64 +1218,110 @@ private struct ListeningReportView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 22)
 
-                HStack(spacing: 0) {
-                    reportMetric("播放", "\(stats.totalPlayCount) 首")
-                    reportDivider
-                    reportMetric("连续", "\(stats.streakDays) 天")
-                    reportDivider
-                    reportMetric("今日", minutesText(todayMinutes))
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    reportTile("播放", "\(stats.totalPlayCount)", "play.fill")
+                    reportTile("连续", "\(stats.streakDays)", "flame")
+                    reportTile("今日", minutesText(todayMinutes), "sun.max")
+                    reportTile("近 7 天", minutesText(weekMinutes), "calendar")
+                    reportTile("日均", minutesText(averageMinutes), "chart.bar")
+                    reportTile("最久一天", minutesText(peakMinutes), "star")
                 }
-                .padding(.vertical, 8)
-
-                Divider().padding(.horizontal, 16)
-
-                HStack(spacing: 0) {
-                    reportMetric("近 7 天", minutesText(weekMinutes))
-                    reportDivider
-                    reportMetric("日均", minutesText(averageMinutes))
-                    reportDivider
-                    reportMetric("最久一天", minutesText(peakMinutes))
-                }
-                .padding(.vertical, 8)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
 
                 VStack(alignment: .leading, spacing: 14) {
-                    Text("近 7 天")
-                        .font(.headline.weight(.semibold))
-                    HStack(alignment: .bottom, spacing: 8) {
-                        ForEach(Array(week.enumerated()), id: \.offset) { index, day in
-                            let selected = selectedDay == index
-                            VStack(spacing: 6) {
-                                Text(selected ? durationText(day.minutes) : " ")
-                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Theme.accent)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.6)
-                                    .frame(height: 20)
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(Theme.accent.opacity(day.minutes > 0 ? 1 : 0.18))
-                                    .frame(height: barHeight(day.minutes))
-                                Text(day.label)
-                                    .font(.caption2)
-                                    .foregroundStyle(selected ? Theme.accent : .secondary)
+                    HStack {
+                        Text("聆听分布")
+                            .font(.headline.weight(.semibold))
+                        Spacer()
+                        Menu {
+                            Button("近三天") { blockSpan = .threeDays }
+                            Button("近七天") { blockSpan = .week }
+                            Button("近一个月") { blockSpan = .month }
+                            Button("自选区间") {
+                                blockSpan = .custom
+                                showBlockRange = true
                             }
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                withAnimation(.easeInOut(duration: 0.18)) {
-                                    selectedDay = selectedDay == index ? nil : index
-                                }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(blockTitle)
+                                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
                             }
-                            .accessibilityLabel("\(day.label) \(durationText(day.minutes))")
-                            .accessibilityAddTraits(.isButton)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
                         }
                     }
-                    .frame(height: 140, alignment: .bottom)
+                    let days = blockDays
+                    let peak = max(days.map(\.minutes).max() ?? 1, 1)
+                    let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: min(max(days.count, 1), 7))
+                    LazyVGrid(columns: columns, spacing: 6) {
+                        ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                            let selected = selectedDay == index
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(day.minutes > 0
+                                      ? Theme.accent.opacity(0.22 + 0.78 * day.minutes / peak)
+                                      : Color.primary.opacity(0.06))
+                                .frame(height: 22)
+                                .overlay {
+                                    if selected {
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .strokeBorder(Theme.accent, lineWidth: 1.5)
+                                    }
+                                }
+                                .onTapGesture {
+                                    withAnimation(.easeInOut(duration: 0.18)) {
+                                        selectedDay = selected ? nil : index
+                                    }
+                                }
+                                .accessibilityLabel("\(day.label) \(durationText(day.minutes))")
+                        }
+                    }
+                    if let selectedDay, days.indices.contains(selectedDay) {
+                        Text("\(days[selectedDay].label) · \(durationText(days[selectedDay].minutes))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(16)
             }
         }
+        .sheet(isPresented: $showBlockRange) {
+            NavigationStack {
+                Form {
+                    DatePicker("开始", selection: $blockStart, displayedComponents: .date)
+                    DatePicker("结束", selection: $blockEnd, displayedComponents: .date)
+                }
+                .navigationTitle("自选区间")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("完成") { showBlockRange = false }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
         .navigationTitle("听歌报告")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func reportTile(_ title: String, _ value: String, _ symbol: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: symbol)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Theme.accent)
+            Text(value)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func reportMetric(_ title: String, _ value: String) -> some View {
@@ -1289,6 +1341,36 @@ private struct ListeningReportView: View {
         Rectangle()
             .fill(Color.primary.opacity(0.08))
             .frame(width: 1, height: 28)
+    }
+
+    private var blockTitle: String {
+        switch blockSpan {
+        case .threeDays: return "近三天"
+        case .week: return "近七天"
+        case .month: return "近一个月"
+        case .custom: return "自选区间"
+        }
+    }
+
+    private var blockDays: [(label: String, minutes: Double)] {
+        let calendar = Calendar.current
+        let symbols = ["日", "一", "二", "三", "四", "五", "六"]
+        let end = calendar.startOfDay(for: blockSpan == .custom ? max(blockStart, blockEnd) : Date())
+        let count: Int
+        switch blockSpan {
+        case .threeDays: count = 3
+        case .week: count = 7
+        case .month: count = 30
+        case .custom:
+            let start = calendar.startOfDay(for: min(blockStart, blockEnd))
+            count = min(max(calendar.dateComponents([.day], from: start, to: end).day ?? 0, 0) + 1, 42)
+        }
+        return (0..<count).map { offset in
+            let date = calendar.date(byAdding: .day, value: -(count - 1 - offset), to: end) ?? end
+            let weekday = calendar.component(.weekday, from: date) - 1
+            let label = count <= 7 ? symbols[weekday] : "\(calendar.component(.day, from: date))"
+            return (label, stats.minutes(on: date))
+        }
     }
 
     private var week: [(label: String, minutes: Double)] { stats.lastSevenDays() }

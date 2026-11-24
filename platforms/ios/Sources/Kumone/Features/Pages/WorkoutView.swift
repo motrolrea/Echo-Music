@@ -20,6 +20,9 @@ struct WorkoutView: View {
                 modeSwitcher
                 focusedHeader
                 liveSession
+                WorkoutHealthSummaryCard(activity: focus, span: span, customStart: customStart, customEnd: customEnd) {
+                    spanMenu
+                }
                 WorkoutPatternCard(records: rangedRecords) {
                     spanMenu
                 }
@@ -239,6 +242,7 @@ struct WorkoutView: View {
 
     private var spanTitle: String {
         switch span {
+        case .threeDays: return "近三天"
         case .week: return "近一周"
         case .month: return "近一个月"
         case .custom:
@@ -248,6 +252,9 @@ struct WorkoutView: View {
 
     private var spanMenu: some View {
         Menu {
+            Button { span = .threeDays } label: {
+                if span == .threeDays { Label("近三天", systemImage: "checkmark") } else { Text("近三天") }
+            }
             Button { span = .week } label: {
                 if span == .week { Label("近一周", systemImage: "checkmark") } else { Text("近一周") }
             }
@@ -276,6 +283,8 @@ struct WorkoutView: View {
         let latest = span == .custom ? max(customStart, customEnd) : Date()
         let earliest: Date
         switch span {
+        case .threeDays:
+            earliest = calendar.date(byAdding: .day, value: -3, to: latest) ?? .distantPast
         case .week:
             earliest = calendar.date(byAdding: .day, value: -7, to: latest) ?? .distantPast
         case .month:
@@ -600,7 +609,7 @@ private struct WorkoutClock: View {
                                            style: StrokeStyle(lineWidth: 12, lineCap: .round))
                         }
                         context.stroke(bar,
-                                       with: .color(Color.primary.opacity(0.18 + strength * 0.82)),
+                                       with: .color(isPeak ? Theme.accent : Color.primary.opacity(0.16 + strength * 0.55)),
                                        style: StrokeStyle(lineWidth: width, lineCap: .round))
                         if isPeak {
                             let tip = CGPoint(x: center.x + cos(angle) * (inner + length),
@@ -786,6 +795,9 @@ private struct WorkoutRecordDetail: View {
         ScrollView {
             VStack(spacing: 16) {
                 hero
+                if record.coordinates.count >= 2 {
+                    routeSection
+                }
                 peakSection
                 if points.count >= 2 {
                     paceSection
@@ -821,6 +833,50 @@ private struct WorkoutRecordDetail: View {
             .frame(maxWidth: .infinity)
             .multilineTextAlignment(.center)
         }
+    }
+
+    private var routeSection: some View {
+        WorkoutCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("路线")
+                    .font(.title3.weight(.semibold))
+                Map(initialPosition: routePosition) {
+                    MapPolyline(coordinates: record.coordinates)
+                        .stroke(Theme.accent, lineWidth: 4)
+                    if let start = record.coordinates.first {
+                        Annotation("起点", coordinate: start) { mapPin(.green) }
+                    }
+                    if let end = record.coordinates.last {
+                        Annotation("终点", coordinate: end) { mapPin(Theme.accent) }
+                    }
+                }
+                .mapStyle(.standard(elevation: .flat))
+                .frame(height: 220)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private var routePosition: MapCameraPosition {
+        let points = record.coordinates
+        guard let first = points.first else { return .automatic }
+        var region = MKCoordinateRegion(center: first, latitudinalMeters: 400, longitudinalMeters: 400)
+        let lats = points.map(\.latitude)
+        let lons = points.map(\.longitude)
+        if let minLat = lats.min(), let maxLat = lats.max(), let minLon = lons.min(), let maxLon = lons.max() {
+            region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
+                span: MKCoordinateSpan(latitudeDelta: max((maxLat - minLat) * 1.45, 0.004),
+                                       longitudeDelta: max((maxLon - minLon) * 1.45, 0.004))
+            )
+        }
+        return .region(region)
+    }
+
+    private func mapPin(_ color: Color) -> some View {
+        Circle().fill(color).frame(width: 10, height: 10)
+            .overlay { Circle().stroke(.white, lineWidth: 2) }
     }
 
     private var peakSection: some View {
@@ -1205,8 +1261,135 @@ private struct WorkoutCover: View {
     }
 }
 
+/// 健康 App 里的步行距离和步数汇总。三个模式共用，不按步行/跑步/骑行拆开。
+private struct WorkoutHealthSummaryCard<Menu: View>: View {
+    let activity: WorkoutSessionStore.Activity
+    let span: WorkoutSpan
+    let customStart: Date
+    let customEnd: Date
+    @ViewBuilder var menu: () -> Menu
+
+    @State private var distance: Double?
+    @State private var steps: Int?
+    @State private var denied = false
+
+    var body: some View {
+        WorkoutCard {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("数据总计")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color(red: 0.84, green: 0.33, blue: 0.38))
+                    Spacer()
+                    menu()
+                }
+                HStack(alignment: .firstTextBaseline) {
+                    summaryValue(distanceText, "公里")
+                    Spacer()
+                    summaryValue(steps.map { Self.grouped.string(from: NSNumber(value: $0)) } ?? "—", "步数")
+                }
+                Text(footnote)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .task(id: taskKey) { await reload() }
+    }
+
+    private var taskKey: String {
+        "\(span)-\(customStart.timeIntervalSince1970)-\(customEnd.timeIntervalSince1970)"
+    }
+
+    private var distanceText: String {
+        guard let distance else { return "—" }
+        return String(format: "%.2f", distance / 1000)
+    }
+
+    private var footnote: String {
+        if denied { return "需要在「设置 → 健康」中允许读取步数和步行距离后，才能汇总这段时间的数据。" }
+        return "数据来自健康 App，统计所选区间内的步行距离与步数。"
+    }
+
+    private func summaryValue(_ value: String, _ unit: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(value)
+                .font(.system(size: 34, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(unit)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func reload() async {
+        denied = false
+        guard HKHealthStore.isHealthDataAvailable(),
+              let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount),
+              let distanceType = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) else {
+            distance = nil
+            steps = nil
+            return
+        }
+        let store = HKHealthStore()
+        let granted = await withCheckedContinuation { continuation in
+            store.requestAuthorization(toShare: [], read: [stepType, distanceType]) { success, _ in
+                continuation.resume(returning: success)
+            }
+        }
+        guard granted else {
+            denied = true
+            return
+        }
+        let interval = bounds
+        async let meters = Self.sum(store, distanceType, .meter(), interval)
+        async let count = Self.sum(store, stepType, .count(), interval)
+        distance = await meters
+        steps = Int((await count).rounded())
+    }
+
+    private var bounds: DateInterval {
+        let calendar = Calendar.current
+        let latest = span == .custom ? max(customStart, customEnd) : Date()
+        let earliest: Date
+        switch span {
+        case .threeDays:
+            earliest = calendar.date(byAdding: .day, value: -3, to: latest) ?? latest
+        case .week:
+            earliest = calendar.date(byAdding: .day, value: -7, to: latest) ?? latest
+        case .month:
+            earliest = calendar.date(byAdding: .month, value: -1, to: latest) ?? latest
+        case .custom:
+            earliest = calendar.startOfDay(for: min(customStart, customEnd))
+        }
+        let end = span == .custom
+            ? (calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: latest)) ?? latest)
+            : latest
+        return DateInterval(start: earliest, end: end)
+    }
+
+    private static func sum(_ store: HKHealthStore, _ type: HKQuantityType, _ unit: HKUnit, _ interval: DateInterval) async -> Double {
+        let predicate = HKQuery.predicateForSamples(withStart: interval.start, end: interval.end, options: .strictStartDate)
+        return await withCheckedContinuation { continuation in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, stats, _ in
+                continuation.resume(returning: stats?.sumQuantity()?.doubleValue(for: unit) ?? 0)
+            }
+            store.execute(query)
+        }
+    }
+
+    private static let grouped: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
+}
+
 private enum WorkoutSpan: Equatable {
-    case week, month, custom
+    case threeDays, week, month, custom
 }
 
 private struct WorkoutDay: Identifiable {
