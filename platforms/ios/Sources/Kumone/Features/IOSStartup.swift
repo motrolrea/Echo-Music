@@ -97,7 +97,7 @@ final class IOSStartupCoordinator: ObservableObject {
             try? await Task.sleep(for: .seconds(remaining))
         }
 
-        phase = .ready
+        withAnimation(.easeInOut(duration: 0.55)) { phase = .ready }
         message = isOnline
             ? String(localized: "Online content is loading")
             : String(localized: "The app is ready; online content will retry in the background")
@@ -125,7 +125,7 @@ final class IOSStartupCoordinator: ObservableObject {
 struct IOSStartupSplashView: View {
     @ObservedObject var coordinator: IOSStartupCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var animateMark = false
+    @State private var appeared = false
 
     var body: some View {
         ZStack {
@@ -149,13 +149,15 @@ struct IOSStartupSplashView: View {
                     Circle()
                         .stroke(Theme.accent.opacity(0.32), lineWidth: 1.5)
                         .frame(width: 92, height: 92)
-                        .scaleEffect(animateMark ? 1.12 : 0.9)
-                        .opacity(animateMark ? 0.1 : 0.8)
+                        .scaleEffect(appeared ? 1.08 : 0.92)
+                        .opacity(appeared ? 0.35 : 0.8)
 
-                    Image(systemName: "waveform")
-                        .font(.system(size: 32, weight: .semibold))
-                        .foregroundStyle(Theme.accent)
-                        .scaleEffect(animateMark ? 1.04 : 0.94)
+                    Image("AppLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 64, height: 64)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .scaleEffect(appeared ? 1 : 0.9)
                 }
 
                 VStack(spacing: 8) {
@@ -179,9 +181,8 @@ struct IOSStartupSplashView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(String(localized: "Echo Music 濮濓絽婀崥顖氬З楠炲爼顣╅崝鐘烘祰閸︺劎鍤庨崘鍛啇"))
         .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                animateMark = true
+            withAnimation(reduceMotion ? nil : .spring(response: 0.72, dampingFraction: 0.82)) {
+                appeared = true
             }
         }
     }

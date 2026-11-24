@@ -248,7 +248,7 @@ struct PlatformGlyph: View {
         case .mg:
             brandImage("BrandMigu")
         case .sd:
-            letterMark("S", .pink)
+            qishuiMark
         case .aggregate:
             Image(systemName: "square.stack.3d.up.fill")
                 .resizable()
@@ -260,6 +260,20 @@ struct PlatformGlyph: View {
     /// Brand artwork taken from the Beans 2.0.3 asset catalog.
     private func brandImage(_ name: String) -> some View {
         BrandIconView(name: name, contentMode: contentMode)
+    }
+
+    /// 汽水官方标是青色底上的白色音符。官网没有单独的图标文件，这里按同一图形绘制。
+    private var qishuiMark: some View {
+        GeometryReader { proxy in
+            let side = min(proxy.size.width, proxy.size.height)
+            ZStack {
+                RoundedRectangle(cornerRadius: side * 0.24, style: .continuous)
+                    .fill(Color(red: 0.10, green: 0.90, blue: 0.78))
+                Image(systemName: "music.note")
+                    .font(.system(size: side * 0.48, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+        }
     }
 
     private func letterMark(_ letter: String, _ color: Color) -> some View {

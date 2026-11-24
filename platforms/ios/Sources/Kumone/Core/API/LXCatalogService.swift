@@ -30,7 +30,7 @@ enum LXCatalogPlatform: String, CaseIterable, Identifiable {
         case .kg: return "酷狗"
         case .tx: return "QQ 音乐"
         case .wy: return "网易云"
-        case .mg: return "咪咕"
+        case .mg: return "咪咕音乐"
         case .sd: return "汽水音乐"
         }
     }
@@ -57,7 +57,7 @@ enum LXCatalogPlatform: String, CaseIterable, Identifiable {
         case "kw", "kuwo": return "酷我"
         case "kg", "kugou": return "酷狗"
         case "tx", "qq", "qqmusic", "qq-music": return "QQ 音乐"
-        case "mg", "migu": return "咪咕"
+        case "mg", "migu": return "咪咕音乐"
         case "sd", "soda", "sodamusic", "soda-music", "qishui", "qishui-music": return "汽水音乐"
         case "": return "未知"
         default: return rawValue ?? "未知"
@@ -1186,7 +1186,7 @@ enum LXCatalogService {
                 ? try await searchSonglists(category, platform: platform, page: page, limit: limit)
                 : result
         case .sd:
-            return (try? await searchSonglists(category, platform: platform, page: page, limit: limit)) ?? []
+            return (try? await qishuiFeedPlaylists(limit: limit)) ?? []
         case .aggregate:
             throw LXCatalogError.unsupported
         }

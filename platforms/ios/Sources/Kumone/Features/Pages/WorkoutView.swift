@@ -243,6 +243,9 @@ struct WorkoutView: View {
 
     private var spanTitle: String {
         switch span {
+        case .today: return "今天"
+        case .yesterday: return "昨天"
+        case .singleDay: return WorkoutText.shortDay.string(from: customStart)
         case .threeDays: return "近三天"
         case .week: return "近一周"
         case .month: return "近一个月"
@@ -253,6 +256,18 @@ struct WorkoutView: View {
 
     private var spanMenu: some View {
         Menu {
+            Button { span = .today } label: {
+                if span == .today { Label("今天", systemImage: "checkmark") } else { Text("今天") }
+            }
+            Button { span = .yesterday } label: {
+                if span == .yesterday { Label("昨天", systemImage: "checkmark") } else { Text("昨天") }
+            }
+            Button {
+                span = .singleDay
+                showCustomRange = true
+            } label: {
+                if span == .singleDay { Label("选择一天", systemImage: "checkmark") } else { Text("选择一天") }
+            }
             Button { span = .threeDays } label: {
                 if span == .threeDays { Label("近三天", systemImage: "checkmark") } else { Text("近三天") }
             }
@@ -284,6 +299,12 @@ struct WorkoutView: View {
         let latest = span == .custom ? max(customStart, customEnd) : Date()
         let earliest: Date
         switch span {
+        case .today:
+            earliest = calendar.startOfDay(for: latest)
+        case .yesterday:
+            earliest = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: latest)) ?? .distantPast
+        case .singleDay:
+            earliest = calendar.startOfDay(for: customStart)
         case .threeDays:
             earliest = calendar.date(byAdding: .day, value: -3, to: latest) ?? .distantPast
         case .week:
@@ -293,9 +314,19 @@ struct WorkoutView: View {
         case .custom:
             earliest = calendar.startOfDay(for: min(customStart, customEnd))
         }
-        let end = span == .custom
-            ? (calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: latest)) ?? latest)
-            : latest.addingTimeInterval(1)
+        let end: Date
+        switch span {
+        case .today:
+            end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: latest)) ?? latest
+        case .yesterday:
+            end = calendar.startOfDay(for: latest)
+        case .singleDay:
+            end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: customStart)) ?? customStart
+        case .custom:
+            end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: latest)) ?? latest
+        default:
+            end = latest.addingTimeInterval(1)
+        }
         return session.records.filter {
             $0.activity == focus.rawValue && $0.startedAt >= earliest && $0.startedAt < end && $0.endedAt > $0.startedAt
         }
@@ -340,10 +371,14 @@ struct WorkoutView: View {
 
     private var customRangeSheet: some View {
         VStack(alignment: .leading, spacing: 22) {
-            Text("选择区间")
+            Text(span == .singleDay ? "选择一天" : "选择区间")
                 .font(.title3.weight(.semibold))
-            DatePicker("从", selection: $customStart, displayedComponents: .date)
-            DatePicker("到", selection: $customEnd, displayedComponents: .date)
+            if span == .singleDay {
+                DatePicker("日期", selection: $customStart, displayedComponents: .date)
+            } else {
+                DatePicker("从", selection: $customStart, displayedComponents: .date)
+                DatePicker("到", selection: $customEnd, displayedComponents: .date)
+            }
             Button("完成") { showCustomRange = false }
                 .font(.headline)
                 .frame(maxWidth: .infinity, minHeight: 48)
@@ -1356,6 +1391,12 @@ private struct WorkoutHealthSummaryCard<Menu: View>: View {
         let latest = span == .custom ? max(customStart, customEnd) : Date()
         let earliest: Date
         switch span {
+        case .today:
+            earliest = calendar.startOfDay(for: latest)
+        case .yesterday:
+            earliest = calendar.date(byAdding: .day, value: -1, to: calendar.startOfDay(for: latest)) ?? latest
+        case .singleDay:
+            earliest = calendar.startOfDay(for: customStart)
         case .threeDays:
             earliest = calendar.date(byAdding: .day, value: -3, to: latest) ?? latest
         case .week:
@@ -1365,9 +1406,19 @@ private struct WorkoutHealthSummaryCard<Menu: View>: View {
         case .custom:
             earliest = calendar.startOfDay(for: min(customStart, customEnd))
         }
-        let end = span == .custom
-            ? (calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: latest)) ?? latest)
-            : latest
+        let end: Date
+        switch span {
+        case .today:
+            end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: latest)) ?? latest
+        case .yesterday:
+            end = calendar.startOfDay(for: latest)
+        case .singleDay:
+            end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: customStart)) ?? customStart
+        case .custom:
+            end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: latest)) ?? latest
+        default:
+            end = latest
+        }
         return DateInterval(start: earliest, end: end)
     }
 
@@ -1393,7 +1444,7 @@ private enum WorkoutHealthFormat {
 }
 
 private enum WorkoutSpan: Equatable {
-    case threeDays, week, month, custom
+    case today, yesterday, singleDay, threeDays, week, month, custom
 }
 
 private struct WorkoutDay: Identifiable {

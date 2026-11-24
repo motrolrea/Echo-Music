@@ -329,15 +329,8 @@ public struct IOSMainWindow: View {
     /// Leaving the modifier on with empty content still renders an empty,
     /// translucent accessory platter above the tab bar when idle (#35), so we
     /// apply it conditionally.
-    /// 精选页关掉系统底栏，用原来的四个功能和搜索小球做收起动画。
-    private var exploreCustomBar: Bool {
-        selectedTab == .explore && !bilibiliChrome && !workoutChrome.active
-    }
-
-    /// 精选下滑时播放器保持展开，只把功能栏收成小球。其他页仍走系统折叠。
-    private var exploreKeepsPlayerOpen: Bool {
-        exploreCustomBar && bottomCollapse.hasScrolledDown
-    }
+    /// 精选页恢复系统底栏：下滑折叠迷你播放器，搜索小球打开精选搜索。
+    private var exploreCustomBar: Bool { false }
 
     @available(iOS 26.0, *)
     private var iOS26TabInterface: some View {
@@ -346,7 +339,7 @@ public struct IOSMainWindow: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if exploreCustomBar { exploreDock }
             }
-            .tabBarMinimizeBehavior(tabBarMinimizes && selectedTab != .explore ? .onScrollDown : .never)
+            .tabBarMinimizeBehavior(tabBarMinimizes ? .onScrollDown : .never)
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(

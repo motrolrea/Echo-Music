@@ -3,13 +3,27 @@ import KumoneIOSFeature
 import BackgroundTasks
 import UIKit
 
+private struct LaunchRoot: View {
+    @ObservedObject private var startup = IOSStartupCoordinator.shared
+
+    var body: some View {
+        ZStack {
+            IOSMainWindow()
+            if !startup.isReady {
+                IOSStartupSplashView(coordinator: startup)
+                    .transition(.opacity)
+            }
+        }
+    }
+}
+
 @main
 struct MoumusicIOSApp: App {
     @UIApplicationDelegateAdaptor(MoumusicAppDelegate.self) private var appDelegate
 
     var body: some Scene {
         WindowGroup {
-            IOSMainWindow()
+            LaunchRoot()
         }
     }
 }
