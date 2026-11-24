@@ -9,8 +9,8 @@ import SwiftUI
 /// in the background after the main UI appears, so a slow provider can never
 /// turn launch into a blank screen or an infinite spinner.
 @MainActor
-final class IOSStartupCoordinator: ObservableObject {
-    static let shared = IOSStartupCoordinator()
+public final class IOSStartupCoordinator: ObservableObject {
+    public static let shared = IOSStartupCoordinator()
 
     enum Phase: Equatable {
         case idle
@@ -20,14 +20,14 @@ final class IOSStartupCoordinator: ObservableObject {
 
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var isOnline = false
-    @Published private(set) var message = String(localized: "濮濓絽婀潻鐐村复閸︺劎鍤庨張宥呭")
+    @Published public private(set) var message = String(localized: "濮濓絽婀潻鐐村复閸︺劎鍤庨張宥呭")
 
     private var didStart = false
     private var preloadTasks: [Task<Void, Never>] = []
 
     private init() {}
 
-    var isReady: Bool { phase == .ready }
+    public var isReady: Bool { phase == .ready }
 
     func start(
         player: PlayerService,
@@ -122,12 +122,16 @@ final class IOSStartupCoordinator: ObservableObject {
     }
 }
 
-struct IOSStartupSplashView: View {
+public struct IOSStartupSplashView: View {
     @ObservedObject var coordinator: IOSStartupCoordinator
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
 
-    var body: some View {
+    public init(coordinator: IOSStartupCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    public var body: some View {
         ZStack {
             LinearGradient(
                 colors: [
