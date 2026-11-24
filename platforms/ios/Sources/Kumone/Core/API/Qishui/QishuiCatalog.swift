@@ -107,6 +107,49 @@ enum QishuiCatalogService {
         )
     }
 
+    struct LyricsPayload {
+        let lrc: String
+        let yrc: String?
+    }
+
+    /// Qishui returns KRC (`[startMs,durationMs]<offset,dur,0>字…`) for most
+    /// tracks and plain LRC for a few. Emit line-level LRC for the existing
+    /// lyrics pipeline; word timing is intentionally not claimed.
+    static func lyrics(id: String) async throws -> LyricsPayload {
+        let entity = try await trackEntity(id: id)
+        let display = entity["display_info"] as? [String: Any] ?? [:]
+        let lyricInfo = display["lyric_info"] as? [String: Any] ?? [:]
+        let lyricEntity = lyricInfo["lyric_entity"] as? [String: Any] ?? [:]
+        let content = QishuiFields.text(lyricEntity["content"]) ?? ""
+        guard !content.isEmpty else {
+            throw QishuiError(.invalidResponse, "汽水没有返回歌词")
+        }
+        return parseLyrics(content)
+    }
+
+    private static func parseLyrics(_ content: String) -> LyricsPayload {
+        guard content.range(of: #"^\[\d+,\d+\]"#, options: .regularExpression) != nil else {
+            return LyricsPayload(lrc: content, yrc: nil)
+        }
+        var lines: [String] = []
+        for rawLine in content.components(separatedBy: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("["), let close = line.firstIndex(of: "]") else { continue }
+            let header = String(line[line.index(after: line.startIndex)..<close])
+            let parts = header.split(separator: ",")
+            guard let start = parts.first.flatMap({ Int($0) }) else { continue }
+            var text = String(line[line.index(after: close)...])
+            text = text.replacingOccurrences(of: #"<[^>]*>"#, with: "", options: .regularExpression)
+            text = text.trimmingCharacters(in: .whitespaces)
+            guard !text.isEmpty else { continue }
+            let minutes = start / 60_000
+            let seconds = (start % 60_000) / 1_000
+            let centiseconds = (start % 1_000) / 10
+            lines.append(String(format: "[%02d:%02d.%02d]%@", minutes, seconds, centiseconds, text))
+        }
+        return LyricsPayload(lrc: lines.joined(separator: "\n"), yrc: nil)
+    }
+
     struct FeedMode: Identifiable {
         let id: String
         let name: String

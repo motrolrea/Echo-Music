@@ -848,6 +848,17 @@ final class LXUserAPIService: ObservableObject {
     }
 
     func resolveLyrics(for track: Track) async throws -> ResolvedLyrics {
+        // Qishui lyrics live on the same track entity as playback, so they do
+        // not go through an LX source script.
+        if canonicalPlatform(track.source ?? track.sourceMetadata["source"]) == "sd" {
+            let trackID = track.sourceMetadata["songmid"]
+                ?? track.sourceMetadata["songId"]
+                ?? String(track.id)
+            if let payload = try? await QishuiCatalogService.lyrics(id: trackID) {
+                return ResolvedLyrics(lyric: payload.lrc, tlyric: nil, rlyric: nil,
+                                      lxlyric: nil, yrc: payload.yrc)
+            }
+        }
         return try await resolveLyricsAcrossSources(for: track)
 #if false
         ensureSelectedSourceLoaded()
