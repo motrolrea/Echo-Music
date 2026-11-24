@@ -16,10 +16,10 @@ enum LXCatalogPlatform: String, CaseIterable, Identifiable {
     case sd
 
     /// Catalogue adapters that are actually supported by the app UI.
-    /// Qishui remains a playlist importer, but is intentionally excluded from
-    /// search, home recommendations, hot keywords, and playback selection.
+    /// Qishui talks to the car open-SDK protocol (search / playlists / feed);
+    /// home songlists and charts are not part of that protocol yet.
     static var catalogueCases: [LXCatalogPlatform] {
-        allCases.filter { $0 != .sd }
+        allCases.filter { $0 != .aggregate }
     }
 
     var id: String { rawValue }
@@ -162,7 +162,10 @@ enum LXCatalogService {
         case .tx: return try await searchQQ(keyword, page: page, limit: limit)
         case .wy: return try await searchNetease(keyword, page: page, limit: limit)
         case .mg: return try await searchMigu(keyword, page: page, limit: limit)
-        case .sd: throw LXCatalogError.unsupported
+        case .sd:
+            return try await QishuiCatalogService.search(keyword,
+                                                         limit: limit,
+                                                         offset: max(0, (page - 1) * limit))
         case .aggregate: throw LXCatalogError.unsupported
         }
     }
@@ -1139,7 +1142,9 @@ enum LXCatalogService {
         case .mg:
             return (try? await recommendedMiguSonglists(limit: limit)) ?? []
         case .sd:
-            throw LXCatalogError.unsupported
+            // The car protocol exposes scene radios (feed modes) instead of a
+            // playlist catalogue; those are rendered by the Feed surface.
+            return []
         case .aggregate:
             throw LXCatalogError.unsupported
         }
@@ -1183,7 +1188,7 @@ enum LXCatalogService {
                 ? try await searchSonglists(category, platform: platform, page: page, limit: limit)
                 : result
         case .sd:
-            throw LXCatalogError.unsupported
+            return []
         case .aggregate:
             throw LXCatalogError.unsupported
         }
@@ -1349,7 +1354,7 @@ enum LXCatalogService {
         case .tx: return try await searchQQSonglists(keyword, page: page, limit: limit)
         case .wy: return try await searchNeteaseSonglists(keyword, page: page, limit: limit)
         case .mg: return try await searchMiguSonglists(keyword, page: page, limit: limit)
-        case .sd: throw LXCatalogError.unsupported
+        case .sd: return []
         case .aggregate: throw LXCatalogError.unsupported
         }
     }
@@ -1706,7 +1711,13 @@ enum LXCatalogService {
             return LXPlaylistDetail(id: id, name: name, coverURL: cover, description: nil,
                                     author: nil, playCount: 0,
                                     tracks: tracks, source: .kg)
-        case .sd: throw LXCatalogError.unsupported
+        case .sd:
+            let page = try await QishuiCatalogService.playlistDetail(id: id, ownerId: "",
+                                                                     limit: 1000, offset: 0)
+            guard !page.tracks.isEmpty else { throw LXCatalogError.invalidResponse }
+            return LXPlaylistDetail(id: id, name: page.name, coverURL: page.coverURL,
+                                    description: page.description, author: page.author,
+                                    playCount: 0, tracks: page.tracks, source: .sd)
         case .aggregate: throw LXCatalogError.unsupported
         }
     }

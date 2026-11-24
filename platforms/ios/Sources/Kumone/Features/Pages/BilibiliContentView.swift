@@ -1033,7 +1033,7 @@ struct BilibiliContentView: View {
     private var bilibiliPlatformSwitcher: some View {
         Menu {
             Section("首页推荐平台") {
-                ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }) { platform in
+                ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate && $0 != .sd }) { platform in
                     Button {
                         bilibiliActive = false
                         settings.homeRecommendationMode = platform == .wy ? .netease : .lx

@@ -12,6 +12,7 @@ struct MyProfileView: View {
     @EnvironmentObject private var qqMusic: QQMusicSessionStore
     @EnvironmentObject private var kugou: KugouSessionStore
     @EnvironmentObject private var bilibili: BilibiliSessionStore
+    @ObservedObject private var qishui = QishuiSessionStore.shared
     @Environment(\.openLogin) private var openLogin
     @StateObject private var syncStore = ListeningSyncStore.shared
     @StateObject private var moumusicServer = MoumusicServerStore.shared
@@ -20,6 +21,7 @@ struct MyProfileView: View {
     @State private var showMoumusicAdminUsers = false
     @State private var showQQMusicLogin = false
     @State private var showKugouLogin = false
+    @State private var showQishuiLogin = false
     @State private var showBilibiliLogin = false
     @State private var showMoumusicProfileEditor = false
     @ObservedObject private var deviceReporter = DeviceReporter.shared
@@ -81,7 +83,7 @@ struct MyProfileView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
                     Section("切换平台") {
-                        ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }) { platform in
+                        ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate && $0 != .sd }) { platform in
                             Button {
                                 bilibiliActive = false
                                 settings.homeRecommendationMode = platform == .wy ? .netease : .lx
@@ -164,6 +166,9 @@ struct MyProfileView: View {
         .sheet(isPresented: $showKugouLogin) {
             KugouLoginSheet()
                 .environmentObject(kugou)
+        }
+        .sheet(isPresented: $showQishuiLogin) {
+            QishuiLoginSheet()
         }
         .sheet(isPresented: $showBilibiliLogin) {
             BilibiliLoginSheet()
@@ -912,6 +917,18 @@ struct MyProfileView: View {
                     isLoggedIn: kugou.isLoggedIn
                 ) {
                     if kugou.isLoggedIn { signedInTarget = .kugou } else { showKugouLogin = true }
+                }
+                Divider().padding(.leading, 48)
+
+                accountSourceRow(
+                    title: "汽水音乐",
+                    subtitle: qishui.isLoggedIn
+                        ? ((qishui.profileName ?? "已登录") + (qishui.isVIP ? " · 会员" : " · 非会员"))
+                        : "未登录 · 抖音扫码，未登录只有试听",
+                    icon: "drop.fill",
+                    isLoggedIn: qishui.isLoggedIn
+                ) {
+                    showQishuiLogin = true
                 }
                 if settings.bilibiliMode != .disabled {
                 Divider().padding(.leading, 48)

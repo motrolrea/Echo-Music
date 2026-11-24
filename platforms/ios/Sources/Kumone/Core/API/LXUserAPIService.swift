@@ -241,6 +241,15 @@ final class LXUserAPIService: ObservableObject {
             return try await resolveOfficialMusicURL(for: track, quality: quality)
         }
 
+        // Qishui has its own protocol and cannot be served by an LX source
+        // script. Prefer the native resolver so a Qishui track does not get
+        // silently replaced by a same-name track on another platform.
+        if sourceMode == .automatic,
+           canonicalPlatform(track.source ?? track.sourceMetadata["source"]) == "sd",
+           let official = try? await resolveOfficialMusicURL(for: track, quality: quality) {
+            return official
+        }
+
         // Automatic mode follows the same rule as the player and download
         // manager: try the matching account source first, reject preview-only
         // URLs, then fall back to the enabled LX sources.
@@ -412,6 +421,12 @@ final class LXUserAPIService: ObservableObject {
                 }
             }
             throw lastError ?? LXError.sourceUnavailable("酷我官方接口没有可用音质")
+        case "sd":
+            let trackID = track.sourceMetadata["songmid"]
+                ?? track.sourceMetadata["songId"]
+                ?? String(track.id)
+            let audio = try await QishuiPlayback.resolve(trackID: trackID, lxQuality: quality)
+            return ResolvedURL(url: audio.url, quality: audio.quality)
         default:
             break
         }
@@ -452,6 +467,10 @@ final class LXUserAPIService: ObservableObject {
             return KugouSessionStore.shared.isLoggedIn && KugouSessionStore.shared.cookie != nil
         case "mg", "kw":
             return true   // public route, no account
+        case "sd":
+            // The car protocol serves free tracks anonymously and full tracks
+            // for an entitled account; playback itself reports previews.
+            return true
         default:
             return false
         }

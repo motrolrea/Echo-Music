@@ -359,7 +359,7 @@ struct ExploreView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
                     Section("切换平台") {
-                        ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }) { platform in
+                        ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate && $0 != .sd }) { platform in
                             Button {
                                 settings.homeRecommendationMode = platform == .wy ? .netease : .lx
                                 settings.homeRecommendationPlatform = platform
@@ -608,7 +608,7 @@ struct ExploreView: View {
             .padding(.horizontal, Theme.Layout.contentInset)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }) { platform in
+                    ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate && $0 != .sd }) { platform in
                         Button { model.selectPlatform(platform) } label: {
                             Text(platform.displayName)
                                 .font(.system(size: 13, weight: .medium))

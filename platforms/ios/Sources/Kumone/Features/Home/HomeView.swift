@@ -769,7 +769,7 @@ struct HomeView: View {
 #endif
 
     private var homePlatforms: [LXCatalogPlatform] {
-        LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }
+        LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate && $0 != .sd }
     }
 
 #if os(iOS)

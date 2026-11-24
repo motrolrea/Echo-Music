@@ -1426,16 +1426,21 @@ final class PlayerService: ObservableObject {
             // Migu's public listen route needs no account.
             let isMigu = ["mg", "migu"].contains(sourceValue)
             let isKuwo = ["kw", "kuwo"].contains(sourceValue)
+            // Qishui uses its own car protocol. Public reads work anonymously;
+            // a signed-in VIP account unlocks full tracks of protected songs.
+            let isQishui = ["sd", "qishui", "soda", "sodamusic", "soda-music"].contains(sourceValue)
             let playbackMode = SettingsManager.shared.playbackSourceMode
             let hasOfficialAccount = (isNativeNetease && NeteaseClient.shared.isLoggedIn)
                 || (isQQMusic && QQMusicSessionStore.shared.isLoggedIn)
                 || (isKugou && KugouSessionStore.shared.isLoggedIn)
                 || isMigu
                 || isKuwo
+                || isQishui
             let hasLXSource = !LXSourceStore.shared.playbackSources.isEmpty
             // Automatic mode with an enabled LX source goes to the source first (one fast request); the account is
             // only the fallback. Probing the account first cost seconds and often could not deliver the top tiers.
-            let thirdPartyFirst = playbackMode == .automatic && hasLXSource
+            // Qishui is not an LX platform: its own resolver must run first.
+            let thirdPartyFirst = playbackMode == .automatic && hasLXSource && !isQishui
             guard hasLXSource || (playbackMode != .thirdParty && hasOfficialAccount) else {
                 guard generation == resolveGeneration else { return }
                 ToastCenter.shared.show("请先登录账号或在设置 → LX 音源中选择播放音源")
@@ -1869,6 +1874,19 @@ final class PlayerService: ObservableObject {
         lastOfficialFailure = ""
         let source = (track.source ?? track.sourceMetadata["source"] ?? "").lowercased()
         let requestedCandidates = qualityCandidates(startingAt: quality)
+
+        if ["sd", "qishui", "soda", "sodamusic", "soda-music"].contains(source) {
+            let trackID = track.sourceMetadata["songmid"]
+                ?? track.sourceMetadata["songId"]
+                ?? String(track.id)
+            guard let audio = try? await QishuiPlayback.resolve(trackID: trackID,
+                                                                lxQuality: quality.lxType) else {
+                return nil
+            }
+            return OfficialAudio(url: audio.url,
+                                 quality: audio.quality,
+                                 sourceLabel: audio.preview ? "汽水音乐（试听）" : "汽水音乐")
+        }
 
         if source.isEmpty || ["wy", "163", "netease", "neteasecloudmusic", "cloudmusic"].contains(source),
            NeteaseClient.shared.isLoggedIn {
