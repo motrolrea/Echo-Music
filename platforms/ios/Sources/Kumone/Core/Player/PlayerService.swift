@@ -575,9 +575,7 @@ final class PlayerService: ObservableObject {
     /// URLs already found to be 30-second previews, per track, so the re-resolve asks for another one.
     private var previewRejects: [String: Set<String>] = [:]
     private var consecutiveFailures = 0
-    /// 当前这首歌已经上报给网易云的收听秒数。暂停后继续播放时只补报增量，
-    /// 避免重复上报，也不会把暂停/杀进程前的那一段丢掉。
-    private var scrobbleReportedSeconds = 0
+    private var scrobbled = false
     private var startScrobbled = false
 #if os(iOS)
     /// Account URLs are tried for the matching catalogue before the enabled
@@ -928,10 +926,6 @@ final class PlayerService: ObservableObject {
 
     func pause() {
         pauseWithFade()
-        // 暂停也是一次收听的收尾。只在切歌/自然播完时上报的话，
-        // “听到一半暂停、锁屏后杀进程”就只会留下 startplay：
-        // 网易云有播放记录，却没有对应的收听时长。
-        scrobbleIfNeeded(completed: false)
         NowPlayingManager.shared.updateElapsed(progress, rate: 0)
     }
 
@@ -1294,7 +1288,7 @@ final class PlayerService: ObservableObject {
             return
         }
         if repeatMode == .one, !isFMMode {
-            scrobbleReportedSeconds = 0
+            scrobbled = false
             seek(to: 0)
             engine.play()
             isPlaying = true
@@ -1341,7 +1335,7 @@ final class PlayerService: ObservableObject {
         unblockSource = nil
         isTrial = false
         lyrics = nil
-        scrobbleReportedSeconds = 0
+        scrobbled = false
         startScrobbled = false
         isPlaying = true
         lyricsCursor.activeIndex = nil
@@ -1824,15 +1818,12 @@ final class PlayerService: ObservableObject {
 
         if !startScrobbled {
             startScrobbled = true
-            // 与 playend 保持一致：没有歌单 id 的来源退回专辑 id，
-            // 避免 startplay / play 两边来源不一致。
-            let startSourceID = source.sourceID > 0 ? source.sourceID : track.album.id
 #if os(iOS)
-            syncListeningStart(track: track, sourceID: startSourceID)
+            syncListeningStart(track: track, sourceID: source.sourceID)
 #else
             if AccountStore.shared.isLoggedIn {
                 let tid = track.id
-                let sid = startSourceID
+                let sid = source.sourceID
                 Task.detached { await NeteaseAPI.scrobbleStart(trackID: tid, sourceID: sid) }
             } else {
                 ListeningSyncStore.shared.markSignedOut()
@@ -2643,23 +2634,13 @@ final class PlayerService: ObservableObject {
 #endif
 
     private func scrobbleIfNeeded(completed: Bool) {
-        guard let track = currentTrack, progress > 1 else { return }
+        guard let track = currentTrack, !scrobbled, progress > 1 else { return }
+        scrobbled = true
         // Some LX results omit duration metadata. On completion the AVPlayer
         // progress is still authoritative, so never turn a real listening
         // interval into a zero-second weblog event.
-        let listened = completed ? max(Int(duration), Int(progress)) : Int(progress)
-        // 只补报上次没报过的部分：暂停后继续播放不会重复计时，
-        // 暂停、切歌或杀进程前已经听过的部分也不会丢。
-        let delta = max(0, listened - scrobbleReportedSeconds)
-        // 网易云的听歌时长按“单曲有效收听至少 30 秒”统计。不足 30 秒的
-        // playend 会被服务端丢弃，只留下 startplay（最近播放里有歌、时长却不涨）。
-        guard delta >= 30 || (completed && delta > 0) else { return }
-        scrobbleReportedSeconds = listened
-        let seconds = delta
-        // 每日推荐 / 云盘 / 心动模式 / 私人漫游没有歌单 id，之前会发
-        // sourceId=0、content=id=0。接口约定 sourceid 是真实来源 id，
-        // 这里退回专辑 id，让 startplay / playend 都带上有效来源。
-        let sourceID = source.sourceID > 0 ? source.sourceID : track.album.id
+        let seconds = completed ? max(Int(duration), Int(progress)) : Int(progress)
+        let sourceID = source.sourceID
 #if os(iOS)
         syncListeningFinish(track: track, sourceID: sourceID, seconds: seconds)
 #else
