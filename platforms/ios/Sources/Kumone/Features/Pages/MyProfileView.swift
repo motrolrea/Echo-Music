@@ -683,7 +683,7 @@ struct MyProfileView: View {
                     vip: qishui.isVIP,
                     brand: "BrandQishui",
                     title: "汽水音乐",
-                    stats: platformStats(level: nil, playlists: nil, hearts: nil, listens: 0, follows: nil, fans: nil)
+                    stats: platformStats(level: 0, playlists: nil, hearts: nil, listens: 0, follows: 0, fans: 0)
                 ) { showQishuiLogin = true }
             default:
                 MouGlassCard {

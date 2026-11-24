@@ -420,7 +420,7 @@ public struct IOSMainWindow: View {
             HStack(spacing: 10) {
                 collapsedTabBall
 
-                if player.hasCurrentTrack, !exploreKeepsPlayerOpen {
+                if player.hasCurrentTrack {
                     IOSMiniPlayerBar(presentation: .collapsed)
                         .frame(maxWidth: .infinity)
                         .transition(.opacity)
@@ -452,65 +452,6 @@ public struct IOSMainWindow: View {
             }
             .padding(.bottom, 6)
         }
-    }
-
-    /// 精选页底栏。顶部和回顶时是原来的四个功能加搜索小球；下滑后功能收成一个小球，搜索拉满剩余宽度。
-    private var exploreDock: some View {
-        VStack(spacing: 8) {
-            if player.hasCurrentTrack {
-                IOSMiniPlayerBar(presentation: .legacyOverlay)
-                    .nowPlayingTransitionSource(in: nowPlayingTransition)
-                    .padding(.horizontal, 12)
-            }
-            HStack(spacing: 10) {
-                if exploreKeepsPlayerOpen {
-                    collapsedTabBall
-                        .transition(.scale(scale: 0.7).combined(with: .opacity))
-                } else {
-                    GlassTabBar(items: barItems, selection: $selectedTab) { tab in
-                        popToRoot(tab)
-                    }
-                    .transition(.opacity)
-                }
-                exploreSearchControl
-            }
-        }
-        .padding(.bottom, 6)
-        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: exploreKeepsPlayerOpen)
-    }
-
-    private var exploreSearchControl: some View {
-        Button {
-            Haptics.tap()
-            if exploreKeepsPlayerOpen {
-                NotificationCenter.default.post(name: .exploreFocusSearch, object: nil)
-            } else {
-                showSearch = true
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 18, weight: .semibold))
-                if exploreKeepsPlayerOpen {
-                    Text("搜索音乐")
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(1)
-                        .transition(.opacity)
-                }
-            }
-            .foregroundStyle(Theme.accent)
-            .padding(.horizontal, exploreKeepsPlayerOpen ? 18 : 0)
-            .frame(maxWidth: exploreKeepsPlayerOpen ? .infinity : 52)
-            .frame(width: exploreKeepsPlayerOpen ? nil : 52, height: 52)
-            .compatGlass(interactive: true, in: Capsule())
-            .clipShape(Capsule())
-            .overlay { Capsule().strokeBorder(.white.opacity(0.16), lineWidth: 0.5) }
-            .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
-            .padding(.trailing, exploreKeepsPlayerOpen ? 0 : 12)
-        }
-        .buttonStyle(.plain)
-        .padding(.trailing, exploreKeepsPlayerOpen ? 12 : 0)
-        .accessibilityLabel(exploreKeepsPlayerOpen ? "搜索音乐" : "搜索")
     }
 
     /// 折叠后的当前页小球（点击展开底栏）
