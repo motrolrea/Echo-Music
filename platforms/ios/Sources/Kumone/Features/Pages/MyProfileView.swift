@@ -1195,6 +1195,61 @@ struct MyProfileView: View {
     }
 }
 
+private struct ListeningRibbon: View {
+    let days: [(label: String, minutes: Double)]
+    @Binding var selected: Int?
+
+    var body: some View {
+        let peak = max(days.map(\.minutes).max() ?? 1, 1)
+        VStack(alignment: .leading, spacing: 10) {
+            GeometryReader { geo in
+                let width = geo.size.width
+                let total = max(days.reduce(0) { $0 + max($1.minutes, 0.35) }, 0.35)
+                HStack(spacing: 3) {
+                    ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                        let share = max(day.minutes, 0.35) / total
+                        let active = selected == index
+                        Capsule()
+                            .fill(day.minutes > 0
+                                  ? Theme.accent.opacity(0.28 + 0.72 * day.minutes / peak)
+                                  : Color.primary.opacity(0.08))
+                            .frame(width: max(width * share - 3, 6))
+                            .overlay {
+                                if active {
+                                    Capsule().strokeBorder(Color.primary, lineWidth: 1.5)
+                                }
+                            }
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                    selected = active ? nil : index
+                                }
+                            }
+                            .accessibilityLabel("\(day.label) \(Int(day.minutes)) 分钟")
+                    }
+                }
+            }
+            .frame(height: 46)
+            if let selected, days.indices.contains(selected) {
+                Text("\(days[selected].label) · \(ListeningRibbon.duration(days[selected].minutes))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("每一段的宽度是这天听了多久")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    static func duration(_ minutes: Double) -> String {
+        let total = max(0, Int((minutes * 60).rounded()))
+        let hours = total / 3600
+        let mins = (total % 3600) / 60
+        if hours > 0 { return "\(hours)小时\(mins)分" }
+        return "\(mins)分钟"
+    }
+}
+
 private enum ListeningBlockSpan { case threeDays, week, month, custom }
 
 private struct ListeningReportView: View {
@@ -1218,13 +1273,19 @@ private struct ListeningReportView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 22)
 
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    reportTile("播放", "\(stats.totalPlayCount)", "play.fill")
-                    reportTile("连续", "\(stats.streakDays)", "flame")
-                    reportTile("今日", minutesText(todayMinutes), "sun.max")
-                    reportTile("近 7 天", minutesText(weekMinutes), "calendar")
-                    reportTile("日均", minutesText(averageMinutes), "chart.bar")
-                    reportTile("最久一天", minutesText(peakMinutes), "star")
+                VStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        reportTile("播放", "\(stats.totalPlayCount)", "play.fill", wide: true)
+                        reportTile("连续", "\(stats.streakDays) 天", "flame")
+                    }
+                    HStack(spacing: 10) {
+                        reportTile("今日", minutesText(todayMinutes), "sun.max")
+                        reportTile("日均", minutesText(averageMinutes), "chart.bar")
+                    }
+                    HStack(spacing: 10) {
+                        reportTile("近 7 天", minutesText(weekMinutes), "calendar", wide: true)
+                        reportTile("最久一天", minutesText(peakMinutes), "star")
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
@@ -1251,36 +1312,7 @@ private struct ListeningReportView: View {
                             .foregroundStyle(.secondary)
                         }
                     }
-                    let days = blockDays
-                    let peak = max(days.map(\.minutes).max() ?? 1, 1)
-                    let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: min(max(days.count, 1), 7))
-                    LazyVGrid(columns: columns, spacing: 6) {
-                        ForEach(Array(days.enumerated()), id: \.offset) { index, day in
-                            let selected = selectedDay == index
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(day.minutes > 0
-                                      ? Theme.accent.opacity(0.22 + 0.78 * day.minutes / peak)
-                                      : Color.primary.opacity(0.06))
-                                .frame(height: 22)
-                                .overlay {
-                                    if selected {
-                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                            .strokeBorder(Theme.accent, lineWidth: 1.5)
-                                    }
-                                }
-                                .onTapGesture {
-                                    withAnimation(.easeInOut(duration: 0.18)) {
-                                        selectedDay = selected ? nil : index
-                                    }
-                                }
-                                .accessibilityLabel("\(day.label) \(durationText(day.minutes))")
-                        }
-                    }
-                    if let selectedDay, days.indices.contains(selectedDay) {
-                        Text("\(days[selectedDay].label) · \(durationText(days[selectedDay].minutes))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    ListeningRibbon(days: blockDays, selected: $selectedDay)
                 }
                 .padding(16)
             }
@@ -1305,22 +1337,28 @@ private struct ListeningReportView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func reportTile(_ title: String, _ value: String, _ symbol: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private func reportTile(_ title: String, _ value: String, _ symbol: String, wide: Bool = false) -> some View {
+        HStack(spacing: 10) {
             Image(systemName: symbol)
-                .font(.caption.weight(.semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(Theme.accent)
-            Text(value)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.55)
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 30)
+                .background(Theme.accent.opacity(0.12), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.system(size: wide ? 20 : 16, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
         .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 

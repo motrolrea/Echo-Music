@@ -329,23 +329,28 @@ public struct IOSMainWindow: View {
     /// Leaving the modifier on with empty content still renders an empty,
     /// translucent accessory platter above the tab bar when idle (#35), so we
     /// apply it conditionally.
+    /// 精选页自己画底栏：播放器一直展开，下滑只把四个功能收成小球、搜索拉长。
+    private var exploreCustomBar: Bool {
+        selectedTab == .explore && !bilibiliChrome && !workoutChrome.active
+    }
+
     /// 精选下滑时播放器保持展开，只把功能栏收成小球。其他页仍走系统折叠。
     private var exploreKeepsPlayerOpen: Bool {
-        selectedTab == .explore && !bilibiliChrome && bottomCollapse.hasScrolledDown
+        exploreCustomBar && bottomCollapse.hasScrolledDown
     }
 
     @available(iOS 26.0, *)
     private var iOS26TabInterface: some View {
         iOS26TabView
-            .toolbar(exploreKeepsPlayerOpen ? .hidden : .automatic, for: .tabBar)
+            .toolbar(exploreCustomBar ? .hidden : .automatic, for: .tabBar)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                if exploreKeepsPlayerOpen { exploreCollapsedBar }
+                if exploreCustomBar { exploreDock }
             }
-            .tabBarMinimizeBehavior(tabBarMinimizes && !exploreKeepsPlayerOpen ? .onScrollDown : .never)
+            .tabBarMinimizeBehavior(tabBarMinimizes && selectedTab != .explore ? .onScrollDown : .never)
             // Keep one TabView identity while the accessory appears/disappears.
             // This preserves the iOS 26 matched-transition zoom anchor.
             .modifier(MiniPlayerAccessoryModifier(
-                isActive: player.hasCurrentTrack,
+                isActive: player.hasCurrentTrack && !exploreCustomBar,
                 hidesPlayer: workoutChrome.active,
                 transitionNamespace: nowPlayingTransition,
                 colorScheme: resolvedColorScheme
@@ -460,38 +465,63 @@ public struct IOSMainWindow: View {
         }
     }
 
-    /// 精选下滑后的底栏：左边四个功能收成一个小球，右边搜索拉成胶囊。
-    private var exploreCollapsedBar: some View {
-        HStack(spacing: 10) {
-            collapsedTabBall
-            Spacer(minLength: 0)
-            exploreSearchCapsule
+    /// 精选页底栏。顶部和回顶时是原来的四个功能加搜索小球；下滑后功能收成一个小球，搜索拉满剩余宽度。
+    private var exploreDock: some View {
+        VStack(spacing: 8) {
+            if player.hasCurrentTrack {
+                IOSMiniPlayerBar(presentation: .legacyOverlay)
+                    .nowPlayingTransitionSource(in: nowPlayingTransition)
+                    .padding(.horizontal, 12)
+            }
+            HStack(spacing: 10) {
+                if exploreKeepsPlayerOpen {
+                    collapsedTabBall
+                        .transition(.scale(scale: 0.7).combined(with: .opacity))
+                } else {
+                    GlassTabBar(items: barItems, selection: $selectedTab) { tab in
+                        popToRoot(tab)
+                    }
+                    .transition(.opacity)
+                }
+                exploreSearchControl
+            }
         }
-        .padding(.horizontal, 18)
         .padding(.bottom, 6)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: exploreKeepsPlayerOpen)
     }
 
-    private var exploreSearchCapsule: some View {
+    private var exploreSearchControl: some View {
         Button {
             Haptics.tap()
-            NotificationCenter.default.post(name: .exploreFocusSearch, object: nil)
+            if exploreKeepsPlayerOpen {
+                NotificationCenter.default.post(name: .exploreFocusSearch, object: nil)
+            } else {
+                showSearch = true
+            }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 16, weight: .semibold))
-                Text("搜索音乐")
-                    .font(.subheadline.weight(.medium))
+                    .font(.system(size: 18, weight: .semibold))
+                if exploreKeepsPlayerOpen {
+                    Text("搜索音乐")
+                        .font(.subheadline.weight(.medium))
+                        .lineLimit(1)
+                        .transition(.opacity)
+                }
             }
             .foregroundStyle(Theme.accent)
-            .padding(.horizontal, 18)
-            .frame(height: 52)
+            .padding(.horizontal, exploreKeepsPlayerOpen ? 18 : 0)
+            .frame(maxWidth: exploreKeepsPlayerOpen ? .infinity : 52)
+            .frame(width: exploreKeepsPlayerOpen ? nil : 52, height: 52)
             .compatGlass(interactive: true, in: Capsule())
+            .clipShape(Capsule())
             .overlay { Capsule().strokeBorder(.white.opacity(0.16), lineWidth: 0.5) }
             .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
+            .padding(.trailing, exploreKeepsPlayerOpen ? 0 : 12)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("搜索音乐")
+        .padding(.trailing, exploreKeepsPlayerOpen ? 12 : 0)
+        .accessibilityLabel(exploreKeepsPlayerOpen ? "搜索音乐" : "搜索")
     }
 
     /// 折叠后的当前页小球（点击展开底栏）
