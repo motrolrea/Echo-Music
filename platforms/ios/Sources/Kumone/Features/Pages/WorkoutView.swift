@@ -1,4 +1,5 @@
 #if os(iOS)
+import HealthKit
 import MapKit
 import SwiftUI
 import UIKit
@@ -1286,7 +1287,7 @@ private struct WorkoutHealthSummaryCard<Menu: View>: View {
                 HStack(alignment: .firstTextBaseline) {
                     summaryValue(distanceText, "公里")
                     Spacer()
-                    summaryValue(steps.map { Self.grouped.string(from: NSNumber(value: $0)) } ?? "—", "步数")
+                    summaryValue(steps.map { WorkoutHealthFormat.grouped.string(from: NSNumber(value: $0)) ?? "\($0)" } ?? "—", "步数")
                 }
                 Text(footnote)
                     .font(.caption2)
@@ -1380,7 +1381,10 @@ private struct WorkoutHealthSummaryCard<Menu: View>: View {
         }
     }
 
-    private static let grouped: NumberFormatter = {
+}
+
+private enum WorkoutHealthFormat {
+    static let grouped: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         formatter.maximumFractionDigits = 0
