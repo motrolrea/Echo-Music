@@ -397,7 +397,6 @@ public struct IOSMainWindow: View {
             Tab("搜索", systemImage: "magnifyingglass", value: .search, role: .search) {
                 Color.clear
             }
-            .tabBarMinimizeBehavior(selectedTab == .explore ? .never : .automatic)
         }
         .toolbarBackground(.hidden, for: .tabBar)
         .background(Color.clear)
