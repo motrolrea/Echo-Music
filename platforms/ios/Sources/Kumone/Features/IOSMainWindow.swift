@@ -33,6 +33,8 @@ public struct IOSMainWindow: View {
     }
 
     @State private var selectedTab: IOSTab = .home
+    /// iPad 双栏：右侧默认常驻唱片架，点左侧功能项才换成对应页面。
+    @State private var padShelfActive = true
     @AppStorage("moumusic.home.bilibiliActive") private var bilibiliActive = false
     @AppStorage("moumusic.home.bilibiliSurface") private var bilibiliSurface = "videos"
     /// 「搜索」是独立小球：选中即弹出全屏搜索，再退回上一个功能页
@@ -65,11 +67,13 @@ public struct IOSMainWindow: View {
             // Login is exposed on a separate account page. It is metadata
             // synchronisation only; audio URLs still come exclusively from LX.
             .environment(\.openLogin, {
+                padShelfActive = false
                 selectedTab = .profile
                 profilePath = NavigationPath()
                 profilePath.append(Destination.accountSync)
             })
             .environment(\.openProfile, {
+                padShelfActive = false
                 selectedTab = .profile
                 profilePath = NavigationPath()
             })
@@ -111,6 +115,7 @@ public struct IOSMainWindow: View {
             }
             .onChange(of: player.pendingDestination) { destination in
                 guard let destination else { return }
+                padShelfActive = false
                 push(destination)
                 player.pendingDestination = nil
             }
@@ -164,15 +169,148 @@ public struct IOSMainWindow: View {
                 legacyPresentationRoot
             }
         } else {
-            systemNowPlayingRoot
+            padRoot
         }
     }
 
-    private var systemNowPlayingRoot: some View {
-        appContent
-            .fullScreenCover(isPresented: $player.showNowPlaying) {
-                systemNowPlayingPresentation
+    /// iPad 双栏：左侧功能栏，右侧常驻唱片架（点功能项切换为对应页面）。
+    @ViewBuilder
+    private var padRoot: some View {
+        GeometryReader { geo in
+            if geo.size.width < 720 {
+                // Slide Over / 窄分屏放不下两栏，退回单栏并在需要时全屏弹出播放页。
+                appContent
+                    .fullScreenCover(isPresented: $player.showNowPlaying) {
+                        systemNowPlayingPresentation
+                    }
+            } else {
+                padSplitRoot
             }
+        }
+    }
+
+    private var padSplitRoot: some View {
+        HStack(spacing: 0) {
+            padSidebar
+                .frame(width: 248)
+                .background(.ultraThinMaterial)
+
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(width: 0.5)
+
+            padContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+        // iPad 不盖全屏播放页：任何「打开正在播放」都回到右侧常驻唱片架。
+        .onChange(of: player.showNowPlaying) { show in
+            guard show else { return }
+            padShelfActive = true
+            player.showNowPlaying = false
+        }
+        .animation(.easeInOut(duration: 0.22), value: padShelfActive)
+        .fullScreenCover(isPresented: $showSearch) {
+            tabStack(.search) { SearchView(query: "") }
+        }
+    }
+
+    @ViewBuilder
+    private var padContent: some View {
+        if padShelfActive {
+            NowPlayingView(embedded: true)
+                .environmentObject(player)
+                .environmentObject(account)
+                .environmentObject(settings)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipShape(Rectangle())
+        } else {
+            selectedPage
+        }
+    }
+
+    private var padSidebar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: "waveform.circle.fill")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                Text("Echo Music")
+                    .font(.system(size: 17, weight: .bold))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 18)
+            .padding(.bottom, 10)
+
+            padRailButton(title: "唱片架", icon: "square.stack.3d.up", active: padShelfActive) {
+                padShelfActive = true
+            }
+
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 0.5)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 4)
+
+            ForEach(barItems) { item in
+                padRailButton(title: item.title,
+                              icon: item.icon,
+                              active: !padShelfActive && selectedTab == item.tab) {
+                    selectedTab = item.tab
+                    padShelfActive = false
+                }
+            }
+
+            padRailButton(title: "搜索", icon: "magnifyingglass", active: showSearch) {
+                showSearch = true
+            }
+
+            Spacer(minLength: 0)
+
+            VStack(spacing: 8) {
+                padRailButton(title: "设置", icon: "gearshape",
+                              active: !padShelfActive && selectedTab == .settings) {
+                    selectedTab = .settings
+                    padShelfActive = false
+                }
+                if player.hasCurrentTrack {
+                    IOSMiniPlayerBar(presentation: .collapsed)
+                        .padding(.horizontal, 8)
+                }
+            }
+            .padding(.bottom, 14)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func padRailButton(title: String, icon: String, active: Bool,
+                               action: @escaping () -> Void) -> some View {
+        Button {
+            Haptics.tap()
+            action()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(width: 24)
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(active ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(Color.primary.opacity(0.72)))
+            .padding(.horizontal, 12)
+            .frame(height: 42)
+            .background {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(active ? Theme.accent.opacity(0.14) : Color.clear)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(active ? .isSelected : [])
     }
 
     @available(iOS 18.0, *)

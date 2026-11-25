@@ -7,6 +7,10 @@ import UIKit
 /// Immersive full-window now-playing page: artwork-tinted gradient backdrop,
 /// large artwork on the left, big synced lyrics on the right.
 struct NowPlayingView: View {
+    /// iPad 双栏布局把播放页嵌进右栏常驻显示：只铺底色和唱片架，
+    /// 不再占满窗口、不再显示关闭按钮。
+    var embedded = false
+
     private enum ActiveSheet: String, Identifiable {
         case quality
         case comments
@@ -59,11 +63,17 @@ struct NowPlayingView: View {
             let isCompact = geo.size.width < 720
             let phoneLandscape = isPhoneLandscape(size: geo.size)
             ZStack {
-                backdrop
+                if embedded {
+                    artworkBackdrop
+                } else {
+                    backdrop
+                }
 
                 #if os(iOS)
                 // 唱片架只提供横屏布局：即使旋转还没完成，也先按横屏排。
-                if settings.nowPlayingMode == .shelf {
+                if embedded {
+                    shelfLandscapeLayout(size: geo.size)
+                } else if settings.nowPlayingMode == .shelf {
                     shelfLandscapeLayout(size: geo.size)
                 } else if phoneLandscape {
                     phoneLandscapeLayout(size: geo.size)
@@ -86,7 +96,7 @@ struct NowPlayingView: View {
             // stretch the ZStack and push the corner overlays off-screen.
             .frame(width: geo.size.width)
             .overlay(alignment: .topLeading) {
-                if showsClassicChrome(isCompact: isCompact) {
+                if !embedded, showsClassicChrome(isCompact: isCompact) {
                     Button {
                         close()
                     } label: {
@@ -138,7 +148,7 @@ struct NowPlayingView: View {
             // 人声分离推子：只在这个设置打开时出现，贴在播放器右侧。
             // 唱片架模式改用底部的横向推子，这里不再叠加竖版。
             .overlay(alignment: .trailing) {
-                if settings.vocalSeparationEnabled, settings.nowPlayingMode != .shelf {
+                if settings.vocalSeparationEnabled, settings.nowPlayingMode != .shelf, !embedded {
                     VocalSeparationControl()
                         .padding(.trailing, 8)
                 }
@@ -152,7 +162,8 @@ struct NowPlayingView: View {
         // iOS keeps its safe area: there the inset is the status bar / notch.
         .ignoresSafeArea()
         #endif
-        .preferredColorScheme(.dark)
+        // 嵌入 iPad 右栏时不强制整窗深色，否则左侧功能栏会跟着一起变暗。
+        .preferredColorScheme(embedded ? nil : .dark)
         .task(id: player.currentTrack?.playbackKey) {
             await loadArtwork()
         }
@@ -902,6 +913,7 @@ struct NowPlayingView: View {
     }
 
     /// 唱片架只做横屏：进入时锁横屏，切换其他播放器或关闭播放页时恢复。
+    /// iPad 常驻双栏可以自由旋转，不做方向锁。
     private func updateShelfOrientation() {
         if settings.nowPlayingMode == .shelf {
             ShelfOrientation.lockLandscape()
@@ -4003,11 +4015,14 @@ struct PlayerArtistLink: View {
 @MainActor
 enum ShelfOrientation {
     static func lockLandscape() {
+        // iPad 的双栏布局需要跟随设备自由旋转，不做方向锁。
+        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
         guard let scene = activeScene else { return }
         scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape)) { _ in }
     }
 
     static func unlock() {
+        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
         guard let scene = activeScene else { return }
         scene.requestGeometryUpdate(.iOS(interfaceOrientations: .allButUpsideDown)) { _ in }
     }

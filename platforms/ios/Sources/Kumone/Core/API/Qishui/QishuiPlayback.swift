@@ -106,9 +106,11 @@ enum QishuiPlayback {
 
         let cached = cacheFileURL(trackID: trackID, quality: source.quality,
                                   key: key, fileExtension: source.fileExtension)
-        if FileManager.default.fileExists(atPath: cached.path),
-           (try? cached.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) > 1024 {
-            return cached
+        if FileManager.default.fileExists(atPath: cached.path) {
+            let values = try? cached.resourceValues(forKeys: [.fileSizeKey])
+            if (values?.fileSize ?? 0) > 1024 {
+                return cached
+            }
         }
 
         let (data, response) = try await URLSession.shared.data(from: source.url)

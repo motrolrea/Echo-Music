@@ -393,7 +393,6 @@ struct RecordShelfView: UIViewRepresentable {
                                        size: albumSize, thickness: albumThickness)
                 album.spine.diffuse.contents = spineTexture(for: track)
                 album.node.name = "album:\(queueIndex)"
-                album.node.addChildNode(album.contact)
                 if let cached = coverCache[track.id] {
                     album.front.diffuse.contents = cached
                     album.back.diffuse.contents = cached
@@ -436,7 +435,9 @@ struct RecordShelfView: UIViewRepresentable {
             album.node.eulerAngles = SCNVector3(frontTiltX * Float(album.mix),
                                                 ry,
                                                 frontTiltZ * Float(album.mix))
-            album.node.scale = SCNVector3(albumScale, albumScale, albumScale * 1.1)
+            // 展开时略微缩小，横屏里封面不会顶满画面。
+            let shrink = albumScale * (1 - 0.16 * Float(album.mix))
+            album.node.scale = SCNVector3(shrink, shrink, shrink * 1.1)
             album.node.opacity = CGFloat(abs(offset) > CGFloat(windowRadius) ? 0.15 : 1)
         }
 
@@ -529,14 +530,13 @@ struct RecordShelfView: UIViewRepresentable {
     }
 }
 
-/// 一张封面盒：正面封面、侧面书脊、背面封面与脚下的接触阴影。
+/// 一张封面盒：正面封面、侧面书脊与背面封面。
 @MainActor
 final class ShelfAlbum {
     let node = SCNNode()
     let front = SCNMaterial()
     let back = SCNMaterial()
     let spine = SCNMaterial()
-    let contact = SCNNode()
     let index: Int
     let trackId: Int
     /// 0 = 书脊，1 = 完全展开的封面。
@@ -561,50 +561,6 @@ final class ShelfAlbum {
         // SCNBox 材质顺序：正面、右、背面、左、顶、底。
         box.materials = [front, spine, back, spine, dark, dark]
         node.geometry = box
-
-        let shadow = SCNPlane(width: size * 1.6, height: size * 0.72)
-        let shadowMaterial = SCNMaterial()
-        shadowMaterial.diffuse.contents = Self.contactTexture()
-        shadowMaterial.lightingModel = .constant
-        shadowMaterial.isDoubleSided = true
-        shadowMaterial.transparency = 0.38
-        shadowMaterial.writesToDepthBuffer = false
-        shadow.materials = [shadowMaterial]
-        contact.geometry = shadow
-        contact.eulerAngles = SCNVector3(-Float.pi / 2, 0, 0)
-        contact.position = SCNVector3(0, Float(-size / 2) - 0.010, 0)
-    }
-
-    private static var contactCache: UIImage?
-
-    /// 径向渐变的椭圆软阴影，所有封面共用一张。
-    private static func contactTexture() -> UIImage {
-        if let cached = contactCache { return cached }
-        let image = contactImage()
-        contactCache = image
-        return image
-    }
-
-    private static func contactImage() -> UIImage {
-        let size = CGSize(width: 256, height: 128)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { context in
-            let g = context.cgContext
-            let colors = [
-                UIColor.black.withAlphaComponent(0.48).cgColor,
-                UIColor.black.withAlphaComponent(0.18).cgColor,
-                UIColor.black.withAlphaComponent(0).cgColor,
-            ] as CFArray
-            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                                         colors: colors,
-                                         locations: [0, 0.62, 1]) {
-                let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                g.drawRadialGradient(gradient,
-                                     startCenter: center, startRadius: 6,
-                                     endCenter: center, endRadius: size.width / 2,
-                                     options: [])
-            }
-        }
     }
 }
 #endif
