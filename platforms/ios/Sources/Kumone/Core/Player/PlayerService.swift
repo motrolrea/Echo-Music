@@ -1916,13 +1916,31 @@ final class PlayerService: ObservableObject {
             let trackID = track.sourceMetadata["songmid"]
                 ?? track.sourceMetadata["songId"]
                 ?? String(track.id)
-            guard let audio = try? await QishuiPlayback.resolve(trackID: trackID,
-                                                                lxQuality: quality.lxType) else {
+            do {
+                let audio = try await QishuiPlayback.resolve(trackID: trackID,
+                                                             lxQuality: quality.lxType)
+                // 汽水的每个档位都是 CENC 加密媒体，这里解密成本地文件再交给播放器。
+                let playable = try await QishuiPlayback.playableURL(for: audio, trackID: trackID)
+                if audio.needsDecryption {
+                    let bytes = (try? FileManager.default.attributesOfItem(atPath: playable.path))?[.size] as? Int ?? 0
+                    DiagnosticLogStore.shared.append(
+                        level: .info, category: "汽水音源",
+                        message: "《\(track.name)》已解密为本地音频",
+                        detail: "\(audio.quality) \(bytes / 1024) KB"
+                    )
+                }
+                return OfficialAudio(url: playable,
+                                     quality: audio.quality,
+                                     sourceLabel: audio.preview ? "汽水音乐（试听）" : "汽水音乐")
+            } catch {
+                lastOfficialFailure = error.localizedDescription
+                DiagnosticLogStore.shared.append(
+                    level: .warning, category: "汽水音源",
+                    message: "《\(track.name)》取流失败",
+                    detail: "id=\(trackID) \(error.localizedDescription)"
+                )
                 return nil
             }
-            return OfficialAudio(url: audio.url,
-                                 quality: audio.quality,
-                                 sourceLabel: audio.preview ? "汽水音乐（试听）" : "汽水音乐")
         }
 
         if source.isEmpty || ["wy", "163", "netease", "neteasecloudmusic", "cloudmusic"].contains(source),

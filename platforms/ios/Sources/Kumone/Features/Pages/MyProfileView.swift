@@ -1285,28 +1285,25 @@ struct MyProfileView: View {
 private struct ListeningRibbon: View {
     let days: [(label: String, minutes: Double)]
     @Binding var selected: Int?
+    var endDate: Date = Calendar.current.startOfDay(for: Date())
+
+    private let calendar = Calendar.current
+    private let cellHeight: CGFloat = 30
+    private let cellSpacing: CGFloat = 5
+    private let weekdaySymbols = ["一", "二", "三", "四", "五", "六", "日"]
 
     var body: some View {
         let peak = max(days.map(\.minutes).max() ?? 1, 1)
         // 近三天 / 近七天用柱状，柱少时数值看得清；
-        // 一个月和自选区间天数多，改用小方格热力格，日期放进下方说明。
+        // 一个月和自选区间天数多，改用按周排列的小方格日历。
         let dense = days.count > 10
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             if dense {
-                heatGrid(peak: peak)
+                calendarHeatGrid(peak: peak)
             } else {
                 barChart(peak: peak)
             }
-            if let selected, days.indices.contains(selected) {
-                Text("\(days[selected].label) · \(ListeningRibbon.duration(days[selected].minutes))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(dense ? "颜色越深代表当天听得越久，点一格看日期和时长"
-                           : "柱高代表当天听了多久，点一下看具体时长")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
+            footer(peak: peak, dense: dense)
         }
     }
 
@@ -1363,43 +1360,155 @@ private struct ListeningRibbon: View {
         .frame(height: 132, alignment: .bottom)
     }
 
-    /// 小方格热力图：每行 7 格，颜色深浅代表当天时长。
-    private func heatGrid(peak: Double) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
-            ForEach(Array(days.enumerated()), id: \.offset) { index, day in
-                let ratio = peak > 0 ? min(day.minutes / peak, 1) : 0
-                let active = selected == index
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(
-                        day.minutes > 0
-                            ? Theme.accent.opacity(0.14 + 0.74 * ratio)
-                            : Color.primary.opacity(0.06)
-                    )
-                    .frame(height: 30)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(active ? Theme.accent : Color.white.opacity(0.08),
-                                          lineWidth: active ? 2 : 1)
+    /// 按周排列的日期热力历：顶部标注区间与星期，每格自带日期与时长。
+    private func calendarHeatGrid(peak: Double) -> some View {
+        let blanks = Array(repeating: -1, count: leadingBlanks)
+        let cells = blanks + Array(days.indices)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(rangeText)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                Spacer(minLength: 8)
+                legend
+            }
+            HStack(spacing: cellSpacing) {
+                ForEach(weekdaySymbols, id: \.self) { symbol in
+                    Text(symbol)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: cellSpacing), count: 7),
+                      spacing: cellSpacing) {
+                ForEach(Array(cells.enumerated()), id: \.offset) { _, index in
+                    if index < 0 {
+                        Color.clear.frame(height: cellHeight)
+                    } else {
+                        heatCell(index: index, peak: peak)
                     }
-                    .overlay {
-                        if day.minutes > 0 {
-                            Text(ListeningRibbon.shortDuration(day.minutes))
-                                .font(.system(size: 8, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.92))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.55)
-                                .padding(.horizontal, 2)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
-                            selected = active ? nil : index
-                        }
-                    }
-                    .accessibilityLabel("\(day.label) \(Int(day.minutes)) 分钟")
+                }
             }
         }
+    }
+
+    private func heatCell(index: Int, peak: Double) -> some View {
+        let day = days[index]
+        let ratio = peak > 0 ? min(day.minutes / peak, 1) : 0
+        let active = selected == index
+        return VStack(spacing: 1) {
+            Text("\(calendar.component(.day, from: date(at: index)))")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(day.minutes > 0 ? Color.white.opacity(0.82) : Color.secondary)
+                .monospacedDigit()
+            Text(day.minutes > 0 ? ListeningRibbon.shortDuration(day.minutes) : "–")
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(day.minutes > 0 ? Color.white.opacity(0.95) : Color.secondary.opacity(0.5))
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: cellHeight)
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(day.minutes > 0
+                      ? AnyShapeStyle(Theme.accent.opacity(0.16 + 0.72 * ratio))
+                      : AnyShapeStyle(Color.primary.opacity(0.055)))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(active ? Theme.accent : Color.primary.opacity(0.06),
+                              lineWidth: active ? 2 : 1)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                selected = active ? nil : index
+            }
+        }
+        .accessibilityLabel("\(dateLabel(index)) \(Int(day.minutes)) 分钟")
+    }
+
+    private var legend: some View {
+        HStack(spacing: 3) {
+            Text("少")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.tertiary)
+            ForEach([0.18, 0.44, 0.70, 0.92], id: \.self) { level in
+                RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                    .fill(Theme.accent.opacity(level))
+                    .frame(width: 10, height: 10)
+            }
+            Text("多")
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    /// 下方说明：加粗主文案 + 辅助行，替代原先的小号灰字。
+    private func footer(peak: Double, dense: Bool) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(Theme.accent.opacity(0.85))
+                .frame(width: 3, height: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                if let selected, days.indices.contains(selected) {
+                    Text(dateLabel(selected))
+                        .font(.subheadline.weight(.semibold))
+                    Text(ListeningRibbon.duration(days[selected].minutes)
+                         + (peak > 0 ? " · 占本区间最高 \(Int((days[selected].minutes / peak * 100).rounded()))%" : ""))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(dense ? "颜色越深，当天听得越久" : "柱高代表当天听了多久")
+                        .font(.subheadline.weight(.semibold))
+                    Text(dense ? "轻点任意方格查看当天日期与时长" : "轻点任意柱子查看具体时长")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color.primary.opacity(0.04),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var leadingBlanks: Int {
+        guard let first = days.indices.first else { return 0 }
+        // Calendar 的 weekday 从周日=1 开始，这里换算成「周一为第一列」。
+        let weekday = calendar.component(.weekday, from: date(at: first))
+        return (weekday + 5) % 7
+    }
+
+    private func date(at index: Int) -> Date {
+        let back = days.count - 1 - index
+        return calendar.date(byAdding: .day, value: -back, to: endDate) ?? endDate
+    }
+
+    private func dateLabel(_ index: Int) -> String {
+        let date = date(at: index)
+        let month = calendar.component(.month, from: date)
+        let day = calendar.component(.day, from: date)
+        let weekday = calendar.component(.weekday, from: date)
+        let names = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+        return "\(month)月\(day)日 \(names[(weekday - 1) % 7])"
+    }
+
+    private var rangeText: String {
+        guard !days.isEmpty else { return "" }
+        let start = date(at: 0)
+        let end = date(at: days.count - 1)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日"
+        if calendar.isDate(start, equalTo: end, toGranularity: .month) {
+            return "\(formatter.string(from: start)) – \(calendar.component(.day, from: end))日"
+        }
+        return "\(formatter.string(from: start)) – \(formatter.string(from: end))"
     }
 
     static func shortDuration(_ minutes: Double) -> String {
@@ -1480,7 +1589,7 @@ private struct ListeningReportView: View {
                             .foregroundStyle(.secondary)
                         }
                     }
-                    ListeningRibbon(days: blockDays, selected: $selectedDay)
+                    ListeningRibbon(days: blockDays, selected: $selectedDay, endDate: blockEndDay)
                 }
                 .padding(16)
             }
@@ -1558,10 +1667,15 @@ private struct ListeningReportView: View {
         }
     }
 
+    private var blockEndDay: Date {
+        let calendar = Calendar.current
+        return calendar.startOfDay(for: blockSpan == .custom ? max(blockStart, blockEnd) : Date())
+    }
+
     private var blockDays: [(label: String, minutes: Double)] {
         let calendar = Calendar.current
         let symbols = ["日", "一", "二", "三", "四", "五", "六"]
-        let end = calendar.startOfDay(for: blockSpan == .custom ? max(blockStart, blockEnd) : Date())
+        let end = blockEndDay
         let count: Int
         switch blockSpan {
         case .threeDays: count = 3
