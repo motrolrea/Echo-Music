@@ -61,21 +61,26 @@ struct NowPlayingView: View {
             ZStack {
                 backdrop
 
-                if phoneLandscape {
-                    #if os(iOS)
-                    if settings.nowPlayingMode == .shelf {
-                        shelfLandscapeLayout(size: geo.size)
-                    } else {
-                        phoneLandscapeLayout(size: geo.size)
-                    }
-                    #else
+                #if os(iOS)
+                // 唱片架只提供横屏布局：即使旋转还没完成，也先按横屏排。
+                if settings.nowPlayingMode == .shelf {
+                    shelfLandscapeLayout(size: geo.size)
+                } else if phoneLandscape {
                     phoneLandscapeLayout(size: geo.size)
-                    #endif
                 } else if isCompact {
                     compactLayout(size: geo.size)
                 } else {
                     regularLayout(size: geo.size)
                 }
+                #else
+                if phoneLandscape {
+                    phoneLandscapeLayout(size: geo.size)
+                } else if isCompact {
+                    compactLayout(size: geo.size)
+                } else {
+                    regularLayout(size: geo.size)
+                }
+                #endif
             }
             // Pin to the screen width so an intrinsically-wide child can never
             // stretch the ZStack and push the corner overlays off-screen.
@@ -131,8 +136,9 @@ struct NowPlayingView: View {
                 }
             }
             // 人声分离推子：只在这个设置打开时出现，贴在播放器右侧。
+            // 唱片架模式改用底部的横向推子，这里不再叠加竖版。
             .overlay(alignment: .trailing) {
-                if settings.vocalSeparationEnabled {
+                if settings.vocalSeparationEnabled, settings.nowPlayingMode != .shelf {
                     VocalSeparationControl()
                         .padding(.trailing, 8)
                 }
@@ -153,9 +159,14 @@ struct NowPlayingView: View {
         #if os(iOS)
         .onAppear {
             syncModePresentation()
+            updateShelfOrientation()
         }
         .onChange(of: settings.nowPlayingMode) { _ in
             syncModePresentation()
+            updateShelfOrientation()
+        }
+        .onDisappear {
+            ShelfOrientation.unlock()
         }
         .onChange(of: player.currentTrack?.id) { _ in
             if settings.nowPlayingMode == .minimal {
@@ -564,9 +575,13 @@ struct NowPlayingView: View {
     }
 
     private func shelfLandscapeLayout(size: CGSize) -> some View {
-        VStack(spacing: 4) {
+        let vocal = settings.vocalSeparationEnabled
+        return VStack(spacing: 4) {
+            // 顶部歌名/歌手整体往下挪一点，离屏幕边缘更舒服。
             shelfTrackHeader
                 .frame(height: 44)
+                .padding(.top, 10)
+
             RecordShelfView(
                 tracks: player.activeQueue,
                 currentIndex: player.currentIndex,
@@ -578,34 +593,24 @@ struct NowPlayingView: View {
             VStack(spacing: 10) {
                 NowPlayingScrubber(onShowQuality: nil)
                     .padding(.horizontal, 22)
-                HStack(spacing: 18) {
-                    // 播放控制留在左半边，间距收紧。
-                    HStack(spacing: 26) {
-                        shelfTransportButton(player.isFMMode ? "trash" : "backward.fill",
-                                             size: 22,
-                                             action: player.isFMMode ? player.fmTrash : player.previous)
-                        shelfTransportButton(player.isPlaying ? "pause.fill" : "play.fill",
-                                             size: 32,
-                                             action: player.togglePlayPause)
-                        shelfTransportButton("forward.fill", size: 22, action: player.next)
-                    }
-                    .frame(width: max(size.width * 0.5 - 72, 240), alignment: .leading)
 
-                    Spacer(minLength: 12)
-
-                    // 右侧放音质选择。
-                    Button {
-                        activeSheet = .quality
-                    } label: {
-                        Label(shelfQualityText, systemImage: "waveform")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.82))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(.white.opacity(0.10), in: Capsule())
+                HStack(spacing: 14) {
+                    if vocal {
+                        // 开人声分离：控制留在左半边，中间横向推子，右侧音质。
+                        shelfTransportControls
+                            .frame(width: max(size.width * 0.32, 200), alignment: .leading)
+                        Spacer(minLength: 8)
+                        VocalSeparationBar()
+                            .frame(maxWidth: 250)
+                        Spacer(minLength: 8)
+                        shelfQualityButton
+                    } else {
+                        // 关人声分离：上一首 / 播放 / 下一首回到居中。
+                        Spacer(minLength: 0)
+                        shelfTransportControls
+                        Spacer(minLength: 0)
+                        shelfQualityButton
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("选择播放音质，当前为\(shelfQualityText)")
                 }
                 .padding(.horizontal, 24)
             }
@@ -614,6 +619,35 @@ struct NowPlayingView: View {
         }
         .padding(.horizontal, 18)
         .padding(.top, 6)
+    }
+
+    private var shelfTransportControls: some View {
+        HStack(spacing: 24) {
+            shelfTransportButton(player.isFMMode ? "trash" : "backward.fill",
+                                 size: 22,
+                                 action: player.isFMMode ? player.fmTrash : player.previous)
+            shelfTransportButton(player.isPlaying ? "pause.fill" : "play.fill",
+                                 size: 32,
+                                 action: player.togglePlayPause)
+            shelfTransportButton("forward.fill", size: 22, action: player.next)
+        }
+        .fixedSize()
+    }
+
+    private var shelfQualityButton: some View {
+        Button {
+            activeSheet = .quality
+        } label: {
+            Label(shelfQualityText, systemImage: "waveform")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.82))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.white.opacity(0.10), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .accessibilityLabel("选择播放音质，当前为\(shelfQualityText)")
     }
 
     private var shelfQualityText: String {
@@ -865,6 +899,15 @@ struct NowPlayingView: View {
         // The other modes render their own dedicated layout below.
         showLyricsOnMobile = settings.nowPlayingMode == .immersive
         showQueueOnMobile = false
+    }
+
+    /// 唱片架只做横屏：进入时锁横屏，切换其他播放器或关闭播放页时恢复。
+    private func updateShelfOrientation() {
+        if settings.nowPlayingMode == .shelf {
+            ShelfOrientation.lockLandscape()
+        } else {
+            ShelfOrientation.unlock()
+        }
     }
 
     private func minimalCompactLayout(size: CGSize) -> some View {
@@ -3477,7 +3520,7 @@ struct NowPlayingScrubber: View {
 }
 
 #if os(iOS)
-/// 特斯拉式人声分离推子：竖直排列，居中为原声，向上推成人声，向下推成伴奏。
+/// 人声分离推子（竖版）：居中为原声，向上推偏人声，向下推偏伴奏。
 struct VocalSeparationControl: View {
     @ObservedObject private var equalizer = MoumusicEqualizer.shared
     @State private var isDragging = false
@@ -3492,36 +3535,54 @@ struct VocalSeparationControl: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 7) {
             Text("人声")
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(.white.opacity(0.68))
 
             GeometryReader { geo in
                 let height = geo.size.height
-                let span = max(height - 26, 1)
+                let span = max(height - 24, 1)
                 ZStack {
+                    // 凹槽
                     Capsule()
-                        .fill(.white.opacity(0.18))
+                        .fill(Color.black.opacity(0.30))
+                        .frame(width: 8)
+                    Capsule()
+                        .fill(Color.white.opacity(0.10))
                         .frame(width: 6)
 
+                    // 刻度：中间那道最长最亮
                     ForEach(-maximum...maximum, id: \.self) { tick in
                         Capsule()
-                            .fill(tick == 0 ? Color.white.opacity(0.62) : Color.white.opacity(0.26))
-                            .frame(width: tick == 0 ? 14 : 8, height: 1.5)
+                            .fill(tick == 0 ? Color.white.opacity(0.78) : Color.white.opacity(0.26))
+                            .frame(width: tick == 0 ? 16 : 8, height: tick == 0 ? 2 : 1.5)
                             .offset(y: -CGFloat(tick) / CGFloat(maximum) * span / 2)
                     }
 
+                    // 从中点向当前档位的填充
                     Capsule()
                         .fill(Theme.accent)
                         .frame(width: 6,
                                height: abs(CGFloat(steps)) / CGFloat(maximum) * span / 2)
                         .offset(y: -CGFloat(steps) / CGFloat(maximum) * span / 4)
+                        .opacity(steps == 0 ? 0 : 1)
 
                     Circle()
-                        .fill(.white)
-                        .frame(width: isDragging ? 18 : 15, height: isDragging ? 18 : 15)
-                        .shadow(color: .black.opacity(0.3), radius: 4, y: 1)
+                        .fill(Color.white.opacity(0.45))
+                        .frame(width: 4, height: 4)
+
+                    // 滑块：白底 + 红色描边
+                    Circle()
+                        .fill(
+                            LinearGradient(colors: [.white, Color(white: 0.86)],
+                                           startPoint: .top, endPoint: .bottom)
+                        )
+                        .overlay {
+                            Circle().strokeBorder(Theme.accent, lineWidth: 2.5)
+                        }
+                        .frame(width: isDragging ? 24 : 20, height: isDragging ? 24 : 20)
+                        .shadow(color: .black.opacity(0.35), radius: 5, y: 2)
                         .offset(y: -CGFloat(steps) / CGFloat(maximum) * span / 2)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -3531,45 +3592,156 @@ struct VocalSeparationControl: View {
                         .onChanged { value in
                             isDragging = true
                             let offset = value.location.y - height / 2
-                            let raw = -offset / (span / 2) * CGFloat(maximum)
-                            equalizer.setVocalSteps(Int(raw.rounded()))
+                            apply(Int((-offset / (span / 2) * CGFloat(maximum)).rounded()))
                         }
                         .onEnded { _ in isDragging = false }
                 )
-                .animation(.spring(response: 0.26, dampingFraction: 0.8), value: steps)
+                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: steps)
             }
-            .frame(width: 36, height: 158)
+            .frame(width: 40, height: 168)
 
             Text("伴奏")
                 .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(.white.opacity(0.68))
 
             Text(stageName)
                 .font(.system(size: 9, weight: .bold, design: .rounded))
                 .foregroundStyle(Theme.accent)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 7)
                 .padding(.vertical, 2)
-                .frame(minWidth: 46)
+                .frame(minWidth: 48)
                 .background(Theme.accent.opacity(0.16), in: Capsule())
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.vertical, 14)
+        .padding(.horizontal, 9)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(.white.opacity(0.14), lineWidth: 1)
         }
+        .shadow(color: .black.opacity(0.28), radius: 14, y: 6)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("人声分离")
         .accessibilityValue(stageName)
         .accessibilityAdjustableAction { direction in
             switch direction {
-            case .increment: equalizer.setVocalSteps(steps + 1)
-            case .decrement: equalizer.setVocalSteps(steps - 1)
+            case .increment: apply(steps + 1)
+            case .decrement: apply(steps - 1)
             @unknown default: break
             }
+        }
+    }
+
+    private func apply(_ value: Int) {
+        let clamped = min(maximum, max(-maximum, value))
+        guard clamped != equalizer.vocalSteps else { return }
+        let wasNeutral = equalizer.vocalSteps == 0
+        Haptics.tick()
+        equalizer.setVocalSteps(clamped)
+        // 第一次离开原声时，如果当前流没有音频 tap（无损等），按 320k 重新解析一次。
+        if wasNeutral, clamped != 0, !AudioSpectrum.shared.isLive {
+            PlayerService.shared.restartCurrentForAudioProcessing()
+        }
+    }
+}
+
+/// 人声分离推子（横版）：放在唱片架横屏的播放控制与音质之间。
+struct VocalSeparationBar: View {
+    @ObservedObject private var equalizer = MoumusicEqualizer.shared
+    @State private var isDragging = false
+
+    private var steps: Int { equalizer.vocalSteps }
+    private var maximum: Int { MoumusicEqualizer.vocalStepMaximum }
+
+    private var stageText: String {
+        if steps > 0 { return "人声 +\(steps)" }
+        if steps < 0 { return "伴奏 -\(abs(steps))" }
+        return "原声"
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("伴奏")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.62))
+
+            GeometryReader { geo in
+                let width = geo.size.width
+                let span = max(width - 22, 1)
+                ZStack {
+                    Capsule()
+                        .fill(Color.black.opacity(0.28))
+                        .frame(height: 8)
+                    Capsule()
+                        .fill(Color.white.opacity(0.10))
+                        .frame(height: 6)
+
+                    ForEach(-maximum...maximum, id: \.self) { tick in
+                        Capsule()
+                            .fill(tick == 0 ? Color.white.opacity(0.78) : Color.white.opacity(0.26))
+                            .frame(width: tick == 0 ? 2 : 1.5, height: tick == 0 ? 16 : 8)
+                            .offset(x: CGFloat(tick) / CGFloat(maximum) * span / 2)
+                    }
+
+                    Capsule()
+                        .fill(Theme.accent)
+                        .frame(width: abs(CGFloat(steps)) / CGFloat(maximum) * span / 2, height: 6)
+                        .offset(x: CGFloat(steps) / CGFloat(maximum) * span / 4)
+                        .opacity(steps == 0 ? 0 : 1)
+
+                    Circle()
+                        .fill(Color.white)
+                        .overlay { Circle().strokeBorder(Theme.accent, lineWidth: 2.5) }
+                        .frame(width: isDragging ? 22 : 18, height: isDragging ? 22 : 18)
+                        .shadow(color: .black.opacity(0.30), radius: 4, y: 1)
+                        .offset(x: CGFloat(steps) / CGFloat(maximum) * span / 2)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            isDragging = true
+                            let offset = value.location.x - width / 2
+                            apply(Int((offset / (span / 2) * CGFloat(maximum)).rounded()))
+                        }
+                        .onEnded { _ in isDragging = false }
+                )
+                .animation(.spring(response: 0.28, dampingFraction: 0.78), value: steps)
+            }
+            .frame(height: 30)
+
+            Text("人声")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.62))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.white.opacity(0.10), in: Capsule())
+        .overlay { Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 1) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("人声分离")
+        .accessibilityValue(stageText)
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: apply(steps + 1)
+            case .decrement: apply(steps - 1)
+            @unknown default: break
+            }
+        }
+    }
+
+    private func apply(_ value: Int) {
+        let clamped = min(maximum, max(-maximum, value))
+        guard clamped != equalizer.vocalSteps else { return }
+        let wasNeutral = equalizer.vocalSteps == 0
+        Haptics.tick()
+        equalizer.setVocalSteps(clamped)
+        // 第一次离开原声时，如果当前流没有音频 tap（无损等），按 320k 重新解析一次。
+        if wasNeutral, clamped != 0, !AudioSpectrum.shared.isLive {
+            PlayerService.shared.restartCurrentForAudioProcessing()
         }
     }
 }
@@ -3824,3 +3996,26 @@ struct PlayerArtistLink: View {
         }
     }
 }
+
+#if os(iOS)
+/// 唱片架模式的横屏锁定。请求失败时（设备不支持/系统受限）保持原样，
+/// 布局本身仍然按横屏排版，不会退回竖版唱片架。
+@MainActor
+enum ShelfOrientation {
+    static func lockLandscape() {
+        guard let scene = activeScene else { return }
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape)) { _ in }
+    }
+
+    static func unlock() {
+        guard let scene = activeScene else { return }
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: .allButUpsideDown)) { _ in }
+    }
+
+    private static var activeScene: UIWindowScene? {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+    }
+}
+#endif

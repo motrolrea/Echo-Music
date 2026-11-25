@@ -143,7 +143,7 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if settings.vocalSeparationEnabled {
-                    Text("通过中置声道分离实现，效果取决于歌曲本身的混音；立体声越强，分离越明显。")
+                    Text("通过中置声道分离实现：人声会被增强或抵消，低频鼓点会尽量保留。为保证实时处理，开启时最高按 320k 播放。")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }

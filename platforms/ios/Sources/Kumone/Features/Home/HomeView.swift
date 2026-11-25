@@ -738,6 +738,11 @@ struct HomeView: View {
                         TrackListView(tracks: model.recommendTracks, showsSummary: false, showsBatchDownload: false)
                             .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }
+                    // 汽水没有歌单广场，用官方搜索补两条风格内容，避免只有场景电台。
+                    if model.activePlatform == .sd {
+                        QishuiDiscoverySection(keyword: "华语", title: "华语精选")
+                        QishuiDiscoverySection(keyword: "新歌", title: "新歌速递")
+                    }
                 }
             }
             PlayerClearanceSpacer()
@@ -1418,3 +1423,33 @@ private struct RemoteAnnouncementCard: View {
     }
 }
 #endif
+
+/// 汽水音乐没有歌单广场，用官方搜索按风格补一条内容，避免推荐页只有场景电台。
+struct QishuiDiscoverySection: View {
+    let keyword: String
+    let title: String
+    @State private var tracks: [Track] = []
+
+    var body: some View {
+        Group {
+            if !tracks.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .center, spacing: 8) {
+                        SectionHeader(title: title)
+                        #if os(iOS)
+                        TrackBatchDownloadButton(tracks: tracks)
+                        #endif
+                    }
+                    .padding(.horizontal, Theme.Layout.contentInset)
+                    TrackListView(tracks: tracks, showsSummary: false, showsBatchDownload: false)
+                        .padding(.horizontal, Theme.Layout.contentInset - 10)
+                }
+                .padding(.top, 10)
+            }
+        }
+        .task(id: keyword) {
+            guard tracks.isEmpty else { return }
+            tracks = (try? await QishuiCatalogService.search(keyword, limit: 20)) ?? []
+        }
+    }
+}

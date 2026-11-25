@@ -61,6 +61,8 @@ struct RecordShelfView: UIViewRepresentable {
         private var layoutMix: CGFloat = 0
         private var layoutVelocity: CGFloat = 0
         private var expandedIndex: Int?
+        /// 直接点另一首歌时先收旧唱片，等收回动画结束再展开这一张。
+        private var pendingExpand: Int?
         /// 收回动画期间继续用这个下标计算展开布局，避免瞬间跳回书脊位置。
         private var layoutIndex: Int?
         private var lastCurrent = -1
@@ -77,8 +79,8 @@ struct RecordShelfView: UIViewRepresentable {
         private let albumSize: CGFloat = 0.62
         private let albumThickness: CGFloat = 0.62 / 22
         private let pitch: CGFloat = 0.25
-        private let rightGap: CGFloat = 0.55
-        private let leftGap: CGFloat = 0.60
+        private let rightGap: CGFloat = 0.84
+        private let leftGap: CGFloat = 0.86
         private let stackPitch: CGFloat = 0.19
         private let bodyZ: CGFloat = 0.32
         private let depthZ: CGFloat = 0.035
@@ -137,6 +139,12 @@ struct RecordShelfView: UIViewRepresentable {
                 layoutMix = 0
                 layoutVelocity = 0
                 layoutIndex = nil
+                // 旧唱片已经缩回去，这时再展开新选中的那张。
+                if let pending = pendingExpand {
+                    pendingExpand = nil
+                    expandedIndex = pending
+                    layoutIndex = pending
+                }
             }
 
             for album in albums {
@@ -258,6 +266,7 @@ struct RecordShelfView: UIViewRepresentable {
             }
             // 点空白处收起展开的封面，回到书脊浏览状态。
             expandedIndex = nil
+            pendingExpand = nil
         }
 
         @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
@@ -265,6 +274,7 @@ struct RecordShelfView: UIViewRepresentable {
             switch gesture.state {
             case .began:
                 expandedIndex = nil
+                pendingExpand = nil
                 dragStart = targetScroll
             case .changed:
                 let delta = gesture.translation(in: view).x
@@ -288,9 +298,15 @@ struct RecordShelfView: UIViewRepresentable {
                 expandedIndex = nil
                 return
             }
-            expandedIndex = index
             targetScroll = CGFloat(index)
             clampScroll()
+            if expandedIndex != nil {
+                // 先收回当前展开的唱片，动画结束后再展开新的一张。
+                pendingExpand = index
+                expandedIndex = nil
+            } else {
+                expandedIndex = index
+            }
             onSelect(index)
         }
 
@@ -333,8 +349,17 @@ struct RecordShelfView: UIViewRepresentable {
             if center != lastCurrent {
                 lastCurrent = center
                 targetScroll = CGFloat(center)
-                // 自动切到下一首时，跟着展开新的当前歌曲。
-                expandedIndex = center
+                // 自动切歌或直接点另一首：旧的先缩回，再展开新的那一张。
+                if pendingExpand != center {
+                    if let expanded = expandedIndex, expanded != center {
+                        pendingExpand = center
+                        expandedIndex = nil
+                    } else if expandedIndex == nil {
+                        pendingExpand = center
+                    } else {
+                        expandedIndex = center
+                    }
+                }
             }
             ensureWindow(around: Int(scroll.rounded()), tracks: tracks)
 

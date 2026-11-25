@@ -1288,67 +1288,116 @@ private struct ListeningRibbon: View {
 
     var body: some View {
         let peak = max(days.map(\.minutes).max() ?? 1, 1)
-        // 一个月视图里每根柱子只有几像素宽，逐条数值会被挤成竖排并裁切。
+        // 近三天 / 近七天用柱状，柱少时数值看得清；
+        // 一个月和自选区间天数多，改用小方格热力格，日期放进下方说明。
         let dense = days.count > 10
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .bottom, spacing: 8) {
-                ForEach(Array(days.enumerated()), id: \.offset) { index, day in
-                    let ratio = peak > 0 ? min(day.minutes / peak, 1) : 0
-                    let active = selected == index
-                    VStack(spacing: 8) {
-                        Group {
-                            if !dense, day.minutes > 0 {
-                                Text(ListeningRibbon.shortDuration(day.minutes))
-                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(active ? Theme.accent : .secondary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.6)
-                            } else {
-                                Color.clear
-                            }
-                        }
-                        .frame(height: 11)
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: day.minutes > 0
-                                        ? [Theme.accent.opacity(active ? 1 : 0.78), Theme.accent.opacity(active ? 0.55 : 0.28)]
-                                        : [Color.primary.opacity(0.08), Color.primary.opacity(0.04)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                            )
-                            .frame(height: max(8, 92 * ratio))
-                            .shadow(color: active ? Theme.accent.opacity(0.28) : .clear, radius: 8, y: 3)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(Color.white.opacity(active ? 0.28 : 0.08), lineWidth: 1)
-                            }
-                        Text(day.label)
-                            .font(.system(size: 10, weight: active ? .semibold : .medium))
-                            .foregroundStyle(active ? .primary : .secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                            selected = active ? nil : index
-                        }
-                    }
-                    .accessibilityLabel("\(day.label) \(Int(day.minutes)) 分钟")
-                }
+            if dense {
+                heatGrid(peak: peak)
+            } else {
+                barChart(peak: peak)
             }
-            .frame(height: 132, alignment: .bottom)
             if let selected, days.indices.contains(selected) {
                 Text("\(days[selected].label) · \(ListeningRibbon.duration(days[selected].minutes))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("柱高代表当天听了多久，点一下看具体时长")
+                Text(dense ? "颜色越深代表当天听得越久，点一格看日期和时长"
+                           : "柱高代表当天听了多久，点一下看具体时长")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private func barChart(peak: Double) -> some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                let ratio = peak > 0 ? min(day.minutes / peak, 1) : 0
+                let active = selected == index
+                VStack(spacing: 8) {
+                    Group {
+                        if day.minutes > 0 {
+                            Text(ListeningRibbon.shortDuration(day.minutes))
+                                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                .foregroundStyle(active ? Theme.accent : .secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.6)
+                        } else {
+                            Color.clear
+                        }
+                    }
+                    .frame(height: 11)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: day.minutes > 0
+                                    ? [Theme.accent.opacity(active ? 1 : 0.78), Theme.accent.opacity(active ? 0.55 : 0.28)]
+                                    : [Color.primary.opacity(0.08), Color.primary.opacity(0.04)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(height: max(8, 92 * ratio))
+                        .shadow(color: active ? Theme.accent.opacity(0.28) : .clear, radius: 8, y: 3)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .strokeBorder(Color.white.opacity(active ? 0.28 : 0.08), lineWidth: 1)
+                        }
+                    Text(day.label)
+                        .font(.system(size: 10, weight: active ? .semibold : .medium))
+                        .foregroundStyle(active ? .primary : .secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        selected = active ? nil : index
+                    }
+                }
+                .accessibilityLabel("\(day.label) \(Int(day.minutes)) 分钟")
+            }
+        }
+        .frame(height: 132, alignment: .bottom)
+    }
+
+    /// 小方格热力图：每行 7 格，颜色深浅代表当天时长。
+    private func heatGrid(peak: Double) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
+            ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                let ratio = peak > 0 ? min(day.minutes / peak, 1) : 0
+                let active = selected == index
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(
+                        day.minutes > 0
+                            ? Theme.accent.opacity(0.14 + 0.74 * ratio)
+                            : Color.primary.opacity(0.06)
+                    )
+                    .frame(height: 30)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .strokeBorder(active ? Theme.accent : Color.white.opacity(0.08),
+                                          lineWidth: active ? 2 : 1)
+                    }
+                    .overlay {
+                        if day.minutes > 0 {
+                            Text(ListeningRibbon.shortDuration(day.minutes))
+                                .font(.system(size: 8, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.92))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.55)
+                                .padding(.horizontal, 2)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                            selected = active ? nil : index
+                        }
+                    }
+                    .accessibilityLabel("\(day.label) \(Int(day.minutes)) 分钟")
             }
         }
     }

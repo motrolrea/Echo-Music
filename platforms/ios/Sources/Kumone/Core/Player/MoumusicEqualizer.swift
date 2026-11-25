@@ -92,6 +92,10 @@ final class MoumusicEqualizer: ObservableObject {
     private var processingVocalSteps: Int = 0
     private var processingFormatIsFloat32 = false
     private var sampleRate: Double = 44_100
+    /// 伴奏模式用高通后的中置信号做抵消：保留低频鼓点，只压掉人声所在的频段。
+    private var vocalHPCoefficient: Float = 0.02
+    private var vocalHPState: Float = 0
+    private var vocalHPPreviousInput: Float = 0
     private var coefficients: [MoumusicBiquad] = Array(repeating: .identity, count: 10)
     private var filterStates: [MoumusicBiquadState] = Array(repeating: .zero, count: 80)
     private var pendingPersistWorkItem: DispatchWorkItem?
@@ -232,6 +236,10 @@ final class MoumusicEqualizer: ObservableObject {
     func prepare(with format: AudioStreamBasicDescription) {
         lock.lock()
         sampleRate = max(format.mSampleRate, 8_000)
+        let highPassCutoff: Float = 150
+        vocalHPCoefficient = 1 / (1 + 2 * .pi * highPassCutoff / Float(sampleRate))
+        vocalHPState = 0
+        vocalHPPreviousInput = 0
         processingFormatIsFloat32 = format.mFormatID == kAudioFormatLinearPCM
             && format.mBitsPerChannel == 32
             && (format.mFormatFlags & kAudioFormatFlagIsFloat) != 0
@@ -322,10 +330,29 @@ final class MoumusicEqualizer: ObservableObject {
     /// 正数保留 M、衰减 S；负数衰减 M、保留 S。必须在持锁状态下调用。
     private func applyVocalSeparationLocked(buffers: UnsafeMutableAudioBufferListPointer,
                                             frameCount: Int) {
-        let value = Float(processingVocalSteps) / Float(Self.vocalStepMaximum)
-        let centerScale = 1 - max(0, -value)
-        let sideScale = 1 - max(0, value)
-        guard centerScale != 1 || sideScale != 1 else { return }
+        let strength = Float(abs(processingVocalSteps)) / Float(Self.vocalStepMaximum)
+        guard strength > 0 else { return }
+        let vocalMode = processingVocalSteps > 0
+        let coefficient = vocalHPCoefficient
+        var hpState = vocalHPState
+        var hpPrevious = vocalHPPreviousInput
+
+        @inline(__always) func clamp(_ value: Float) -> Float {
+            value.isFinite ? min(max(value, -4), 4) : 0
+        }
+
+        // 人声：把左右混合成中置，人声位于中间会被抬高；
+        // 伴奏：对中置信号做 150Hz 高通后再从左右声道减掉，人声被抵消，低频鼓点保留。
+        @inline(__always) func separate(_ l: Float, _ r: Float) -> (Float, Float) {
+            let mid = (l + r) * 0.5
+            if vocalMode {
+                return (l + (mid - l) * strength, r + (mid - r) * strength)
+            }
+            let filtered = coefficient * (hpState + mid - hpPrevious)
+            hpPrevious = mid
+            hpState = filtered
+            return (l - strength * filtered, r - strength * filtered)
+        }
 
         // 非交错：每个 buffer 一个声道，前两个是左右。
         if buffers.count >= 2,
@@ -338,13 +365,12 @@ final class MoumusicEqualizer: ObservableObject {
             let left = leftRaw.assumingMemoryBound(to: Float.self)
             let right = rightRaw.assumingMemoryBound(to: Float.self)
             for frame in 0..<frames {
-                let l = left[frame]
-                let r = right[frame]
-                let mid = (l + r) * 0.5
-                let side = (l - r) * 0.5
-                left[frame] = mid * centerScale + side * sideScale
-                right[frame] = mid * centerScale - side * sideScale
+                let (outL, outR) = separate(left[frame], right[frame])
+                left[frame] = clamp(outL)
+                right[frame] = clamp(outR)
             }
+            vocalHPState = hpState
+            vocalHPPreviousInput = hpPrevious
             return
         }
 
@@ -357,13 +383,12 @@ final class MoumusicEqualizer: ObservableObject {
         let samples = raw.assumingMemoryBound(to: Float.self)
         for frame in 0..<frames {
             let base = frame * channels
-            let l = samples[base]
-            let r = samples[base + 1]
-            let mid = (l + r) * 0.5
-            let side = (l - r) * 0.5
-            samples[base] = mid * centerScale + side * sideScale
-            samples[base + 1] = mid * centerScale - side * sideScale
+            let (outL, outR) = separate(samples[base], samples[base + 1])
+            samples[base] = clamp(outL)
+            samples[base + 1] = clamp(outR)
         }
+        vocalHPState = hpState
+        vocalHPPreviousInput = hpPrevious
     }
 
     private func schedulePersist() {

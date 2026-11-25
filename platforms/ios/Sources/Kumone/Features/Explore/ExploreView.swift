@@ -301,6 +301,12 @@ struct ExploreView: View {
                         TrackListView(tracks: model.tracks, showsSummary: false, showsBatchDownload: false)
                             .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }
+
+                    // 汽水没有歌单广场：精选页用官方搜索补两条风格内容。
+                    if playlistQueryTrimmed.isEmpty, model.platform == .sd {
+                        QishuiDiscoverySection(keyword: "华语", title: "华语精选")
+                        QishuiDiscoverySection(keyword: "新歌", title: "新歌速递")
+                    }
                         }
                     }
 

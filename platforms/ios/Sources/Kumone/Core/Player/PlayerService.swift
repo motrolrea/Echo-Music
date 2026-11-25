@@ -376,6 +376,16 @@ final class PlayerService: ObservableObject {
         trackQualityOverride ?? SettingsManager.shared.audioQuality
     }
 
+#if os(iOS)
+    /// 人声分离刚开启时，当前这首歌可能是无损流（没有挂音频 tap）。
+    /// 按当前位置重新解析一次，改用可处理的 320k 流让分离立即生效。
+    func restartCurrentForAudioProcessing() {
+        guard let track = currentTrack, !AudioSpectrum.shared.isLive else { return }
+        startPlaying(track, indexUnchanged: true, resumeAt: progress,
+                     preserveTrackQualityOverride: true)
+    }
+#endif
+
     func availableQualitiesForCurrentTrack(forceRefresh: Bool = false) async -> [AudioQuality] {
         guard let track = currentTrack else { return [] }
         let trackKey = track.playbackKey
@@ -1330,7 +1340,18 @@ final class PlayerService: ObservableObject {
         // next/previous tap can replace the current track and its override
         // before the old task gets scheduled, making the new song inherit the
         // previous song's lossless request.
-        let requestedQuality = currentQuality
+        let requestedQuality: AudioQuality = {
+            let selected = currentQuality
+#if os(iOS)
+            // 实时人声分离依赖可处理的 PCM 流。无损 / 杜比等流挂音频 tap 可能直接无声，
+            // 开启分离时按 320k 播放，保证分离始终生效。
+            if SettingsManager.shared.vocalSeparationEnabled,
+               Self.qualityNeedsTapDowngrade(selected) {
+                return .exhigh
+            }
+#endif
+            return selected
+        }()
         // Stop and detach the previous item before starting an asynchronous
         // URL/lyric resolution. Otherwise a fast next/previous tap leaves the
         // old AVPlayerItem audible until the new source responds.
@@ -2279,6 +2300,14 @@ final class PlayerService: ObservableObject {
         guard let facts = await streamFacts(of: track) else { return false }
         let lossless = facts.format == kAudioFormatFLAC || facts.format == kAudioFormatAppleLossless
         return !lossless && facts.channels <= 2 && facts.sampleRate <= 48_000
+    }
+
+    /// 无损 / 高解析 / 多声道音质无法稳定挂音频 tap，人声分离时降到 320k。
+    private static func qualityNeedsTapDowngrade(_ quality: AudioQuality) -> Bool {
+        switch quality {
+        case .master, .atmos, .dolby, .surround, .hires, .lossless: return true
+        case .exhigh, .higher, .standard: return false
+        }
     }
 
     /// Quality label derived from the stream's real properties (nil when the track cannot be read).

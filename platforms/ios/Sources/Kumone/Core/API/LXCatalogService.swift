@@ -26,10 +26,10 @@ enum LXCatalogPlatform: String, CaseIterable, Identifiable {
     var displayName: String {
         switch self {
         case .aggregate: return "聚合"
-        case .kw: return "酷我"
-        case .kg: return "酷狗"
+        case .kw: return "酷我音乐"
+        case .kg: return "酷狗音乐"
         case .tx: return "QQ 音乐"
-        case .wy: return "网易云"
+        case .wy: return "网易云音乐"
         case .mg: return "咪咕音乐"
         case .sd: return "汽水音乐"
         }
@@ -1591,7 +1591,14 @@ enum LXCatalogService {
             let scene = String(id.dropFirst(5))
             let modes = (try? await QishuiCatalogService.feedModes()) ?? []
             let mode = modes.first { $0.id == scene }
-            let tracks = try await QishuiCatalogService.feed(scene: scene, limit: 30)
+            // 场景歌曲接口偶尔会返回空，逐级兜底：无场景 → 通用推荐 → 用场景名搜索。
+            var tracks = (try? await QishuiCatalogService.feed(scene: scene, limit: 30)) ?? []
+            if tracks.isEmpty {
+                tracks = (try? await QishuiCatalogService.feed(limit: 30)) ?? []
+            }
+            if tracks.isEmpty, let mode {
+                tracks = (try? await QishuiCatalogService.search(mode.name, limit: 30)) ?? []
+            }
             guard !tracks.isEmpty else { throw LXCatalogError.invalidResponse }
             return LXPlaylistDetail(id: id, name: mode?.name ?? "汽水场景", coverURL: mode?.coverURL ?? tracks.first?.album.picUrl,
                                     description: nil, author: "汽水音乐", playCount: 0,
