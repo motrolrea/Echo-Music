@@ -136,6 +136,17 @@ struct SettingsView: View {
                      : "重新打开应用时，当前歌曲从头播放。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle("人声分离", isOn: $settings.vocalSeparationEnabled)
+                Text(settings.vocalSeparationEnabled
+                     ? "播放器右侧会出现人声 / 原声 / 伴奏推子：向上推接近人声，向下推接近伴奏，居中为原声。"
+                     : "打开后可在播放器右侧调节人声与伴奏比例。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if settings.vocalSeparationEnabled {
+                    Text("通过中置声道分离实现，效果取决于歌曲本身的混音；立体声越强，分离越明显。")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
 #endif
                 Button {
                     showEqualizer = true

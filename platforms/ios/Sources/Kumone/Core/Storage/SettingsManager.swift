@@ -457,6 +457,7 @@ final class SettingsManager: ObservableObject {
         static let sourcePlatformFallback = "settings.sourcePlatformFallback"
         static let autoPauseOnRouteChange = "settings.autoPauseOnRouteChange"
         static let resumePlaybackPosition = "settings.resumePlaybackPosition"
+        static let vocalSeparation = "settings.vocalSeparation"
         static let bilibiliMode = "settings.bilibiliMode"
         static let bilibiliRecommendationSource = "settings.bilibiliRecommendationSource"
         static let bilibiliDanmakuEnabled = "settings.bilibiliDanmakuEnabled"
@@ -575,6 +576,17 @@ final class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(resumePlaybackPosition, forKey: Keys.resumePlaybackPosition) }
     }
 
+    /// 人声分离：打开后播放器右侧出现人声 / 原声 / 伴奏推子。
+    @Published var vocalSeparationEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(vocalSeparationEnabled, forKey: Keys.vocalSeparation)
+            // 关闭时回到原声，避免下次打开还残留上次的分离程度。
+            if !vocalSeparationEnabled {
+                MoumusicEqualizer.shared.setVocalSteps(0)
+            }
+        }
+    }
+
     /// The Bilibili capability is one mutually-exclusive mode. The current
     /// settings schema intentionally has no migration path for older builds:
     /// a fresh install defaults to the video experience, and the selected mode
@@ -631,6 +643,10 @@ final class SettingsManager: ObservableObject {
         enableSourcePlatformFallback = defaults.object(forKey: Keys.sourcePlatformFallback) as? Bool ?? true
         autoPauseOnRouteChange = defaults.object(forKey: Keys.autoPauseOnRouteChange) as? Bool ?? true
         resumePlaybackPosition = defaults.object(forKey: Keys.resumePlaybackPosition) as? Bool ?? true
+        let storedVocalSeparation = defaults.object(forKey: Keys.vocalSeparation) as? Bool ?? false
+        vocalSeparationEnabled = storedVocalSeparation
+        // 关闭状态下把音频侧的分量也归零，避免残留上次的分离程度。
+        if !storedVocalSeparation { MoumusicEqualizer.shared.setVocalSteps(0) }
         bilibiliMode = defaults.string(forKey: Keys.bilibiliMode)
             .flatMap(BilibiliMode.init(rawValue:)) ?? .watch
         bilibiliDanmakuEnabled = defaults.object(forKey: Keys.bilibiliDanmakuEnabled) as? Bool ?? true
@@ -677,6 +693,10 @@ final class SettingsManager: ObservableObject {
         enableSourcePlatformFallback = defaults.object(forKey: Keys.sourcePlatformFallback) as? Bool ?? true
         autoPauseOnRouteChange = defaults.object(forKey: Keys.autoPauseOnRouteChange) as? Bool ?? true
         resumePlaybackPosition = defaults.object(forKey: Keys.resumePlaybackPosition) as? Bool ?? true
+        let storedVocalSeparation = defaults.object(forKey: Keys.vocalSeparation) as? Bool ?? false
+        vocalSeparationEnabled = storedVocalSeparation
+        // 关闭状态下把音频侧的分量也归零，避免残留上次的分离程度。
+        if !storedVocalSeparation { MoumusicEqualizer.shared.setVocalSteps(0) }
         bilibiliMode = defaults.string(forKey: Keys.bilibiliMode)
             .flatMap(BilibiliMode.init(rawValue:)) ?? .watch
         bilibiliDanmakuEnabled = defaults.object(forKey: Keys.bilibiliDanmakuEnabled) as? Bool ?? true

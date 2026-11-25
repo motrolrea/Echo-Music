@@ -61,11 +61,17 @@ struct RecordShelfView: UIViewRepresentable {
         private var layoutMix: CGFloat = 0
         private var layoutVelocity: CGFloat = 0
         private var expandedIndex: Int?
+        /// 收回动画期间继续用这个下标计算展开布局，避免瞬间跳回书脊位置。
+        private var layoutIndex: Int?
         private var lastCurrent = -1
         private var windowCenter = -1
+        /// 列表较短时一次性铺满全部唱片，滑动不必重建节点。
+        private var windowIsComplete = false
         private var didPosition = false
         private var dragStart: CGFloat = 0
         private var displayLink: CADisplayLink?
+        private var lastTickTime: CFTimeInterval = 0
+        private var syncedTracks: [Track] = []
 
         /// 与预览页一致的几何参数。
         private let albumSize: CGFloat = 0.62
@@ -76,12 +82,12 @@ struct RecordShelfView: UIViewRepresentable {
         private let stackPitch: CGFloat = 0.19
         private let bodyZ: CGFloat = 0.32
         private let depthZ: CGFloat = 0.035
-        private let albumScale: Float = 1.52
+        private let albumScale: Float = 1.60
         private let spineAngle = Float(87.5 * Double.pi / 180)
         private let frontAngle = Float(16 * Double.pi / 180)
         private let frontTiltX = Float(-15 * Double.pi / 180)
         private let frontTiltZ = Float(6 * Double.pi / 180)
-        private let windowRadius = 8
+        private let windowRadius = 10
         /// 拖动多少点换一张。
         private let dragStep: CGFloat = 70
 
@@ -106,31 +112,56 @@ struct RecordShelfView: UIViewRepresentable {
         }
 
         @objc private func tick(_ link: CADisplayLink) {
-            let dt = CGFloat(min(max(link.duration, 1.0 / 120.0), 1.0 / 30.0))
+            // 用真实帧间隔推进弹簧：掉帧时动画不会忽快忽慢。
+            let now = link.timestamp
+            let dt = lastTickTime == 0
+                ? CGFloat(1.0 / 60.0)
+                : CGFloat(min(max(now - lastTickTime, 1.0 / 120.0), 1.0 / 30.0))
+            lastTickTime = now
 
-            let scrollStep = springStep(scroll, scrollVelocity, target: targetScroll, dt: dt)
+            // 展开时记住展开的下标；收回时继续用它算布局，直到动画结束，
+            // 这样收回和展开一样是连续插值，而不是瞬间弹回书脊。
+            if let expandedIndex { layoutIndex = expandedIndex }
+
+            let scrollStep = springStep(scroll, scrollVelocity, target: targetScroll, dt: dt,
+                                        stiffness: 200, damping: 26)
             scroll = scrollStep.value
             scrollVelocity = scrollStep.velocity
 
             let layoutStep = springStep(layoutMix, layoutVelocity,
-                                        target: expandedIndex == nil ? 0 : 1, dt: dt)
+                                        target: expandedIndex == nil ? 0 : 1, dt: dt,
+                                        stiffness: 170, damping: 26)
             layoutMix = layoutStep.value
             layoutVelocity = layoutStep.velocity
+            if expandedIndex == nil, layoutMix <= 0.0005 {
+                layoutMix = 0
+                layoutVelocity = 0
+                layoutIndex = nil
+            }
 
             for album in albums {
                 let want: CGFloat = album.index == expandedIndex ? 1 : 0
-                let step = springStep(album.mix, album.velocity, target: want, dt: dt)
+                let step = springStep(album.mix, album.velocity, target: want, dt: dt,
+                                      stiffness: 190, damping: 24)
                 album.mix = step.value
                 album.velocity = step.velocity
                 apply(album)
+            }
+
+            // 滑动浏览时按可见位置平移节点窗口：整张列表都能翻到，
+            // 同时只保留有限个 3D 节点。
+            let anchor = expandedIndex ?? Int(scroll.rounded())
+            if !windowIsComplete, !syncedTracks.isEmpty, abs(anchor - windowCenter) > 5 {
+                windowCenter = anchor
+                rebuild(around: anchor, tracks: syncedTracks)
             }
         }
 
         /// 轻阻尼弹簧：展开、收起和滑动都带一点回弹，不会生硬停住。
         private func springStep(_ value: CGFloat, _ velocity: CGFloat,
-                                target: CGFloat, dt: CGFloat) -> (value: CGFloat, velocity: CGFloat) {
-            let stiffness: CGFloat = 180
-            let damping: CGFloat = 22
+                                target: CGFloat, dt: CGFloat,
+                                stiffness: CGFloat = 180,
+                                damping: CGFloat = 22) -> (value: CGFloat, velocity: CGFloat) {
             var nextVelocity = velocity + ((target - value) * stiffness - velocity * damping) * dt
             var nextValue = value + nextVelocity * dt
             if abs(target - nextValue) < 0.0008, abs(nextVelocity) < 0.01 {
@@ -282,6 +313,8 @@ struct RecordShelfView: UIViewRepresentable {
             }
             let center = min(max(currentIndex, 0), tracks.count - 1)
             let ids = tracks.map(\.id)
+            // 保存整张列表：滑动时按可见位置平移节点窗口，不会只停在最初的几首。
+            syncedTracks = tracks
 
             if !didPosition {
                 didPosition = true
@@ -295,6 +328,7 @@ struct RecordShelfView: UIViewRepresentable {
             if ids != trackIDs {
                 trackIDs = ids
                 windowCenter = -1
+                windowIsComplete = false
             }
             if center != lastCurrent {
                 lastCurrent = center
@@ -311,7 +345,7 @@ struct RecordShelfView: UIViewRepresentable {
         }
 
         private func ensureWindow(around center: Int, tracks: [Track]) {
-            guard !tracks.isEmpty else { return }
+            guard !tracks.isEmpty, !windowIsComplete else { return }
             if windowCenter >= 0, abs(center - windowCenter) <= windowRadius / 2 { return }
             windowCenter = center
             rebuild(around: center, tracks: tracks)
@@ -319,8 +353,11 @@ struct RecordShelfView: UIViewRepresentable {
 
         private func rebuild(around center: Int, tracks: [Track]) {
             albumRoot.childNodes.forEach { $0.removeFromParentNode() }
-            let lower = max(0, center - windowRadius)
-            let upper = min(tracks.count - 1, center + windowRadius)
+            // 列表不长时直接铺满全部歌曲；很长的列表用滑动窗口控制节点数量。
+            let complete = tracks.count <= 80
+            windowIsComplete = complete
+            let lower = complete ? 0 : max(0, center - windowRadius)
+            let upper = complete ? tracks.count - 1 : min(tracks.count - 1, center + windowRadius)
             guard lower <= upper else {
                 albums = []
                 return
@@ -349,7 +386,8 @@ struct RecordShelfView: UIViewRepresentable {
 
             var expandedX = spineX
             var expandedZ = spineZ
-            if let expanded = expandedIndex {
+            // 用 layoutIndex 而不是 expandedIndex：收回动画期间仍按展开布局插值。
+            if let expanded = layoutIndex {
                 let distance = album.index - expanded
                 let depth = CGFloat(min(abs(distance), 4))
                 if distance == 0 {
@@ -366,7 +404,7 @@ struct RecordShelfView: UIViewRepresentable {
 
             let x = spineX + (expandedX - spineX) * layoutMix
             let z = spineZ + (expandedZ - spineZ) * layoutMix
-            let y: CGFloat = album.index == expandedIndex ? -0.01 * album.mix : 0
+            let y: CGFloat = album.index == layoutIndex ? -0.01 * album.mix : 0
             let ry = spineAngle + (frontAngle - spineAngle) * Float(album.mix)
 
             album.node.position = SCNVector3(Float(x), Float(y), Float(z))
@@ -414,6 +452,7 @@ struct RecordShelfView: UIViewRepresentable {
         /// 书脊纹理按歌曲缓存，滑动换窗口时不再重复绘制。
         private func spineTexture(for track: Track) -> UIImage {
             if let cached = spineCache[track.id] { return cached }
+            if spineCache.count > 160 { spineCache.removeAll() }
             let image = spineImage(title: track.name,
                                    artist: track.artistNames,
                                    seed: Self.seed(for: track.name))
@@ -452,7 +491,7 @@ struct RecordShelfView: UIViewRepresentable {
                 paragraph.alignment = .center
                 paragraph.lineBreakMode = .byTruncatingTail
                 let attributes: [NSAttributedString.Key: Any] = [
-                    .font: UIFont.systemFont(ofSize: 26, weight: .semibold),
+                    .font: UIFont.systemFont(ofSize: 34, weight: .semibold),
                     .foregroundColor: UIColor.white.withAlphaComponent(0.95),
                     .paragraphStyle: paragraph,
                 ]
@@ -498,17 +537,17 @@ final class ShelfAlbum {
         box.materials = [front, spine, back, spine, dark, dark]
         node.geometry = box
 
-        let shadow = SCNPlane(width: size * 1.35, height: size * 0.58)
+        let shadow = SCNPlane(width: size * 1.6, height: size * 0.72)
         let shadowMaterial = SCNMaterial()
         shadowMaterial.diffuse.contents = Self.contactTexture()
         shadowMaterial.lightingModel = .constant
         shadowMaterial.isDoubleSided = true
-        shadowMaterial.transparency = 0.55
+        shadowMaterial.transparency = 0.38
         shadowMaterial.writesToDepthBuffer = false
         shadow.materials = [shadowMaterial]
         contact.geometry = shadow
         contact.eulerAngles = SCNVector3(-Float.pi / 2, 0, 0)
-        contact.position = SCNVector3(0, Float(-size / 2) - 0.006, 0)
+        contact.position = SCNVector3(0, Float(-size / 2) - 0.010, 0)
     }
 
     private static var contactCache: UIImage?
@@ -527,13 +566,13 @@ final class ShelfAlbum {
         return renderer.image { context in
             let g = context.cgContext
             let colors = [
-                UIColor.black.withAlphaComponent(0.72).cgColor,
-                UIColor.black.withAlphaComponent(0.28).cgColor,
+                UIColor.black.withAlphaComponent(0.48).cgColor,
+                UIColor.black.withAlphaComponent(0.18).cgColor,
                 UIColor.black.withAlphaComponent(0).cgColor,
             ] as CFArray
             if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
                                          colors: colors,
-                                         locations: [0, 0.55, 1]) {
+                                         locations: [0, 0.62, 1]) {
                 let center = CGPoint(x: size.width / 2, y: size.height / 2)
                 g.drawRadialGradient(gradient,
                                      startCenter: center, startRadius: 6,

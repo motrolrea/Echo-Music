@@ -130,6 +130,13 @@ struct NowPlayingView: View {
                         .accessibilityAddTraits(.isButton)
                 }
             }
+            // 人声分离推子：只在这个设置打开时出现，贴在播放器右侧。
+            .overlay(alignment: .trailing) {
+                if settings.vocalSeparationEnabled {
+                    VocalSeparationControl()
+                        .padding(.trailing, 8)
+                }
+            }
             #endif
         }
         #if os(macOS)
@@ -557,7 +564,7 @@ struct NowPlayingView: View {
     }
 
     private func shelfLandscapeLayout(size: CGSize) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 4) {
             shelfTrackHeader
                 .frame(height: 44)
             RecordShelfView(
@@ -567,15 +574,66 @@ struct NowPlayingView: View {
                 onSelect: player.playQueueIndex
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.bottom, 14)
-            VStack(spacing: 4) {
-                NowPlayingScrubber(onShowQuality: { activeSheet = .quality })
-                CompactTransportControls()
+
+            VStack(spacing: 10) {
+                NowPlayingScrubber(onShowQuality: nil)
+                    .padding(.horizontal, 22)
+                HStack(spacing: 18) {
+                    // 播放控制留在左半边，间距收紧。
+                    HStack(spacing: 26) {
+                        shelfTransportButton(player.isFMMode ? "trash" : "backward.fill",
+                                             size: 22,
+                                             action: player.isFMMode ? player.fmTrash : player.previous)
+                        shelfTransportButton(player.isPlaying ? "pause.fill" : "play.fill",
+                                             size: 32,
+                                             action: player.togglePlayPause)
+                        shelfTransportButton("forward.fill", size: 22, action: player.next)
+                    }
+                    .frame(width: max(size.width * 0.5 - 72, 240), alignment: .leading)
+
+                    Spacer(minLength: 12)
+
+                    // 右侧放音质选择。
+                    Button {
+                        activeSheet = .quality
+                    } label: {
+                        Label(shelfQualityText, systemImage: "waveform")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.82))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.white.opacity(0.10), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("选择播放音质，当前为\(shelfQualityText)")
+                }
+                .padding(.horizontal, 24)
             }
-            .frame(height: 82)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 8)
+        .padding(.top, 6)
+    }
+
+    private var shelfQualityText: String {
+        if player.servedQualityTrackKey == player.currentTrack?.playbackKey,
+           let served = player.servedQuality {
+            return AudioQuality.resolvedDisplayName(served)
+        }
+        return "音质"
+    }
+
+    private func shelfTransportButton(_ icon: String, size: CGFloat,
+                                      action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: size, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 48)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.pressable)
     }
 
     private func shelfCompactLayout(size: CGSize) -> some View {
@@ -3417,6 +3475,105 @@ struct NowPlayingScrubber: View {
         return "检测中"
     }
 }
+
+#if os(iOS)
+/// 特斯拉式人声分离推子：竖直排列，居中为原声，向上推成人声，向下推成伴奏。
+struct VocalSeparationControl: View {
+    @ObservedObject private var equalizer = MoumusicEqualizer.shared
+    @State private var isDragging = false
+
+    private var steps: Int { equalizer.vocalSteps }
+    private var maximum: Int { MoumusicEqualizer.vocalStepMaximum }
+
+    private var stageName: String {
+        if steps > 0 { return "人声 +\(steps)" }
+        if steps < 0 { return "伴奏 -\(abs(steps))" }
+        return "原声"
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("人声")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+
+            GeometryReader { geo in
+                let height = geo.size.height
+                let span = max(height - 26, 1)
+                ZStack {
+                    Capsule()
+                        .fill(.white.opacity(0.18))
+                        .frame(width: 6)
+
+                    ForEach(-maximum...maximum, id: \.self) { tick in
+                        Capsule()
+                            .fill(tick == 0 ? Color.white.opacity(0.62) : Color.white.opacity(0.26))
+                            .frame(width: tick == 0 ? 14 : 8, height: 1.5)
+                            .offset(y: -CGFloat(tick) / CGFloat(maximum) * span / 2)
+                    }
+
+                    Capsule()
+                        .fill(Theme.accent)
+                        .frame(width: 6,
+                               height: abs(CGFloat(steps)) / CGFloat(maximum) * span / 2)
+                        .offset(y: -CGFloat(steps) / CGFloat(maximum) * span / 4)
+
+                    Circle()
+                        .fill(.white)
+                        .frame(width: isDragging ? 18 : 15, height: isDragging ? 18 : 15)
+                        .shadow(color: .black.opacity(0.3), radius: 4, y: 1)
+                        .offset(y: -CGFloat(steps) / CGFloat(maximum) * span / 2)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            isDragging = true
+                            let offset = value.location.y - height / 2
+                            let raw = -offset / (span / 2) * CGFloat(maximum)
+                            equalizer.setVocalSteps(Int(raw.rounded()))
+                        }
+                        .onEnded { _ in isDragging = false }
+                )
+                .animation(.spring(response: 0.26, dampingFraction: 0.8), value: steps)
+            }
+            .frame(width: 36, height: 158)
+
+            Text("伴奏")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.7))
+
+            Text(stageName)
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(Theme.accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .frame(minWidth: 46)
+                .background(Theme.accent.opacity(0.16), in: Capsule())
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(.white.opacity(0.12), lineWidth: 1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("人声分离")
+        .accessibilityValue(stageName)
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: equalizer.setVocalSteps(steps + 1)
+            case .decrement: equalizer.setVocalSteps(steps - 1)
+            @unknown default: break
+            }
+        }
+    }
+}
+#endif
 
 // MARK: - Mini lyrics (compact now-playing)
 

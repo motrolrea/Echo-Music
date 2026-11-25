@@ -78,13 +78,18 @@ final class MoumusicEqualizer: ObservableObject {
     @Published private(set) var preampGain: Double
     /// -1 is full left, 0 is centered, 1 is full right. Independent of the EQ preset.
     @Published private(set) var balance: Double
+    /// 人声分离推子：0 = 原声，正数偏人声，负数偏伴奏。
+    @Published private(set) var vocalSteps: Int
     @Published private(set) var customPresets: [MoumusicEqualizerCustomPreset]
+
+    static let vocalStepMaximum = 3
 
     private let defaults = UserDefaults.standard
     private let lock = NSLock()
     private var processingEnabled = false
     private var processingPreampLinear: Float = 1
     private var processingBalance: Float = 0
+    private var processingVocalSteps: Int = 0
     private var processingFormatIsFloat32 = false
     private var sampleRate: Double = 44_100
     private var coefficients: [MoumusicBiquad] = Array(repeating: .identity, count: 10)
@@ -98,6 +103,7 @@ final class MoumusicEqualizer: ObservableObject {
     private static let customPresetsKey = "moumusic.equalizer.customPresets"
     private static let preampKey = "moumusic.equalizer.preampGain"
     private static let balanceKey = "moumusic.equalizer.balance"
+    private static let vocalStepsKey = "moumusic.equalizer.vocalSteps"
     private static let maximumChannels = 8
 
     private init() {
@@ -114,6 +120,10 @@ final class MoumusicEqualizer: ObservableObject {
         selectedCustomPresetName = defaults.string(forKey: Self.customPresetNameKey)
         preampGain = Self.normalizedGain((defaults.object(forKey: Self.preampKey) as? NSNumber)?.doubleValue ?? 0)
         balance = min(1, max(-1, (defaults.object(forKey: Self.balanceKey) as? NSNumber)?.doubleValue ?? 0))
+        let storedVocalSteps = min(Self.vocalStepMaximum, max(-Self.vocalStepMaximum,
+            (defaults.object(forKey: Self.vocalStepsKey) as? NSNumber)?.intValue ?? 0))
+        vocalSteps = storedVocalSteps
+        processingVocalSteps = storedVocalSteps
         customPresets = storedCustom.compactMap { preset in
             let name = preset.name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { return nil }
@@ -247,14 +257,29 @@ final class MoumusicEqualizer: ObservableObject {
         return 1
     }
 
+    /// 人声分离推子：0 为原声；正数只保留中置声道（人声），负数削弱中置声道（伴奏）。
+    func setVocalSteps(_ steps: Int) {
+        let clamped = min(Self.vocalStepMaximum, max(-Self.vocalStepMaximum, steps))
+        guard vocalSteps != clamped else { return }
+        vocalSteps = clamped
+        lock.lock()
+        processingVocalSteps = clamped
+        lock.unlock()
+        defaults.set(clamped, forKey: Self.vocalStepsKey)
+    }
+
     func process(bufferList: UnsafeMutablePointer<AudioBufferList>, frameCount: Int) {
         guard frameCount > 0 else { return }
         lock.lock()
         defer { lock.unlock() }
         let balanceActive = abs(processingBalance) > 0.001
-        guard processingFormatIsFloat32, processingEnabled || balanceActive else { return }
+        let vocalActive = processingVocalSteps != 0
+        guard processingFormatIsFloat32, processingEnabled || balanceActive || vocalActive else { return }
 
         let buffers = UnsafeMutableAudioBufferListPointer(bufferList)
+        if vocalActive {
+            applyVocalSeparationLocked(buffers: buffers, frameCount: frameCount)
+        }
         var firstChannelIndex = 0
         for buffer in buffers {
             let channelCount = max(Int(buffer.mNumberChannels), 1)
@@ -290,6 +315,54 @@ final class MoumusicEqualizer: ObservableObject {
                     samples[sampleIndex] = sample.isFinite ? min(max(sample, -4), 4) : 0
                 }
             }
+        }
+    }
+
+    /// 中置声道分离：M=(L+R)/2 偏人声，S=(L-R)/2 偏伴奏。
+    /// 正数保留 M、衰减 S；负数衰减 M、保留 S。必须在持锁状态下调用。
+    private func applyVocalSeparationLocked(buffers: UnsafeMutableAudioBufferListPointer,
+                                            frameCount: Int) {
+        let value = Float(processingVocalSteps) / Float(Self.vocalStepMaximum)
+        let centerScale = 1 - max(0, -value)
+        let sideScale = 1 - max(0, value)
+        guard centerScale != 1 || sideScale != 1 else { return }
+
+        // 非交错：每个 buffer 一个声道，前两个是左右。
+        if buffers.count >= 2,
+           buffers[0].mNumberChannels == 1, buffers[1].mNumberChannels == 1,
+           let leftRaw = buffers[0].mData, let rightRaw = buffers[1].mData {
+            let leftBytes = Int(buffers[0].mDataByteSize) / MemoryLayout<Float>.size
+            let rightBytes = Int(buffers[1].mDataByteSize) / MemoryLayout<Float>.size
+            let frames = min(frameCount, min(leftBytes, rightBytes))
+            guard frames > 0 else { return }
+            let left = leftRaw.assumingMemoryBound(to: Float.self)
+            let right = rightRaw.assumingMemoryBound(to: Float.self)
+            for frame in 0..<frames {
+                let l = left[frame]
+                let r = right[frame]
+                let mid = (l + r) * 0.5
+                let side = (l - r) * 0.5
+                left[frame] = mid * centerScale + side * sideScale
+                right[frame] = mid * centerScale - side * sideScale
+            }
+            return
+        }
+
+        // 交错：单个 buffer 内前两个声道是左右。
+        guard let raw = buffers.first?.mData, buffers[0].mNumberChannels >= 2 else { return }
+        let channels = Int(buffers[0].mNumberChannels)
+        let frames = min(frameCount,
+                         Int(buffers[0].mDataByteSize) / (MemoryLayout<Float>.size * channels))
+        guard frames > 0 else { return }
+        let samples = raw.assumingMemoryBound(to: Float.self)
+        for frame in 0..<frames {
+            let base = frame * channels
+            let l = samples[base]
+            let r = samples[base + 1]
+            let mid = (l + r) * 0.5
+            let side = (l - r) * 0.5
+            samples[base] = mid * centerScale + side * sideScale
+            samples[base + 1] = mid * centerScale - side * sideScale
         }
     }
 
