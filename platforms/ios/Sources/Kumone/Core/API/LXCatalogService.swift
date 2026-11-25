@@ -1368,8 +1368,17 @@ enum LXCatalogService {
     }
 
     private static func searchQishuiSonglists(_ keyword: String, page: Int, limit: Int) async throws -> [LXPlaylistSummary] {
-        let tracks = try await QishuiCatalogService.search(keyword, limit: max(limit, 12),
-                                                           offset: max(0, page - 1) * limit)
+        let offset = max(0, page - 1) * limit
+        // 汽水搜索里有一个真实的 playlist 组，先按歌单返回；没有歌单时才退回「搜索歌单」占位。
+        if let playlists = try? await QishuiCatalogService.searchPlaylists(keyword, limit: limit, offset: offset),
+           !playlists.isEmpty {
+            return playlists.map {
+                LXPlaylistSummary(id: $0.id, name: $0.name, coverURL: $0.coverURL,
+                                  playCount: 0, trackCount: $0.trackCount,
+                                  description: $0.description, author: $0.author, source: .sd)
+            }
+        }
+        let tracks = try await QishuiCatalogService.search(keyword, limit: max(limit, 12), offset: offset)
         guard !tracks.isEmpty else { return [] }
         return [
             LXPlaylistSummary(id: "search:\(keyword)", name: keyword, coverURL: tracks.first?.album.picUrl,

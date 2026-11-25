@@ -164,24 +164,43 @@ struct AccountPlaylistTracksView: View {
     }
 }
 
-/// "我的歌单" shelf shown at the top of a platform's own home page (Kugou / QQ Music).
+/// "我的歌单" shelf shown at the top of a platform's own home page (Kugou / QQ Music / Qishui).
 struct PlatformAccountPlaylists: View {
     let platform: LXCatalogPlatform
 
     @EnvironmentObject private var qqMusic: QQMusicSessionStore
     @EnvironmentObject private var kugou: KugouSessionStore
+    @ObservedObject private var qishui = QishuiSessionStore.shared
     @State private var kugouLists: [KugouAPI.CloudPlaylist] = []
     @State private var qqLists: [QQMusicAPI.AccountPlaylist] = []
+    @State private var qishuiLists: [QishuiCatalogService.PlaylistSummary] = []
     @State private var showAll = false
 
     private var isLoggedIn: Bool {
-        (platform == .kg && kugou.isLoggedIn) || (platform == .tx && qqMusic.isLoggedIn)
+        switch platform {
+        case .kg: return kugou.isLoggedIn
+        case .tx: return qqMusic.isLoggedIn
+        case .sd: return qishui.isLoggedIn
+        default: return false
+        }
     }
 
-    private var platformTitle: String { platform == .kg ? "酷狗音乐" : "QQ 音乐" }
+    private var platformTitle: String {
+        switch platform {
+        case .kg: return "酷狗音乐"
+        case .tx: return "QQ 音乐"
+        case .sd: return "汽水音乐"
+        default: return platform.displayName
+        }
+    }
 
     private var cloudSource: (key: String, name: String) {
-        platform == .kg ? ("kugou", "酷狗音乐") : ("qq", "QQ 音乐")
+        switch platform {
+        case .kg: return ("kugou", "酷狗音乐")
+        case .tx: return ("qq", "QQ 音乐")
+        case .sd: return ("qishui", "汽水音乐")
+        default: return (platform.rawValue, platform.displayName)
+        }
     }
 
     private var cloudItems: [CloudPlaylistItem] {
@@ -194,6 +213,17 @@ struct PlatformAccountPlaylists: View {
                 }
             }
         }
+        if platform == .sd {
+            let credential = qishui.credential
+            return qishuiLists.map { list in
+                CloudPlaylistItem(id: list.id, name: list.name, coverURL: list.coverURL, count: list.trackCount) {
+                    try await QishuiCatalogService.playlistDetail(
+                        id: list.id, ownerId: list.ownerId, limit: 1000,
+                        credential: credential
+                    ).tracks
+                }
+            }
+        }
         return qqLists.map { list in
             CloudPlaylistItem(id: list.id, name: list.name, coverURL: list.coverURL, count: list.count) {
                 try await LXCatalogService.playlistDetail(source: .tx, id: list.id).tracks
@@ -201,12 +231,18 @@ struct PlatformAccountPlaylists: View {
         }
     }
 
+    private var hasContent: Bool {
+        !kugouLists.isEmpty || !qqLists.isEmpty || !qishuiLists.isEmpty
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            if isLoggedIn, !(kugouLists.isEmpty && qqLists.isEmpty) {
+            if isLoggedIn, hasContent {
                 Shelf(title: "我的歌单", seeAll: { showAll = true }, rowHeight: Theme.Layout.coverShelfHeight) {
                     if platform == .kg {
                         ForEach(kugouLists) { list in kugouCard(list) }
+                    } else if platform == .sd {
+                        ForEach(qishuiLists) { list in qishuiCard(list) }
                     } else {
                         ForEach(qqLists) { list in qqCard(list) }
                     }
@@ -220,6 +256,8 @@ struct PlatformAccountPlaylists: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 16, alignment: .top)], spacing: 18) {
                     if platform == .kg {
                         ForEach(kugouLists) { list in kugouCard(list) }
+                    } else if platform == .sd {
+                        ForEach(qishuiLists) { list in qishuiCard(list) }
                     } else {
                         ForEach(qqLists) { list in qqCard(list) }
                     }
@@ -231,14 +269,20 @@ struct PlatformAccountPlaylists: View {
             .navigationTitle("\(platformTitle)歌单")
             .navigationBarTitleDisplayMode(.inline)
         }
-        .task(id: "\(platform.rawValue)-\(kugou.sessionRevision)-\(qqMusic.sessionRevision)") {
+        .task(id: "\(platform.rawValue)-\(kugou.sessionRevision)-\(qqMusic.sessionRevision)-\(qishui.sessionRevision)") {
             if platform == .kg, kugou.isLoggedIn, let cookie = await kugou.cookieWithDevice() {
                 kugouLists = Self.unique((try? await KugouAPI.shared.userPlaylists(cookie: cookie)) ?? [], by: \.id)
             } else if platform == .tx, qqMusic.isLoggedIn, let cookie = qqMusic.cookie {
                 qqLists = Self.unique((try? await QQMusicAPI.shared.userPlaylists(cookie: cookie)) ?? [], by: \.id)
+            } else if platform == .sd, qishui.isLoggedIn, let credential = qishui.credential {
+                qishuiLists = Self.unique(
+                    (try? await QishuiCatalogService.myPlaylists(credential: credential)) ?? [],
+                    by: \.id)
             }
             // Keep playlists the user already added up to date every time the page opens.
-            await CloudPlaylistSync.refreshMirrored(source: cloudSource.key, sourceName: cloudSource.name, items: cloudItems)
+            if platform != .sd {
+                await CloudPlaylistSync.refreshMirrored(source: cloudSource.key, sourceName: cloudSource.name, items: cloudItems)
+            }
         }
     }
 
@@ -246,6 +290,25 @@ struct PlatformAccountPlaylists: View {
     private static func unique<T>(_ items: [T], by key: KeyPath<T, String>) -> [T] {
         var seen = Set<String>()
         return items.filter { seen.insert($0[keyPath: key]).inserted }
+    }
+
+    private func qishuiCard(_ list: QishuiCatalogService.PlaylistSummary) -> some View {
+        let credential = qishui.credential
+        return NavigationLink {
+            AccountPlaylistTracksView(title: list.name) {
+                try await QishuiCatalogService.playlistDetail(
+                    id: list.id, ownerId: list.ownerId, limit: 1000,
+                    credential: credential
+                ).tracks
+            }
+        } label: {
+            CoverCardBody(coverURL: list.coverURL?.resizedImageURL(384),
+                          title: list.name,
+                          subtitle: list.trackCount > 0
+                            ? "\(list.trackCount) 首\(list.isOwned ? "" : " · 收藏")"
+                            : (list.isOwned ? "我的歌单" : "收藏歌单"))
+        }
+        .buttonStyle(.plain)
     }
 
     private func kugouCard(_ list: KugouAPI.CloudPlaylist) -> some View {
