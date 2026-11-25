@@ -1922,7 +1922,8 @@ final class PlayerService: ObservableObject {
                 // 汽水的每个档位都是 CENC 加密媒体，这里解密成本地文件再交给播放器。
                 let playable = try await QishuiPlayback.playableURL(for: audio, trackID: trackID)
                 if audio.needsDecryption {
-                    let bytes = (try? FileManager.default.attributesOfItem(atPath: playable.path))?[.size] as? Int ?? 0
+                    let attributes = try? FileManager.default.attributesOfItem(atPath: playable.path)
+                    let bytes = (attributes?[.size] as? Int) ?? 0
                     DiagnosticLogStore.shared.append(
                         level: .info, category: "汽水音源",
                         message: "《\(track.name)》已解密为本地音频",

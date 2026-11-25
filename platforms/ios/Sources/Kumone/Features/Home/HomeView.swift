@@ -735,6 +735,8 @@ struct HomeView: View {
                             #endif
                         }
                         .padding(.horizontal, Theme.Layout.contentInset)
+                        // 上方若是横向卡片架，标题需要留出呼吸空间，否则两行文字会贴在一起。
+                        .padding(.top, model.lxRecommendPlaylists.isEmpty ? 0 : 14)
                         TrackListView(tracks: model.recommendTracks, showsSummary: false, showsBatchDownload: false)
                             .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }
