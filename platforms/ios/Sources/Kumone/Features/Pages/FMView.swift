@@ -73,6 +73,10 @@ struct FMView: View {
 
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
+                    // 左侧等宽占位让歌名文字本身居中，VIP 只跟在文字后面。
+                    if track?.isVIP == true {
+                        VIPBadge().hidden()
+                    }
                     Text(track?.name ?? String(localized: "私人漫游"))
                         .font(.system(size: 22, weight: .bold))
                         .lineLimit(1)

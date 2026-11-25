@@ -717,7 +717,7 @@ final class PlayerService: ObservableObject {
                         seconds,
                         rate: self.isPlaying ? Double(self.playbackRate) : 0
                     )
-                    if self.isPlaying, Date().timeIntervalSince(self.lastProgressPersistAt) >= 8 {
+                    if self.isPlaying, Date().timeIntervalSince(self.lastProgressPersistAt) >= 1 {
                         self.savePlaybackProgress()
                     }
                 }

@@ -5,6 +5,7 @@ import WebKit
 
 struct AfdianSupportView: View {
     @StateObject private var store = AfdianSupportStore.shared
+    @Environment(\.colorScheme) private var colorScheme
     @State private var selectedAmount = 30
     @State private var showPayment = false
 
@@ -21,7 +22,7 @@ struct AfdianSupportView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
         }
-        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .background { supportBackground }
         .navigationTitle("赞助与支持")
         .navigationBarTitleDisplayMode(.inline)
         .task { await store.load() }
@@ -31,14 +32,52 @@ struct AfdianSupportView: View {
         }
     }
 
+    /// 暖色渐变加两团柔光，替换原来的系统灰底。
+    private var supportBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: colorScheme == .dark
+                    ? [Color(red: 0.11, green: 0.08, blue: 0.07), Color(red: 0.07, green: 0.06, blue: 0.09)]
+                    : [Color(red: 1.00, green: 0.97, blue: 0.93), Color(red: 0.99, green: 0.95, blue: 0.97)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Circle()
+                .fill(Color.orange.opacity(colorScheme == .dark ? 0.24 : 0.16))
+                .frame(width: 340, height: 340)
+                .blur(radius: 90)
+                .offset(x: -130, y: -230)
+            Circle()
+                .fill(Color(red: 0.96, green: 0.42, blue: 0.55).opacity(colorScheme == .dark ? 0.18 : 0.10))
+                .frame(width: 320, height: 320)
+                .blur(radius: 100)
+                .offset(x: 160, y: 280)
+            RadialGradient(
+                colors: [Color.white.opacity(colorScheme == .dark ? 0.05 : 0.35), .clear],
+                center: .top,
+                startRadius: 8,
+                endRadius: 420
+            )
+        }
+        .ignoresSafeArea()
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 14) {
                 ZStack {
-                    Circle().fill(Color.orange.opacity(0.16))
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.orange, Color(red: 0.96, green: 0.42, blue: 0.55)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .shadow(color: Color.orange.opacity(0.35), radius: 10, y: 4)
                     Image(systemName: "heart.fill")
                         .font(.title2.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.white)
                 }
                 .frame(width: 58, height: 58)
 

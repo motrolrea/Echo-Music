@@ -242,6 +242,10 @@ final class HomeViewModel: ObservableObject {
                     tracks = liveTracks
                 }
             }
+            // 汽水的场景歌单解析失败时，用官方歌曲流补上「推荐歌曲」。
+            if platform == .sd, tracks.isEmpty {
+                tracks = (try? await QishuiCatalogService.feed(limit: 30)) ?? []
+            }
             recommendTracks = tracks
             dailyFirstCover = tracks.first?.album.picUrl
                 ?? content.playlists.first?.coverURL
@@ -714,15 +718,18 @@ struct HomeView: View {
                         }
                     }
                     if model.lxToplists.isEmpty, !model.lxRecommendPlaylists.isEmpty {
-                        Shelf(title: "热门歌单", rowHeight: 208) {
-                            ForEach(model.lxRecommendPlaylists.prefix(12)) { playlist in
+                        // 汽水没有公开歌单广场：它的推荐入口就是官方场景电台。
+                        Shelf(title: model.activePlatform == .sd ? "场景电台" : "热门歌单", rowHeight: 208) {
+                            ForEach(model.lxRecommendPlaylists.prefix(model.activePlatform == .sd ? 30 : 12)) { playlist in
                                 lxPlaylistCard(playlist)
                             }
                         }
                     }
                     if !model.recommendTracks.isEmpty {
                         HStack(alignment: .center, spacing: 8) {
-                            SectionHeader(title: model.activePlatform == .wy ? "热门歌曲" : "推荐歌曲")
+                            SectionHeader(title: model.activePlatform == .wy
+                                          ? "热门歌曲"
+                                          : (model.activePlatform == .sd ? "汽水推荐歌曲" : "推荐歌曲"))
                             #if os(iOS)
                             TrackBatchDownloadButton(tracks: model.recommendTracks)
                             #endif

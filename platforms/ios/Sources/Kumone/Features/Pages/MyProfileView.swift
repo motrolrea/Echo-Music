@@ -13,6 +13,7 @@ struct MyProfileView: View {
     @EnvironmentObject private var kugou: KugouSessionStore
     @EnvironmentObject private var bilibili: BilibiliSessionStore
     @ObservedObject private var qishui = QishuiSessionStore.shared
+    @ObservedObject private var migu = MiguSessionStore.shared
     @Environment(\.openLogin) private var openLogin
     @StateObject private var syncStore = ListeningSyncStore.shared
     @StateObject private var moumusicServer = MoumusicServerStore.shared
@@ -22,6 +23,7 @@ struct MyProfileView: View {
     @State private var showQQMusicLogin = false
     @State private var showKugouLogin = false
     @State private var showQishuiLogin = false
+    @State private var showMiguLogin = false
     @State private var showBilibiliLogin = false
     @State private var showMoumusicProfileEditor = false
     @ObservedObject private var deviceReporter = DeviceReporter.shared
@@ -169,6 +171,13 @@ struct MyProfileView: View {
         }
         .sheet(isPresented: $showQishuiLogin) {
             QishuiLoginSheet()
+        }
+        .sheet(isPresented: $showMiguLogin) {
+            ProviderWebLoginSheet(provider: .migu) { cookie in
+                try await MainActor.run {
+                    try MiguSessionStore.shared.signIn(cookie: cookie)
+                }
+            }
         }
         .sheet(isPresented: $showBilibiliLogin) {
             BilibiliLoginSheet()
@@ -685,6 +694,8 @@ struct MyProfileView: View {
                     title: "汽水音乐",
                     stats: platformStats(level: 0, playlists: nil, hearts: nil, listens: 0, follows: 0, fans: 0)
                 ) { showQishuiLogin = true }
+            case .mg:
+                miguProfile
             default:
                 MouGlassCard {
                     Text("\(activeProfilePlatform.displayName) 还没有个人主页，下面这些是本机记录。")
@@ -824,6 +835,49 @@ struct MyProfileView: View {
             if loggedIn, !stats.isEmpty {
                 profileStatRow(stats)
             }
+            }
+        }
+    }
+
+    /// 咪咕音乐：登录走官方网页并保存会话；曲库与播放仍使用公开接口。
+    private var miguProfile: some View {
+        MouGlassCard(cornerRadius: 24, padding: 14) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    BrandIconView(name: "BrandMigu")
+                        .frame(width: 44, height: 44)
+                        .clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(migu.isLoggedIn ? (migu.profileName ?? "咪咕音乐") : "未登录咪咕音乐")
+                            .font(.headline)
+                            .lineLimit(1)
+                        Text(migu.isLoggedIn ? "账号会话已保存" : "登录后可保存咪咕账号会话")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
+                    Button {
+                        showMiguLogin = true
+                    } label: {
+                        Image(systemName: migu.isLoggedIn ? "arrow.clockwise" : "person.badge.plus")
+                            .font(.title3)
+                            .foregroundStyle(migu.isLoggedIn ? .green : Theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(migu.isLoggedIn ? "重新登录咪咕音乐" : "登录咪咕音乐")
+                }
+                Text("咪咕音乐使用公开曲库搜索与播放；登录只保存账号会话，歌单同步暂未开放。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if migu.isLoggedIn {
+                    Button(role: .destructive) {
+                        migu.signOut()
+                    } label: {
+                        Text("退出咪咕登录").frame(maxWidth: .infinity, minHeight: 40)
+                    }
+                    .buttonStyle(.bordered)
+                }
             }
         }
     }
@@ -1234,16 +1288,26 @@ private struct ListeningRibbon: View {
 
     var body: some View {
         let peak = max(days.map(\.minutes).max() ?? 1, 1)
+        // 一个月视图里每根柱子只有几像素宽，逐条数值会被挤成竖排并裁切。
+        let dense = days.count > 10
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .bottom, spacing: 8) {
                 ForEach(Array(days.enumerated()), id: \.offset) { index, day in
                     let ratio = peak > 0 ? min(day.minutes / peak, 1) : 0
                     let active = selected == index
                     VStack(spacing: 8) {
-                        Text(day.minutes > 0 ? ListeningRibbon.shortDuration(day.minutes) : " ")
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
-                            .foregroundStyle(active ? Theme.accent : .secondary)
-                            .opacity(active || day.minutes > 0 ? 1 : 0)
+                        Group {
+                            if !dense, day.minutes > 0 {
+                                Text(ListeningRibbon.shortDuration(day.minutes))
+                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(active ? Theme.accent : .secondary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.6)
+                            } else {
+                                Color.clear
+                            }
+                        }
+                        .frame(height: 11)
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(
                                 LinearGradient(

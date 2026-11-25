@@ -6,6 +6,7 @@ enum ProviderWebLoginKind: String, Identifiable {
     case qqMusic
     case kugou
     case bilibili
+    case migu
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum ProviderWebLoginKind: String, Identifiable {
         case .qqMusic: return "QQ 音乐"
         case .kugou: return "酷狗音乐"
         case .bilibili: return "哔哩哔哩"
+        case .migu: return "咪咕音乐"
         }
     }
 
@@ -25,6 +27,8 @@ enum ProviderWebLoginKind: String, Identifiable {
         case .qqMusic: return URL(string: "https://y.qq.com/")!
         case .kugou: return URL(string: "https://m3ws.kugou.com/loginReg.php?act=login")!
         case .bilibili: return URL(string: "https://passport.bilibili.com/h5-app/passport/login")!
+        // 咪咕没有可用的独立登录页地址，打开官网首页，页面顶部有登录入口。
+        case .migu: return URL(string: "https://music.migu.cn/v3")!
         }
     }
 
@@ -34,6 +38,7 @@ enum ProviderWebLoginKind: String, Identifiable {
         case .qqMusic: return value.contains("qq.com")
         case .kugou: return value.contains("kugou.com")
         case .bilibili: return value.contains("bilibili.com")
+        case .migu: return value.contains("migu.cn")
         }
     }
 
@@ -79,6 +84,14 @@ enum ProviderWebLoginKind: String, Identifiable {
         case .bilibili:
             return !(values["sessdata"] ?? "").isEmpty &&
                 !(values["dedeuserid"] ?? "").isEmpty
+        case .migu:
+            // 咪咕网页的 Cookie 名称没有公开约定，先看常见的 uid，再看登录票据。
+            let uid = values["uid"] ?? values["userid"] ?? values["user_id"] ?? values["migu_uid"] ?? ""
+            if !uid.isEmpty, uid != "0" { return true }
+            return values.contains { key, value in
+                let name = key.lowercased()
+                return !value.isEmpty && (name.contains("access_token") || name.contains("ticket"))
+            }
         }
     }
 }
@@ -132,6 +145,8 @@ struct ProviderWebLoginSheet: View {
                 }
             }
             .task(id: webView != nil) {
+                // 咪咕的登录状态无法可靠地从 Cookie 名称判断，等用户确认后再读取。
+                guard provider != .migu else { return }
                 await monitorCookies()
             }
             .alert("读取登录状态失败", isPresented: Binding(
@@ -164,7 +179,9 @@ struct ProviderWebLoginSheet: View {
                 .joined(separator: "; ")
 
             Task { @MainActor in
-                guard provider.looksLoggedIn(header) else {
+                // 咪咕以用户点“登录完成”为准：只要页面上有 Cookie 就保存会话。
+                let accepted = provider == .migu ? !header.isEmpty : provider.looksLoggedIn(header)
+                guard accepted else {
                     let names = header.split(separator: ";").compactMap { $0.split(separator: "=").first.map { String($0).trimmingCharacters(in: .whitespaces) } }.joined(separator: ",")
                     DiagnosticLogStore.shared.append(level: .warning, category: "\(provider.title)登录", message: "网页登录未检测到登录状态", detail: "cookies=\(names) | t.len=\(snapshot["t"]?.count ?? -1) KugooID=\(snapshot["KugooID"] ?? "-") kg_login=\(snapshot["kg_login"] ?? "-") UserName.len=\(snapshot["UserName"]?.count ?? -1)")
                     isReadingCookies = false

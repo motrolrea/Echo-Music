@@ -298,9 +298,9 @@ enum BrandIcon {
 }
 
 extension LXCatalogPlatform {
-    /// 左上角等平台切换入口暂不展示汽水音乐。
+    /// 平台切换入口：汇总不是真实平台，其余（含汽水）都可以选择。
     static var switcherCases: [LXCatalogPlatform] {
-        catalogueCases.filter { $0 != .aggregate && $0 != .sd }
+        catalogueCases.filter { $0 != .aggregate }
     }
 }
 

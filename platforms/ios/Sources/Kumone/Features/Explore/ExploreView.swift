@@ -144,6 +144,10 @@ final class ExploreViewModel: ObservableObject {
                 guard generation == requestGeneration else { return }
                 var newPlaylists = content.playlists
                 var newTracks = content.tracks
+                // 汽水没有歌单广场：场景歌曲缺失时直接用官方歌曲流兜底，避免推荐页缺一段。
+                if platform == .sd, newTracks.isEmpty {
+                    newTracks = (try? await QishuiCatalogService.feed(limit: 30)) ?? []
+                }
                 if platform == .wy {
                     if newPlaylists.isEmpty {
                         let personalized = (try? await NeteaseAPI.personalizedPlaylists(limit: 30)) ?? []
@@ -254,7 +258,7 @@ struct ExploreView: View {
                     if !filteredOfficial.isEmpty || (!playlistQueryTrimmed.isEmpty && !songResults.isEmpty) || (playlistQueryTrimmed.isEmpty && !model.tracks.isEmpty) {
                         VStack(alignment: .leading, spacing: 4) {
                     if !filteredOfficial.isEmpty {
-                        Shelf(title: "官方推荐歌单", rowHeight: 208) {
+                        Shelf(title: model.platform == .sd ? "汽水场景" : "官方推荐歌单", rowHeight: 208) {
                             ForEach(filteredOfficial.prefix(12)) { playlist in
                                 NavigationLink(value: Destination.lxPlaylist(source: playlist.source, id: playlist.id)) {
                                     CoverCardBody(
@@ -285,7 +289,7 @@ struct ExploreView: View {
 
                     if playlistQueryTrimmed.isEmpty, !model.tracks.isEmpty {
                         HStack(alignment: .center, spacing: 10) {
-                            Text("\(model.platform.displayName) 热门歌曲")
+                            Text(model.platform == .sd ? "汽水推荐歌曲" : "\(model.platform.displayName) 热门歌曲")
                                 .font(.title2.weight(.semibold))
                             Spacer(minLength: 0)
                             #if os(iOS)

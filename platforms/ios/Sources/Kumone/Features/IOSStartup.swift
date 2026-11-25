@@ -112,6 +112,10 @@ public struct IOSStartupSplashView: View {
     @State private var pulse = false
     @State private var vinylSpin = false
     @State private var wavePhase: CGFloat = 0
+    @State private var orbit = false
+    @State private var sweep = false
+    @State private var bar = false
+    @State private var glow = false
 
     public init(coordinator: IOSStartupCoordinator) {
         self.coordinator = coordinator
@@ -144,6 +148,18 @@ public struct IOSStartupSplashView: View {
             withAnimation(.linear(duration: 2.4).repeatForever(autoreverses: false)) {
                 wavePhase = 1
             }
+            withAnimation(.linear(duration: 3.4).repeatForever(autoreverses: false)) {
+                sweep = true
+            }
+            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                bar = true
+            }
+            withAnimation(.linear(duration: 20).repeatForever(autoreverses: false)) {
+                orbit = true
+            }
+            withAnimation(.linear(duration: 26).repeatForever(autoreverses: false)) {
+                glow = true
+            }
         }
     }
 
@@ -162,11 +178,30 @@ public struct IOSStartupSplashView: View {
                 startRadius: 20,
                 endRadius: 340
             )
+
+            // 缓慢旋转的柔光，让纯色背景多一点层次。
+            Circle()
+                .fill(
+                    AngularGradient(
+                        colors: [
+                            Theme.accent.opacity(0.0),
+                            Theme.accent.opacity(colorScheme == .dark ? 0.30 : 0.20),
+                            Color.clear,
+                            Theme.accent.opacity(colorScheme == .dark ? 0.16 : 0.12),
+                            Color.clear,
+                        ],
+                        center: .center
+                    )
+                )
+                .frame(width: 620, height: 620)
+                .blur(radius: 100)
+                .rotationEffect(.degrees(glow ? 360 : 0))
+                .allowsHitTesting(false)
         }
     }
 
     private var hero: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 26) {
             ZStack {
                 ForEach(0..<3, id: \.self) { index in
                     Circle()
@@ -184,6 +219,20 @@ public struct IOSStartupSplashView: View {
                         )
                 }
 
+                // 缓慢环绕的三个光点。
+                ZStack {
+                    ForEach(0..<3, id: \.self) { index in
+                        Circle()
+                            .fill(Theme.accent.opacity(colorScheme == .dark ? 0.85 : 0.6))
+                            .frame(width: 5, height: 5)
+                            .shadow(color: Theme.accent.opacity(0.6), radius: 4)
+                            .offset(y: -88)
+                            .rotationEffect(.degrees(Double(index) * 120))
+                    }
+                }
+                .rotationEffect(.degrees(orbit ? 360 : 0))
+                .opacity(reduceMotion ? 0 : 1)
+
                 Circle()
                     .strokeBorder(.white.opacity(0.14), lineWidth: 7)
                     .frame(width: 124, height: 124)
@@ -192,15 +241,43 @@ public struct IOSStartupSplashView: View {
                 BrandIconView(name: "BrandAppIcon")
                     .frame(width: 92, height: 92)
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay {
+                        // 斜向流光扫过图标。
+                        GeometryReader { proxy in
+                            Rectangle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.clear, .white.opacity(0.5), .clear],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                                .frame(width: 30, height: proxy.size.height * 2)
+                                .rotationEffect(.degrees(18))
+                                .offset(x: sweep ? proxy.size.width + 46 : -70)
+                                .blendMode(.plusLighter)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .allowsHitTesting(false)
+                    }
                     .shadow(color: Theme.accent.opacity(0.35), radius: 18, y: 8)
                     .scaleEffect(appeared ? 1 : 0.86)
             }
-            .frame(height: 220)
+            .frame(height: 228)
 
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 Text("Echo Music")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .tracking(1.2)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: colorScheme == .dark
+                                ? [.white, Theme.accent]
+                                : [Color(red: 0.15, green: 0.12, blue: 0.16), Theme.accent],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
 
                 Text(coordinator.message)
                     .font(.subheadline.weight(.medium))
@@ -210,14 +287,32 @@ public struct IOSStartupSplashView: View {
 
                 EchoWaveform(phase: wavePhase)
                     .frame(width: 148, height: 18)
-                    .padding(.top, 4)
+                    .padding(.top, 2)
+
+                // 不确定进度条：来回滑动，表示仍在准备内容。
+                Capsule()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(width: 132, height: 3)
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(Theme.accent)
+                            .frame(width: 46, height: 3)
+                            .offset(x: bar ? 86 : 0)
+                    }
+                    .clipShape(Capsule())
+                    .padding(.top, 8)
+                    .opacity(reduceMotion ? 0.5 : 1)
             }
             .padding(.horizontal, 32)
         }
     }
 
     private var credits: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 7) {
+            Capsule()
+                .fill(Color.primary.opacity(0.12))
+                .frame(width: 34, height: 1)
+                .padding(.bottom, 2)
             Text("基于 Beans Music 与 Moumusic 二次创作")
             Text("保留原项目核心能力，重新设计播放体验")
             Text("仅供学习交流使用")
@@ -226,7 +321,7 @@ public struct IOSStartupSplashView: View {
         .foregroundStyle(.tertiary)
         .multilineTextAlignment(.center)
         .padding(.horizontal, 28)
-        .padding(.bottom, 28)
+        .padding(.bottom, 30)
     }
 }
 

@@ -626,7 +626,7 @@ final class SettingsManager: ObservableObject {
         let storedPlatform = defaults.string(forKey: Keys.homeRecommendationPlatform)
             .flatMap(LXCatalogPlatform.init)
         homeRecommendationPlatform = storedPlatform.flatMap {
-            ($0 == .aggregate || $0 == .sd) ? nil : $0
+            ($0 == .aggregate) ? nil : $0
         } ?? .wy
         enableSourcePlatformFallback = defaults.object(forKey: Keys.sourcePlatformFallback) as? Bool ?? true
         autoPauseOnRouteChange = defaults.object(forKey: Keys.autoPauseOnRouteChange) as? Bool ?? true
@@ -672,7 +672,7 @@ final class SettingsManager: ObservableObject {
         let storedPlatform = defaults.string(forKey: Keys.homeRecommendationPlatform)
             .flatMap(LXCatalogPlatform.init)
         homeRecommendationPlatform = storedPlatform.flatMap {
-            ($0 == .aggregate || $0 == .sd) ? nil : $0
+            ($0 == .aggregate) ? nil : $0
         } ?? .wy
         enableSourcePlatformFallback = defaults.object(forKey: Keys.sourcePlatformFallback) as? Bool ?? true
         autoPauseOnRouteChange = defaults.object(forKey: Keys.autoPauseOnRouteChange) as? Bool ?? true

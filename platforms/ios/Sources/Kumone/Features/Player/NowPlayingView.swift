@@ -3520,8 +3520,10 @@ private struct PlayerTitleRow: View {
     var body: some View {
         // 短歌名只占文字宽度，VIP 跟在字后面。拉成整行会把徽章顶到右侧按钮旁。
         // 长歌名仍占满剩余宽度并滚动，徽章固定在行尾。
+        // 居中模式下左侧留一个等宽占位，让文字本身居中，VIP 只跟在文字后面，不参与居中。
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 6) {
+                if centered, isVIP { VIPBadge().hidden() }
                 Text(name)
                     .font(.system(size: titleSize, weight: .bold))
                     .foregroundStyle(.white)
@@ -3530,6 +3532,11 @@ private struct PlayerTitleRow: View {
                 if isVIP { VIPBadge() }
             }
             HStack(spacing: 6) {
+                if centered, isVIP {
+                    VIPBadge()
+                        .hidden()
+                        .layoutPriority(1)
+                }
                 PlayerMarqueeText(
                     name,
                     font: .system(size: titleSize, weight: .bold),
