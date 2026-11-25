@@ -1435,7 +1435,8 @@ struct QishuiDiscoverySection: View {
             if !tracks.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .center, spacing: 8) {
-                        SectionHeader(title: title)
+                        Text(title)
+                            .font(.title2.weight(.semibold))
                         #if os(iOS)
                         TrackBatchDownloadButton(tracks: tracks)
                         #endif
