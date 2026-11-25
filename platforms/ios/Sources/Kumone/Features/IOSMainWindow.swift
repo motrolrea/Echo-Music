@@ -115,7 +115,10 @@ public struct IOSMainWindow: View {
                 player.pendingDestination = nil
             }
             .onChange(of: scenePhase) { phase in
-                guard phase == .active else { return }
+                if phase != .active {
+                    player.savePlaybackProgress()
+                    return
+                }
                 Task { @MainActor in
                     await account.refreshForOpen()
                     await MusicSessionRefreshCoordinator.shared.refreshIfNeeded()

@@ -456,6 +456,7 @@ final class SettingsManager: ObservableObject {
         static let homeRecommendationPlatform = "settings.homeRecommendationPlatform"
         static let sourcePlatformFallback = "settings.sourcePlatformFallback"
         static let autoPauseOnRouteChange = "settings.autoPauseOnRouteChange"
+        static let resumePlaybackPosition = "settings.resumePlaybackPosition"
         static let bilibiliMode = "settings.bilibiliMode"
         static let bilibiliRecommendationSource = "settings.bilibiliRecommendationSource"
         static let bilibiliDanmakuEnabled = "settings.bilibiliDanmakuEnabled"
@@ -569,6 +570,11 @@ final class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(autoPauseOnRouteChange, forKey: Keys.autoPauseOnRouteChange) }
     }
 
+    /// 划掉后台再进来时，从上次进度继续还是从头播放。
+    @Published var resumePlaybackPosition: Bool {
+        didSet { UserDefaults.standard.set(resumePlaybackPosition, forKey: Keys.resumePlaybackPosition) }
+    }
+
     /// The Bilibili capability is one mutually-exclusive mode. The current
     /// settings schema intentionally has no migration path for older builds:
     /// a fresh install defaults to the video experience, and the selected mode
@@ -624,6 +630,7 @@ final class SettingsManager: ObservableObject {
         } ?? .wy
         enableSourcePlatformFallback = defaults.object(forKey: Keys.sourcePlatformFallback) as? Bool ?? true
         autoPauseOnRouteChange = defaults.object(forKey: Keys.autoPauseOnRouteChange) as? Bool ?? true
+        resumePlaybackPosition = defaults.object(forKey: Keys.resumePlaybackPosition) as? Bool ?? true
         bilibiliMode = defaults.string(forKey: Keys.bilibiliMode)
             .flatMap(BilibiliMode.init(rawValue:)) ?? .watch
         bilibiliDanmakuEnabled = defaults.object(forKey: Keys.bilibiliDanmakuEnabled) as? Bool ?? true
@@ -669,6 +676,7 @@ final class SettingsManager: ObservableObject {
         } ?? .wy
         enableSourcePlatformFallback = defaults.object(forKey: Keys.sourcePlatformFallback) as? Bool ?? true
         autoPauseOnRouteChange = defaults.object(forKey: Keys.autoPauseOnRouteChange) as? Bool ?? true
+        resumePlaybackPosition = defaults.object(forKey: Keys.resumePlaybackPosition) as? Bool ?? true
         bilibiliMode = defaults.string(forKey: Keys.bilibiliMode)
             .flatMap(BilibiliMode.init(rawValue:)) ?? .watch
         bilibiliDanmakuEnabled = defaults.object(forKey: Keys.bilibiliDanmakuEnabled) as? Bool ?? true

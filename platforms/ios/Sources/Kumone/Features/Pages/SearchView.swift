@@ -578,7 +578,7 @@ struct SearchView: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
-                    ForEach(LXCatalogPlatform.catalogueCases) { platform in
+                    ForEach(LXCatalogPlatform.switcherCases) { platform in
                         Button {
                             #if os(iOS)
                             biliSelected = false

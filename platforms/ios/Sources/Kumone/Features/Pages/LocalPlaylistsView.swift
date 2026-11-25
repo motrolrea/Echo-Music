@@ -85,7 +85,7 @@ struct LocalPlaylistsView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
                     Section("切换平台") {
-                        ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }) { platform in
+                        ForEach(LXCatalogPlatform.switcherCases) { platform in
                             Button {
                                 settings.homeRecommendationMode = platform == .wy ? .netease : .lx
                                 settings.homeRecommendationPlatform = platform

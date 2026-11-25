@@ -365,6 +365,13 @@ final class PlayerService: ObservableObject {
         currentTrack != nil || !queue.isEmpty || !recentContexts.isEmpty
     }
 
+    private var lastProgressPersistAt = Date.distantPast
+
+    func savePlaybackProgress() {
+        persistState()
+        lastProgressPersistAt = Date()
+    }
+
     var currentQuality: AudioQuality {
         trackQualityOverride ?? SettingsManager.shared.audioQuality
     }
@@ -710,6 +717,9 @@ final class PlayerService: ObservableObject {
                         seconds,
                         rate: self.isPlaying ? Double(self.playbackRate) : 0
                     )
+                    if self.isPlaying, Date().timeIntervalSince(self.lastProgressPersistAt) >= 8 {
+                        self.savePlaybackProgress()
+                    }
                 }
             }
         }
@@ -846,7 +856,13 @@ final class PlayerService: ObservableObject {
         if isPlaying { return true }
         if engine.currentItem == nil {
             // Restored session: re-resolve the source.
-            startPlaying(track, indexUnchanged: true, preserveTrackQualityOverride: true)
+            let resumeAt = SettingsManager.shared.resumePlaybackPosition ? pendingSeek : nil
+            startPlaying(
+                track,
+                indexUnchanged: true,
+                resumeAt: resumeAt,
+                preserveTrackQualityOverride: true
+            )
             return true
         }
 
@@ -2755,6 +2771,7 @@ final class PlayerService: ObservableObject {
         var shuffle: Bool
         /// Optional so state files written before recents existed still decode.
         var recentContexts: [PlayContext]?
+        var currentTime: TimeInterval?
     }
 
     private func persistState() {
@@ -2764,7 +2781,8 @@ final class PlayerService: ObservableObject {
             currentKey: currentTrack?.playbackKey,
             repeatMode: repeatMode.rawValue,
             shuffle: shuffleEnabled,
-            recentContexts: recentContexts
+            recentContexts: recentContexts,
+            currentTime: progress
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
         let url = Self.stateFileURL
@@ -2795,6 +2813,11 @@ final class PlayerService: ObservableObject {
             currentIndex = idx
             currentTrack = activeQueue[idx]
             duration = activeQueue[idx].duration
+            let savedTime = SettingsManager.shared.resumePlaybackPosition
+                ? max(0, state.currentTime ?? 0)
+                : 0
+            progress = savedTime
+            pendingSeek = savedTime > 1 ? savedTime : nil
             NowPlayingManager.shared.updateMetadata(for: activeQueue[idx], duration: duration)
             Task {
                 await loadLyrics(for: activeQueue[idx], generation: resolveGeneration)

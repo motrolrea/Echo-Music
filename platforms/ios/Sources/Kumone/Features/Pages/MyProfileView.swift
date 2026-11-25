@@ -83,7 +83,7 @@ struct MyProfileView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Menu {
                     Section("切换平台") {
-                        ForEach(LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }) { platform in
+                        ForEach(LXCatalogPlatform.switcherCases) { platform in
                             Button {
                                 bilibiliActive = false
                                 settings.homeRecommendationMode = platform == .wy ? .netease : .lx
@@ -1234,44 +1234,66 @@ private struct ListeningRibbon: View {
 
     var body: some View {
         let peak = max(days.map(\.minutes).max() ?? 1, 1)
-        VStack(alignment: .leading, spacing: 10) {
-            GeometryReader { geo in
-                let width = geo.size.width
-                let total = max(days.reduce(0) { $0 + max($1.minutes, 0.35) }, 0.35)
-                HStack(spacing: 3) {
-                    ForEach(Array(days.enumerated()), id: \.offset) { index, day in
-                        let share = max(day.minutes, 0.35) / total
-                        let active = selected == index
-                        Capsule()
-                            .fill(day.minutes > 0
-                                  ? Theme.accent.opacity(0.28 + 0.72 * day.minutes / peak)
-                                  : Color.primary.opacity(0.08))
-                            .frame(width: max(width * share - 3, 6))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .bottom, spacing: 8) {
+                ForEach(Array(days.enumerated()), id: \.offset) { index, day in
+                    let ratio = peak > 0 ? min(day.minutes / peak, 1) : 0
+                    let active = selected == index
+                    VStack(spacing: 8) {
+                        Text(day.minutes > 0 ? ListeningRibbon.shortDuration(day.minutes) : " ")
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            .foregroundStyle(active ? Theme.accent : .secondary)
+                            .opacity(active || day.minutes > 0 ? 1 : 0)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: day.minutes > 0
+                                        ? [Theme.accent.opacity(active ? 1 : 0.78), Theme.accent.opacity(active ? 0.55 : 0.28)]
+                                        : [Color.primary.opacity(0.08), Color.primary.opacity(0.04)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .frame(height: max(8, 92 * ratio))
+                            .shadow(color: active ? Theme.accent.opacity(0.28) : .clear, radius: 8, y: 3)
                             .overlay {
-                                if active {
-                                    Capsule().strokeBorder(Color.primary, lineWidth: 1.5)
-                                }
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(active ? 0.28 : 0.08), lineWidth: 1)
                             }
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                                    selected = active ? nil : index
-                                }
-                            }
-                            .accessibilityLabel("\(day.label) \(Int(day.minutes)) 分钟")
+                        Text(day.label)
+                            .font(.system(size: 10, weight: active ? .semibold : .medium))
+                            .foregroundStyle(active ? .primary : .secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                            selected = active ? nil : index
+                        }
+                    }
+                    .accessibilityLabel("\(day.label) \(Int(day.minutes)) 分钟")
                 }
             }
-            .frame(height: 46)
+            .frame(height: 132, alignment: .bottom)
             if let selected, days.indices.contains(selected) {
                 Text("\(days[selected].label) · \(ListeningRibbon.duration(days[selected].minutes))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Text("每一段的宽度是这天听了多久")
+                Text("柱高代表当天听了多久，点一下看具体时长")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+
+    static func shortDuration(_ minutes: Double) -> String {
+        if minutes >= 60 {
+            return String(format: "%.1fh", minutes / 60)
+        }
+        return "\(Int(minutes.rounded()))m"
     }
 
     static func duration(_ minutes: Double) -> String {

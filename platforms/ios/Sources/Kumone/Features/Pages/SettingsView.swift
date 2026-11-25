@@ -130,6 +130,12 @@ struct SettingsView: View {
                      : "断开输出设备时继续播放，请确认周围环境适合播放。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle("划掉后台后从上次位置继续", isOn: $settings.resumePlaybackPosition)
+                Text(settings.resumePlaybackPosition
+                     ? "重新打开应用时，会从上次听到的进度继续播放。"
+                     : "重新打开应用时，当前歌曲从头播放。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 #endif
                 Button {
                     showEqualizer = true

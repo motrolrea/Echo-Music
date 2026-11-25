@@ -248,7 +248,7 @@ struct PlatformGlyph: View {
         case .mg:
             brandImage("BrandMigu")
         case .sd:
-            qishuiMark
+            brandImage("BrandQishui")
         case .aggregate:
             Image(systemName: "square.stack.3d.up.fill")
                 .resizable()
@@ -264,16 +264,7 @@ struct PlatformGlyph: View {
 
     /// 汽水官方标是青色底上的白色音符。官网没有单独的图标文件，这里按同一图形绘制。
     private var qishuiMark: some View {
-        GeometryReader { proxy in
-            let side = min(proxy.size.width, proxy.size.height)
-            ZStack {
-                RoundedRectangle(cornerRadius: side * 0.24, style: .continuous)
-                    .fill(Color(red: 0.10, green: 0.90, blue: 0.78))
-                Image(systemName: "music.note")
-                    .font(.system(size: side * 0.48, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-        }
+        brandImage("BrandQishui")
     }
 
     private func letterMark(_ letter: String, _ color: Color) -> some View {
@@ -304,6 +295,13 @@ enum BrandIcon {
         return image
     }
     #endif
+}
+
+extension LXCatalogPlatform {
+    /// 左上角等平台切换入口暂不展示汽水音乐。
+    static var switcherCases: [LXCatalogPlatform] {
+        catalogueCases.filter { $0 != .aggregate && $0 != .sd }
+    }
 }
 
 struct BrandIconView: View {

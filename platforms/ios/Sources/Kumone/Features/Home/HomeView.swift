@@ -769,7 +769,7 @@ struct HomeView: View {
 #endif
 
     private var homePlatforms: [LXCatalogPlatform] {
-        LXCatalogPlatform.catalogueCases.filter { $0 != .aggregate }
+        LXCatalogPlatform.switcherCases
     }
 
 #if os(iOS)
@@ -950,62 +950,68 @@ struct HomeView: View {
     // MARK: - Feature cards
 
     private var featureCards: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 16) {
-                Color.clear.frame(width: max(0, Theme.Layout.contentInset - 16), height: 1)
-                // Daily recommendations are always visible; the page shows
-                // a separate login CTA when account sync is unavailable.
+        GeometryReader { geo in
+            let gap: CGFloat = 10
+            let dailyWidth = max((geo.size.width - gap) * 0.56, 168)
+            let sideWidth = max(geo.size.width - dailyWidth - gap, 118)
+            HStack(alignment: .top, spacing: gap) {
                 NavigationLink(value: Destination.daily) {
                     FeatureCard(
                         title: "每日推荐",
                         subtitle: "根据你的口味生成",
                         icon: "calendar",
                         coverURL: model.dailyFirstCover?.resizedImageURL(512),
-                        showsDate: true
+                        showsDate: true,
+                        size: CGSize(width: dailyWidth, height: 148)
                     )
                 }
                 .buttonStyle(.plain)
 
-                Button {
-                    player.startFM()
-                } label: {
-                    FeatureCard(
-                        title: "LX 漫游",
-                        subtitle: "按首页平台生成漫游队列",
-                        icon: "wave.3.right.circle.fill",
-                        coverURL: roamCovers.first,
-                        covers: roamCovers,
-                        gradient: [Color(red: 0.16, green: 0.20, blue: 0.42),
-                                   Color(red: 0.36, green: 0.24, blue: 0.62)]
-                    )
-                }
-                .buttonStyle(.interactiveCard)
+                VStack(spacing: gap) {
+                    Button {
+                        player.startFM()
+                    } label: {
+                        FeatureCard(
+                            title: "LX 漫游",
+                            subtitle: "按首页平台生成漫游队列",
+                            icon: "wave.3.right.circle.fill",
+                            coverURL: roamCovers.first,
+                            covers: roamCovers,
+                            gradient: [Color(red: 0.16, green: 0.20, blue: 0.42),
+                                       Color(red: 0.36, green: 0.24, blue: 0.62)],
+                            size: CGSize(width: sideWidth, height: 69)
+                        )
+                    }
+                    .buttonStyle(.interactiveCard)
 
-                if account.isLoggedIn {
                     Button {
                         startHeartbeatMode()
                     } label: {
                         FeatureCard(
                             title: "心动模式",
-                            subtitle: "你的红心歌曲和相似推荐",
+                            subtitle: account.isLoggedIn ? "你的红心歌曲和相似推荐" : "登录后开启",
                             icon: "heart.circle.fill",
                             coverURL: heartbeatCovers.first,
                             covers: heartbeatCovers,
                             gradient: [Color(red: 0.85, green: 0.19, blue: 0.41),
-                                       Color(red: 0.98, green: 0.42, blue: 0.34)]
+                                       Color(red: 0.98, green: 0.42, blue: 0.34)],
+                            size: CGSize(width: sideWidth, height: 69)
                         )
                     }
                     .buttonStyle(.interactiveCard)
                 }
-                Color.clear.frame(width: max(0, Theme.Layout.contentInset - 16), height: 1)
             }
-            .padding(.vertical, 6)
         }
-        .compatScrollClipDisabled()
+        .frame(height: 148)
+        .padding(.horizontal, Theme.Layout.contentInset)
+        .padding(.vertical, 6)
     }
 
     private func startHeartbeatMode() {
-        guard let likedList = account.likedSongsPlaylist else { return }
+        guard account.isLoggedIn, let likedList = account.likedSongsPlaylist else {
+            ToastCenter.shared.show(String(localized: "登录网易云后即可使用心动模式"))
+            return
+        }
         Task {
             guard let seed = account.likedTrackIDs.randomElement() else {
                 ToastCenter.shared.show(String(localized: "先收藏一些喜欢的歌曲吧"))
@@ -1131,17 +1137,18 @@ struct FeatureCard: View {
     var gradient: [Color] = [Color(red: 0.75, green: 0.16, blue: 0.22),
                              Color(red: 0.95, green: 0.35, blue: 0.28)]
     var showsDate = false
+    var size: CGSize = CGSize(width: 230, height: 132)
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             if covers.count > 1 {
                 RotatingCover(urls: covers)
-                    .frame(width: 230, height: 132)
+                    .frame(width: size.width, height: size.height)
                 LinearGradient(colors: [.black.opacity(0.1), .black.opacity(0.68)],
                                startPoint: .top, endPoint: .bottom)
             } else if let coverURL {
                 CachedAsyncImage(url: coverURL)
-                    .frame(width: 230, height: 132)
+                    .frame(width: size.width, height: size.height)
                 LinearGradient(colors: [.black.opacity(0.1), .black.opacity(0.68)],
                                startPoint: .top, endPoint: .bottom)
             } else {
@@ -1156,23 +1163,25 @@ struct FeatureCard: View {
                         dailyDateIcon
                     } else {
                         Image(systemName: icon)
-                            .font(.system(size: 22, weight: .medium))
+                            .font(.system(size: size.height < 90 ? 16 : 22, weight: .medium))
                             .foregroundStyle(.white)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 Text(title)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: size.height < 90 ? 13 : 15, weight: .bold))
                     .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Text(subtitle)
                     .font(.system(size: 11))
                     .foregroundStyle(.white.opacity(0.75))
                     .lineLimit(1)
             }
-            .padding(14)
+            .padding(size.height < 90 ? 10 : 14)
             .shadow(color: .black.opacity(0.4), radius: 2, y: 1)
         }
-        .frame(width: 230, height: 132)
+        .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Radius.large, style: .continuous)
