@@ -214,10 +214,10 @@ struct PlatformAccountPlaylists: View {
             }
         }
         if platform == .sd {
-            let credential = qishui.credential
             return qishuiLists.map { list in
                 CloudPlaylistItem(id: list.id, name: list.name, coverURL: list.coverURL, count: list.trackCount) {
-                    try await QishuiCatalogService.playlistDetail(
+                    let credential = await MainActor.run { QishuiSessionStore.shared.credential }
+                    return try await QishuiCatalogService.playlistDetail(
                         id: list.id, ownerId: list.ownerId, limit: 1000,
                         credential: credential
                     ).tracks
@@ -274,10 +274,15 @@ struct PlatformAccountPlaylists: View {
                 kugouLists = Self.unique((try? await KugouAPI.shared.userPlaylists(cookie: cookie)) ?? [], by: \.id)
             } else if platform == .tx, qqMusic.isLoggedIn, let cookie = qqMusic.cookie {
                 qqLists = Self.unique((try? await QQMusicAPI.shared.userPlaylists(cookie: cookie)) ?? [], by: \.id)
-            } else if platform == .sd, qishui.isLoggedIn, let credential = qishui.credential {
-                qishuiLists = Self.unique(
-                    (try? await QishuiCatalogService.myPlaylists(credential: credential)) ?? [],
-                    by: \.id)
+            } else if platform == .sd {
+                if qishui.isLoggedIn, let credential = qishui.credential {
+                    qishuiLists = Self.unique(
+                        (try? await QishuiCatalogService.myPlaylists(credential: credential)) ?? [],
+                        by: \.id)
+                } else {
+                    // 退出登录后不能留着旧账号的歌单：点进去只会提示「登录已失效」。
+                    qishuiLists = []
+                }
             }
             // Keep playlists the user already added up to date every time the page opens.
             if platform != .sd {
@@ -293,10 +298,10 @@ struct PlatformAccountPlaylists: View {
     }
 
     private func qishuiCard(_ list: QishuiCatalogService.PlaylistSummary) -> some View {
-        let credential = qishui.credential
-        return NavigationLink {
+        NavigationLink {
             AccountPlaylistTracksView(title: list.name) {
-                try await QishuiCatalogService.playlistDetail(
+                let credential = await MainActor.run { QishuiSessionStore.shared.credential }
+                return try await QishuiCatalogService.playlistDetail(
                     id: list.id, ownerId: list.ownerId, limit: 1000,
                     credential: credential
                 ).tracks
@@ -304,9 +309,7 @@ struct PlatformAccountPlaylists: View {
         } label: {
             CoverCardBody(coverURL: list.coverURL?.resizedImageURL(384),
                           title: list.name,
-                          subtitle: list.trackCount > 0
-                            ? "\(list.trackCount) 首\(list.isOwned ? "" : " · 收藏")"
-                            : (list.isOwned ? "我的歌单" : "收藏歌单"))
+                          subtitle: nil)
         }
         .buttonStyle(.plain)
     }

@@ -255,10 +255,14 @@ struct ExploreView: View {
                     }
                     .frame(minHeight: 300)
                 } else {
-                    if !filteredOfficial.isEmpty || (!playlistQueryTrimmed.isEmpty && !songResults.isEmpty) || (playlistQueryTrimmed.isEmpty && !model.tracks.isEmpty) {
+                    if model.platform == .sd, playlistQueryTrimmed.isEmpty
+                        || !filteredOfficial.isEmpty || (!playlistQueryTrimmed.isEmpty && !songResults.isEmpty) || (playlistQueryTrimmed.isEmpty && !model.tracks.isEmpty) {
                         VStack(alignment: .leading, spacing: 4) {
-                    if !filteredOfficial.isEmpty {
-                        Shelf(title: model.platform == .sd ? "汽水场景" : "官方推荐歌单", rowHeight: 208) {
+                    if model.platform == .sd, playlistQueryTrimmed.isEmpty {
+                        // 汽水场景用封面轮播卡片，和推荐页保持一致；卡片下不再显示「汽水音乐」。
+                        QishuiSceneRadio(title: "汽水场景")
+                    } else if !filteredOfficial.isEmpty {
+                        Shelf(title: "官方推荐歌单", rowHeight: 208) {
                             ForEach(filteredOfficial.prefix(12)) { playlist in
                                 NavigationLink(value: Destination.lxPlaylist(source: playlist.source, id: playlist.id)) {
                                     CoverCardBody(

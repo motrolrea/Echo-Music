@@ -48,14 +48,15 @@ struct QishuiAccountLibrary: View {
             } else {
                 VStack(spacing: 12) {
                     if let liked {
-                        let credential = session.credential
                         shortcutRow(title: "我喜欢的音乐",
                                     subtitle: liked.trackCount > 0 ? "\(liked.trackCount) 首" : "红心歌曲",
                                     cover: liked.coverURL,
                                     systemImage: "heart.fill",
                                     tint: .pink) {
                             AccountPlaylistTracksView(title: "我喜欢的音乐") {
-                                try await QishuiCatalogService.likedTracks(limit: 300, credential: credential)
+                                let credential = await MainActor.run { QishuiSessionStore.shared.credential }
+                                return try await QishuiCatalogService.likedTracks(limit: 300,
+                                                                                 credential: credential)
                             }
                         }
                     }
@@ -101,10 +102,10 @@ struct QishuiAccountLibrary: View {
     }
 
     private func playlistRow(_ item: QishuiCatalogService.PlaylistSummary) -> some View {
-        let credential = session.credential
-        return NavigationLink {
+        NavigationLink {
             AccountPlaylistTracksView(title: item.name) {
-                try await QishuiCatalogService.playlistDetail(
+                let credential = await MainActor.run { QishuiSessionStore.shared.credential }
+                return try await QishuiCatalogService.playlistDetail(
                     id: item.id, ownerId: item.ownerId, limit: 1000,
                     credential: credential
                 ).tracks

@@ -591,6 +591,12 @@ final class PlayerService: ObservableObject {
     private var pendingSeek: TimeInterval?
     /// URLs already found to be 30-second previews, per track, so the re-resolve asks for another one.
     private var previewRejects: [String: Set<String>] = [:]
+    /// URLs that failed inside AVPlayer (HTTP error, HTML body, unreadable stream): excluded when re-resolving.
+    private var playbackRejects: [String: Set<String>] = [:]
+    /// Observes the current item; a failed item must trigger a source switch instead of a silent stop.
+    private var itemFailureObserver: NSObjectProtocol?
+    private var itemStatusObservation: NSKeyValueObservation?
+    private var playbackWatchdog: Task<Void, Never>?
     private var consecutiveFailures = 0
     private var scrobbled = false
     private var startScrobbled = false
@@ -1323,6 +1329,62 @@ final class PlayerService: ObservableObject {
         advanceToNext(userInitiated: false)
     }
 
+    /// 第三方音源有时只保证「有 URL」：地址可能是 403、HTML 页面或读不了的流。
+    /// 解析阶段无法验证，只能在播放器这里确认；失败或长时间没有进度就换源。
+    private func observePlaybackFailure(track: Track, item: AVPlayerItem, url: URL, generation: Int) {
+        itemStatusObservation = item.observe(\.status, options: [.new, .initial]) { [weak self] observed, _ in
+            guard observed.status == .failed else { return }
+            let reason = observed.error?.localizedDescription ?? "AVPlayer 无法加载音频"
+            Task { @MainActor in
+                self?.retryAfterBadSource(track: track, url: url, generation: generation, reason: reason)
+            }
+        }
+        itemFailureObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main
+        ) { [weak self] note in
+            let reason = (note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)?.localizedDescription
+                ?? "播放中断"
+            Task { @MainActor in
+                self?.retryAfterBadSource(track: track, url: url, generation: generation, reason: reason)
+            }
+        }
+        // 有些坏地址不报错，只是一直停在 0:00。12 秒还没有任何进度就当作这个地址不可用。
+        playbackWatchdog?.cancel()
+        playbackWatchdog = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            guard let self, !Task.isCancelled, generation == self.resolveGeneration else { return }
+            let seconds = self.engine.currentTime().seconds
+            let stalled = !(seconds.isFinite && seconds > 0.3)
+            if self.engine.currentItem === item, self.isPlaying, stalled,
+               self.currentTrack?.playbackKey == track.playbackKey {
+                self.retryAfterBadSource(track: track, url: url, generation: generation,
+                                         reason: "12 秒没有音频进度")
+            }
+        }
+    }
+
+    private func retryAfterBadSource(track: Track, url: URL, generation: Int, reason: String) {
+        guard generation == resolveGeneration,
+              currentTrack?.playbackKey == track.playbackKey else { return }
+        // 已经播到结尾的「失败」是正常的结束抖动，不能把整首从头再放一遍。
+        let seconds = engine.currentTime().seconds
+        if seconds.isFinite, duration > 30, seconds > duration - 3 { return }
+        let key = track.playbackKey
+        let rejected = playbackRejects[key] ?? []
+        // 每个地址最多让四轮换源；全都不行时保留原本的播放失败提示，避免死循环。
+        guard rejected.count < 4, !rejected.contains(url.absoluteString) else { return }
+        playbackRejects[key, default: []].insert(url.absoluteString)
+        DiagnosticLogStore.shared.append(
+            level: .warning, category: "播放换源",
+            message: "《\(track.name)》当前音源不可用，正在换源",
+            detail: "\(reason)\n地址主机：\(url.host ?? "-")"
+        )
+        ToastCenter.shared.show("音源返回的地址无法播放，正在换源重试")
+        let resumeAt = progress > 3 ? progress : nil
+        startPlaying(track, indexUnchanged: true, resumeAt: resumeAt,
+                     preserveTrackQualityOverride: true)
+    }
+
     // MARK: - Source resolution
 
     private func startPlaying(_ track: Track, indexUnchanged: Bool = false,
@@ -1361,6 +1423,14 @@ final class PlayerService: ObservableObject {
             NotificationCenter.default.removeObserver(old)
             endObserver = nil
         }
+        if let old = itemFailureObserver {
+            NotificationCenter.default.removeObserver(old)
+            itemFailureObserver = nil
+        }
+        itemStatusObservation?.invalidate()
+        itemStatusObservation = nil
+        playbackWatchdog?.cancel()
+        playbackWatchdog = nil
         scrobbleIfNeeded(completed: false)
         currentTrack = track
         progress = resumeAt ?? 0
@@ -1522,6 +1592,7 @@ final class PlayerService: ObservableObject {
                 var resolved: LXUserAPIService.ResolvedURL?
                 var lastError: Error?
                 var rejectedPreviewURLs = previewRejects[track.playbackKey] ?? []
+                rejectedPreviewURLs.formUnion(playbackRejects[track.playbackKey] ?? [])
                 // A signed source URL can expire or fail once while the
                 // provider is waking up. Retry the same track once before
                 // reporting a playback failure; advancing the queue here
@@ -1744,6 +1815,7 @@ final class PlayerService: ObservableObject {
             fadeVolume(to: 1, duration: 0.6)
         }
         isPlaying = true
+        observePlaybackFailure(track: track, item: item, url: url, generation: generation)
 
         let providerQualitySnapshot = servedByLXQuality
         let sourceLabelSnapshot = servedBySourceLabel

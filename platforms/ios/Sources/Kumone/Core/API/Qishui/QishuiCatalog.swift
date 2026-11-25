@@ -86,17 +86,21 @@ enum QishuiCatalogService {
         }
         for _ in 0..<12 {
             seen.insert(cursor)
-            let data = try await QishuiClient.shared.platform(
-                path: "/playlist/detail/",
-                body: [
-                    "playlist_id": id,
-                    "owner_id": ownerId,
-                    "count": 100,
-                    "cursor": cursor,
-                    "type": typeValue,
-                ],
-                credential: credential
-            )
+            let body: [String: Any] = [
+                "playlist_id": id,
+                "owner_id": ownerId,
+                "count": 100,
+                "cursor": cursor,
+                "type": typeValue,
+            ]
+            let data: [String: Any]
+            if credential == nil {
+                data = try await QishuiClient.shared.platform(path: "/playlist/detail/", body: body,
+                                                              credential: nil)
+            } else {
+                data = try await accountRequest(path: "/playlist/detail/", body: body,
+                                                credential: credential)
+            }
             if firstPage.isEmpty { firstPage = data }
             var batch = QishuiFields.objects(data["media_entities"])
             if batch.isEmpty { batch = QishuiFields.objects(data["media_list"]) }
@@ -179,7 +183,7 @@ enum QishuiCatalogService {
                 var seen: Set<String> = []
                 for _ in 0..<20 {
                     seen.insert(cursor)
-                    let data = try await QishuiClient.shared.platform(
+                    let data = try await accountRequest(
                         path: path,
                         body: ["count": 100, "cursor": cursor, "item_types": ["playlist"]],
                         credential: credential
@@ -209,7 +213,7 @@ enum QishuiCatalogService {
         var seen: Set<String> = []
         for _ in 0..<20 {
             seen.insert(cursor)
-            let data = try await QishuiClient.shared.platform(
+            let data = try await accountRequest(
                 path: "/me/playlist/",
                 body: ["count": 100, "cursor": cursor],
                 credential: credential
@@ -245,7 +249,7 @@ enum QishuiCatalogService {
         var tracks: [Track] = []
         for _ in 0..<6 {
             seenCursors.insert(cursor)
-            let data = try await QishuiClient.shared.platform(
+            let data = try await accountRequest(
                 path: "/me/recent-played/",
                 body: ["count": 100, "cursor": cursor, "media_type": "track", "scene": "me_tab"],
                 credential: credential
@@ -298,6 +302,39 @@ enum QishuiCatalogService {
             return playlistSummary(from: playlist, owned: false)
         }
         return Array(rows.prefix(max(1, limit)))
+    }
+
+    /// 账号读接口：票据过期时先静默续期再重试一次；续期也被拒绝就退出登录，
+    /// 这样界面会回到「请登录」，而不是一直提示「登录已失效」。
+    private static func accountRequest(path: String, body: [String: Any],
+                                       credential: QishuiCredential?) async throws -> [String: Any] {
+        guard let credential else {
+            throw QishuiError(.authRequired, "请先登录汽水音乐")
+        }
+        do {
+            return try await QishuiClient.shared.platform(path: path, body: body, credential: credential)
+        } catch let error as QishuiError where error.kind == .authRequired {
+            do {
+                if let renewed = try await renewQishuiSession() {
+                    return try await QishuiClient.shared.platform(path: path, body: body, credential: renewed)
+                }
+            } catch {
+                // 续期时的网络失败不该被当成账号失效：保留原错误，会话也保留。
+            }
+            throw error
+        }
+    }
+
+    /// 在 MainActor 上续期票据；只有明确的鉴权失败才清会话。
+    @MainActor
+    private static func renewQishuiSession() async throws -> QishuiCredential? {
+        do {
+            _ = try await QishuiAuthService.shared.refresh()
+        } catch let error as QishuiError where error.kind == .authRequired {
+            QishuiSessionStore.shared.signOut()
+            return nil
+        }
+        return QishuiSessionStore.shared.credential
     }
 
     struct LyricsPayload {

@@ -917,6 +917,17 @@ enum LXCatalogService {
         async -> (playlists: [LXPlaylistSummary], tracks: [Track]) {
         guard platform != .aggregate else { return ([], []) }
 
+        // 汽水：场景只做「场景电台」卡片，推荐歌曲用官方 song-tab 推荐流。
+        // 以前用前三个场景歌单的歌曲拼推荐，结果整页都是一首歌单里的歌（比如总是「洗澡」）。
+        if platform == .sd {
+            let scenes = (try? await qishuiFeedPlaylists(limit: limit)) ?? []
+            let tracks = (try? await QishuiCatalogService.feed(
+                preference: variety ? "fresh" : nil,
+                limit: limit
+            )) ?? []
+            return (playlists: scenes, tracks: tracks)
+        }
+
         let playlists = (try? await recommendedSonglists(platform: platform, limit: limit)) ?? []
         let candidates = variety ? Array(playlists.shuffled().prefix(3)) : Array(playlists.prefix(3))
         let groups = await withTaskGroup(of: [Track].self, returning: [[Track]].self) { group in
@@ -1186,7 +1197,8 @@ enum LXCatalogService {
                 ? try await searchSonglists(category, platform: platform, page: page, limit: limit)
                 : result
         case .sd:
-            return (try? await qishuiFeedPlaylists(limit: limit)) ?? []
+            // 汽水没有歌单广场：最热 / 最新也用官方搜索的真实歌单，而不是场景。
+            return try await searchQishuiSonglists(category, page: page, limit: limit)
         case .aggregate:
             throw LXCatalogError.unsupported
         }
@@ -1383,7 +1395,7 @@ enum LXCatalogService {
         return [
             LXPlaylistSummary(id: "search:\(keyword)", name: keyword, coverURL: tracks.first?.album.picUrl,
                               playCount: 0, trackCount: tracks.count, description: "汽水搜索",
-                              author: "汽水音乐", source: .sd),
+                              author: nil, source: .sd),
         ]
     }
 
