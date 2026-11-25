@@ -244,7 +244,7 @@ final class HomeViewModel: ObservableObject {
             }
             // 汽水的场景歌单解析失败时，用官方歌曲流补上「推荐歌曲」。
             if platform == .sd, tracks.isEmpty {
-                tracks = (try? await QishuiCatalogService.feed(limit: 30)) ?? []
+                tracks = await QishuiCatalogService.freshRecommendedTracks(limit: 30)
             }
             recommendTracks = tracks
             dailyFirstCover = tracks.first?.album.picUrl
@@ -717,10 +717,12 @@ struct HomeView: View {
                             }
                         }
                     }
-                    if model.lxToplists.isEmpty, !model.lxRecommendPlaylists.isEmpty {
-                        // 汽水没有公开歌单广场：它的推荐入口就是官方场景电台。
-                        Shelf(title: model.activePlatform == .sd ? "场景电台" : "热门歌单", rowHeight: 208) {
-                            ForEach(model.lxRecommendPlaylists.prefix(model.activePlatform == .sd ? 30 : 12)) { playlist in
+                    if model.activePlatform == .sd {
+                        // 汽水的场景入口改成「点一下随机播放」的卡片，不再依赖歌单封面。
+                        QishuiSceneRadio()
+                    } else if model.lxToplists.isEmpty, !model.lxRecommendPlaylists.isEmpty {
+                        Shelf(title: "热门歌单", rowHeight: 208) {
+                            ForEach(model.lxRecommendPlaylists.prefix(12)) { playlist in
                                 lxPlaylistCard(playlist)
                             }
                         }
@@ -736,7 +738,7 @@ struct HomeView: View {
                         }
                         .padding(.horizontal, Theme.Layout.contentInset)
                         // 上方若是横向卡片架，标题需要留出呼吸空间，否则两行文字会贴在一起。
-                        .padding(.top, model.lxRecommendPlaylists.isEmpty ? 0 : 14)
+                        .padding(.top, (model.activePlatform == .sd || !model.lxRecommendPlaylists.isEmpty) ? 26 : 0)
                         TrackListView(tracks: model.recommendTracks, showsSummary: false, showsBatchDownload: false)
                             .padding(.horizontal, Theme.Layout.contentInset - 10)
                     }

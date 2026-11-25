@@ -70,6 +70,8 @@ struct RecordShelfView: UIViewRepresentable {
         /// 列表较短时一次性铺满全部唱片，滑动不必重建节点。
         private var windowIsComplete = false
         private var didPosition = false
+        /// 上次请求封面的锚点，滑到新位置时补拉附近封面。
+        private var coverAnchor = -1000
         private var dragStart: CGFloat = 0
         private var displayLink: CADisplayLink?
         private var lastTickTime: CFTimeInterval = 0
@@ -162,6 +164,11 @@ struct RecordShelfView: UIViewRepresentable {
             if !windowIsComplete, !syncedTracks.isEmpty, abs(anchor - windowCenter) > 5 {
                 windowCenter = anchor
                 rebuild(around: anchor, tracks: syncedTracks)
+            }
+            // 滑动或切歌后补拉新进入视野的封面，避免后面的唱片一直是空白的。
+            if abs(anchor - coverAnchor) >= 2 {
+                coverAnchor = anchor
+                loadVisibleCovers(around: anchor, in: syncedTracks)
             }
         }
 
@@ -401,6 +408,8 @@ struct RecordShelfView: UIViewRepresentable {
                 apply(album)
                 return album
             }
+            coverAnchor = center
+            loadVisibleCovers(around: center, in: tracks)
         }
 
         private func apply(_ album: ShelfAlbum) {
@@ -436,7 +445,7 @@ struct RecordShelfView: UIViewRepresentable {
                                                 ry,
                                                 frontTiltZ * Float(album.mix))
             // 展开时略微缩小，横屏里封面不会顶满画面。
-            let shrink = albumScale * (1 - 0.16 * Float(album.mix))
+            let shrink = albumScale * (1 - 0.05 * Float(album.mix))
             album.node.scale = SCNVector3(shrink, shrink, shrink * 1.1)
             album.node.opacity = CGFloat(abs(offset) > CGFloat(windowRadius) ? 0.15 : 1)
         }
@@ -448,7 +457,7 @@ struct RecordShelfView: UIViewRepresentable {
             for index in lower...upper {
                 let track = tracks[index]
                 if coverCache[track.id] != nil || pendingCovers.contains(track.id) { continue }
-                guard let raw = track.album.picUrl, let url = raw.resizedImageURL(512) else { continue }
+                guard let raw = track.album.picUrl, let url = raw.resizedImageURL(256) else { continue }
                 pendingCovers.insert(track.id)
                 Task { @MainActor in
                     let image = await ImageCache.shared.image(for: url)
@@ -458,8 +467,13 @@ struct RecordShelfView: UIViewRepresentable {
                     }
                 }
             }
-            if coverCache.count > 80 {
-                coverCache.removeAll()
+            // 只淘汰已经不在架子上的封面，避免整片封面被清空后再也不回来。
+            if coverCache.count > 120 {
+                let liveIDs = Set(albums.map(\.trackId))
+                let stale = coverCache.keys.filter { !liveIDs.contains($0) }
+                for key in stale {
+                    coverCache.removeValue(forKey: key)
+                }
             }
         }
 

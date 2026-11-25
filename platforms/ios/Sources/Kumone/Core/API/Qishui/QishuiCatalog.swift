@@ -200,4 +200,13 @@ enum QishuiCatalogService {
             return QishuiMapping.track(from: item)
         }
     }
+
+    /// 「推荐歌曲」用随机场景的第一屏，比固定的首刷歌单更新鲜。
+    static func freshRecommendedTracks(limit: Int = 30) async -> [Track] {
+        if let modes = try? await feedModes(), let pick = modes.randomElement(),
+           let tracks = try? await feed(scene: pick.id, limit: limit), !tracks.isEmpty {
+            return tracks.shuffled()
+        }
+        return (try? await feed(limit: limit)) ?? []
+    }
 }

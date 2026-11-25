@@ -917,6 +917,13 @@ struct NowPlayingView: View {
     private func updateShelfOrientation() {
         if settings.nowPlayingMode == .shelf {
             ShelfOrientation.lockLandscape()
+            // 全屏转场（zoom / cover）期间发起的旋转请求会被系统忽略，
+            // 等转场结束后再请求一次，保证真的转到横屏。
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                if settings.nowPlayingMode == .shelf {
+                    ShelfOrientation.lockLandscape()
+                }
+            }
         } else {
             ShelfOrientation.unlock()
         }
