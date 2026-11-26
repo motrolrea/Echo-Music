@@ -253,6 +253,9 @@ final class PlayerService: ObservableObject {
     /// Where playback was most recently started from, newest first —
     /// surfaced as "Recently Played" in the Dock menu.
     @Published private(set) var recentContexts: [PlayContext] = []
+    /// Songs actually started on this device, newest first. Separate from the
+    /// NetEase play-count ranking and from `recentContexts`, which stores places.
+    @Published private(set) var recentTracks: [Track] = []
     @Published private(set) var lyrics: ParsedLyrics?
     @Published var activePanel: RightPanel?
     @Published var showNowPlaying = false
@@ -1435,6 +1438,9 @@ final class PlayerService: ObservableObject {
         playbackWatchdog = nil
         scrobbleIfNeeded(completed: false)
         currentTrack = track
+        if resumeAt == nil || !indexUnchanged {
+            recordRecentTrack(track)
+        }
         progress = resumeAt ?? 0
         pendingSeek = resumeAt
         duration = track.duration
@@ -2821,12 +2827,21 @@ final class PlayerService: ObservableObject {
     // MARK: - Persistence
 
     private static let recentContextsLimit = 6
+    private static let recentTracksLimit = 100
 
     private func recordRecent(_ context: PlayContext) {
         recentContexts.removeAll { $0 == context }
         recentContexts.insert(context, at: 0)
         if recentContexts.count > Self.recentContextsLimit {
             recentContexts.removeLast(recentContexts.count - Self.recentContextsLimit)
+        }
+    }
+
+    private func recordRecentTrack(_ track: Track) {
+        recentTracks.removeAll { $0.playbackKey == track.playbackKey }
+        recentTracks.insert(track, at: 0)
+        if recentTracks.count > Self.recentTracksLimit {
+            recentTracks.removeLast(recentTracks.count - Self.recentTracksLimit)
         }
     }
 
@@ -2892,6 +2907,7 @@ final class PlayerService: ObservableObject {
         var shuffle: Bool
         /// Optional so state files written before recents existed still decode.
         var recentContexts: [PlayContext]?
+        var recentTracks: [Track]?
         var currentTime: TimeInterval?
     }
 
@@ -2903,6 +2919,7 @@ final class PlayerService: ObservableObject {
             repeatMode: repeatMode.rawValue,
             shuffle: shuffleEnabled,
             recentContexts: recentContexts,
+            recentTracks: recentTracks,
             currentTime: progress
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
@@ -2920,6 +2937,7 @@ final class PlayerService: ObservableObject {
         // empty queue, or the next played track persists an empty list over
         // them and the Dock menu loses its history for good.
         recentContexts = Array((state.recentContexts ?? []).prefix(Self.recentContextsLimit))
+        recentTracks = Array((state.recentTracks ?? []).prefix(Self.recentTracksLimit))
         guard !state.queue.isEmpty else { return }
         queue = state.queue
         shuffleEnabled = state.shuffle
