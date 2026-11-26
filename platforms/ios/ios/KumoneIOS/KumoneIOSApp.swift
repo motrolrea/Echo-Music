@@ -11,7 +11,6 @@ private struct LaunchRoot: View {
             IOSMainWindow()
             if !startup.isReady {
                 IOSStartupSplashView(coordinator: startup)
-                    .preferredColorScheme(SettingsManager.shared.appearance.colorScheme)
                     .transition(.opacity)
             }
         }
