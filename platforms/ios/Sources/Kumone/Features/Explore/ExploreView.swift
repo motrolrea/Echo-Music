@@ -255,7 +255,7 @@ struct ExploreView: View {
                     }
                     .frame(minHeight: 300)
                 } else {
-                    if model.platform == .sd, playlistQueryTrimmed.isEmpty
+                    if (model.platform == .sd && playlistQueryTrimmed.isEmpty)
                         || !filteredOfficial.isEmpty || (!playlistQueryTrimmed.isEmpty && !songResults.isEmpty) || (playlistQueryTrimmed.isEmpty && !model.tracks.isEmpty) {
                         VStack(alignment: .leading, spacing: 4) {
                     if model.platform == .sd, playlistQueryTrimmed.isEmpty {

@@ -77,14 +77,14 @@ struct LXSourceManagerView: View {
 
     private var content: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 14) {
                 managerHeader
                 sourceListSection
                 importSection
-                statusSection
+                capabilitySection
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.top, 8)
             .padding(.bottom, 28)
         }
         .scrollIndicators(.hidden)
@@ -92,47 +92,92 @@ struct LXSourceManagerView: View {
     }
 
     private var managerHeader: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("LX 音源")
-                .font(.system(size: 34, weight: .bold, design: .rounded))
-            Text(lxStore.selectedSource.map { "正在使用 \($0.name)" } ?? "导入后即可搜索和播放")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+                .font(.system(size: 30, weight: .bold, design: .rounded))
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(lxStore.selectedSource == nil ? Color.orange : Color.green)
+                    .frame(width: 7, height: 7)
+                Text(lxAPI.statusMessage)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if lxStore.selectedSource != nil {
+                    Button("重新加载") {
+                        lxAPI.loadSelectedSource()
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(Color(.secondarySystemGroupedBackground), in: Capsule())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 6)
-        .padding(.top, 8)
+        .padding(.horizontal, 4)
+        .padding(.top, 4)
     }
 
     private var sourceListSection: some View {
-        glassCard {
-            VStack(alignment: .leading, spacing: 14) {
-                cardTitle("已添加的音源", systemImage: "checkmark.shield")
-                HStack(spacing: 8) {
-                    Label("已启用 \(lxStore.playbackSources.count) 个", systemImage: "bolt.fill")
-                    Text("·")
-                    Text("点击卡片切换首选源")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("音源")
+                    .font(.headline.weight(.semibold))
+                Spacer(minLength: 0)
+                Text("已启用 \(lxStore.playbackSources.count) 个")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 10)
 
-                if lxStore.sources.isEmpty {
-                    emptySourceView
-                } else {
-                    VStack(spacing: 10) {
-                        ForEach(lxStore.sources) { source in
-                            modernSourceRow(source)
-                        }
+            if lxStore.sources.isEmpty {
+                emptySourceView
+            } else {
+                ForEach(Array(lxStore.sources.enumerated()), id: \.element.id) { index, source in
+                    if index > 0 {
+                        Divider().padding(.leading, 14)
+                    }
+                    modernSourceRow(source)
+                }
+            }
+
+            Divider()
+
+            HStack(spacing: 8) {
+                Button {
+                    if let source = lxStore.selectedSource {
+                        checkSource(source)
+                    }
+                } label: {
+                    if testingSourceID == lxStore.selectedID {
+                        ProgressView()
+                    } else {
+                        Label("测试当前音源", systemImage: "checkmark.shield")
                     }
                 }
+                .font(.subheadline.weight(.medium))
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.accent)
+                .opacity(lxStore.selectedSource == nil ? 0.4 : 1)
+                .disabled(lxStore.selectedSource == nil || testingSourceID != nil)
 
-                Text("可同时启用多个音源。播放时会优先使用当前源，失败后按启用顺序自动备用。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+
+                if !lxStore.sources.isEmpty {
+                    Text("点按行首圆圈切换首选源")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
         }
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private var emptySourceView: some View {
@@ -152,65 +197,78 @@ struct LXSourceManagerView: View {
     }
 
     private var importSection: some View {
-        glassCard {
-            VStack(alignment: .leading, spacing: 12) {
-                cardTitle("添加音源", systemImage: "plus.circle")
-                HStack(spacing: 10) {
-                    importAction(
-                        title: "从文件导入",
-                        subtitle: ".js / .json / .txt / 无扩展名",
-                        systemImage: "doc.badge.plus"
-                    ) {
-                        isImportingFile = true
-                    }
-                    importAction(
-                        title: "从在线链接导入",
-                        subtitle: "下载后保存到本机",
-                        systemImage: "link.badge.plus"
-                    ) {
-                        onlineSourceURL = ""
-                        isShowingOnlineImport = true
-                    }
-                }
-                Button {
-                    importClipboard()
-                } label: {
-                    Label("从剪贴板导入音源文本", systemImage: "doc.on.clipboard")
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                Text("导入后会自动选中并加载该音源；播放时不会再次请求在线链接。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 0) {
+            Text("添加音源")
+                .font(.headline.weight(.semibold))
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 6)
+
+            importRow(title: "从文件导入", subtitle: ".js / .json / .txt / 无扩展名", systemImage: "doc.badge.plus") {
+                isImportingFile = true
             }
+            Divider().padding(.leading, 52)
+            importRow(title: "从在线链接导入", subtitle: "下载后保存到本机", systemImage: "link.badge.plus") {
+                onlineSourceURL = ""
+                isShowingOnlineImport = true
+            }
+            Divider().padding(.leading, 52)
+            importRow(title: "从剪贴板导入", subtitle: "粘贴音源脚本文本", systemImage: "doc.on.clipboard") {
+                importClipboard()
+            }
+
+            Text("导入后会自动选中并加载该音源；播放时不会再次请求在线链接。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 14)
         }
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    private var statusSection: some View {
-        glassCard {
-            VStack(alignment: .leading, spacing: 12) {
-                cardTitle("当前音源状态", systemImage: "waveform.path.ecg")
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Circle()
-                        .fill(lxStore.selectedSource == nil ? Color.orange : Color.green)
-                        .frame(width: 8, height: 8)
-                    Text(lxAPI.statusMessage)
-                        .font(.subheadline.weight(.medium))
-                        .lineLimit(2)
-                }
-
-                if !activeCapabilitiesText.isEmpty {
-                    Text(activeCapabilitiesText)
-                        .font(.caption)
+    private func importRow(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
-                        .padding(10)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
                 }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 
-                if let source = lxStore.selectedSource,
-                   let result = sourceCheckResults[source.id] {
+    @ViewBuilder
+    private var capabilitySection: some View {
+        if !activeCapabilitiesText.isEmpty || selectedCheckResult != nil {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("当前音源")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                if let result = selectedCheckResult {
                     HStack(alignment: .top, spacing: 8) {
                         Image(systemName: result.isAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
                             .foregroundStyle(result.isAvailable ? .green : .red)
@@ -221,83 +279,28 @@ struct LXSourceManagerView: View {
                                 Text(detail)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                         }
                     }
                 }
 
-                HStack(spacing: 10) {
-                    Button("重新加载") {
-                        lxAPI.loadSelectedSource()
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(lxStore.selectedSource == nil)
-
-                    Button {
-                        if let source = lxStore.selectedSource {
-                            checkSource(source)
-                        }
-                    } label: {
-                        if testingSourceID == lxStore.selectedID {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Label("测试音源", systemImage: "checkmark.shield")
-                                .frame(maxWidth: .infinity)
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(lxStore.selectedSource == nil || testingSourceID != nil)
+                if !activeCapabilitiesText.isEmpty {
+                    Text(activeCapabilitiesText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-
-                Text("测试会请求一首公开歌曲的 musicUrl，只检查播放地址是否有效，不会保存或下载歌曲。")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
     }
 
-    private func glassCard<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        content()
-            .padding(18)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-
-    private func cardTitle(_ title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.headline.weight(.semibold))
-            .foregroundStyle(.primary)
-    }
-
-    private func importAction(
-        title: String,
-        subtitle: String,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Theme.accent)
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.leading)
-                Text(subtitle)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.leading)
-            }
-            .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
-            .padding(14)
-            .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    private var selectedCheckResult: LXUserAPIService.SourceCheckResult? {
+        guard let source = lxStore.selectedSource else { return nil }
+        return sourceCheckResults[source.id]
     }
 
     private var activeCapabilitiesText: String {
@@ -440,22 +443,9 @@ struct LXSourceManagerView: View {
             }
             .padding(.leading, 54)
         }
-        .padding(10)
-        .background(
-            lxStore.selectedID == source.id
-                ? Theme.accent.opacity(0.10)
-                : Color.primary.opacity(0.045),
-            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(
-                    lxStore.selectedID == source.id
-                        ? Theme.accent.opacity(0.35)
-                        : Color.primary.opacity(0.06),
-                    lineWidth: 1
-                )
-        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(lxStore.selectedID == source.id ? Theme.accent.opacity(0.07) : Color.clear)
     }
 
     @ViewBuilder

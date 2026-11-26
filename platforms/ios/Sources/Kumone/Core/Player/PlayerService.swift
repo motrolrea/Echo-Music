@@ -2940,6 +2940,19 @@ final class PlayerService: ObservableObject {
         recentTracks = Array((state.recentTracks ?? []).prefix(Self.recentTracksLimit))
         guard !state.queue.isEmpty else { return }
         queue = state.queue
+        // Upgrading from a build that had no on-device recents: seed the list
+        // from the last persisted queue so the page is not empty.
+        if recentTracks.isEmpty {
+            var seeded = state.queue
+            if let index = state.currentKey.flatMap({ key in
+                seeded.firstIndex(where: { $0.playbackKey == key })
+            }) ?? state.currentID.flatMap({ id in
+                seeded.firstIndex(where: { $0.id == id })
+            }) {
+                seeded.insert(seeded.remove(at: index), at: 0)
+            }
+            recentTracks = Array(seeded.prefix(Self.recentTracksLimit))
+        }
         shuffleEnabled = state.shuffle
         if shuffleEnabled {
             shuffledQueue = queue.shuffled()

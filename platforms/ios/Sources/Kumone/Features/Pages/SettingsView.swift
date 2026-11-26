@@ -553,16 +553,30 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 Toggle("全局漂浮特效", isOn: $floatingEffects)
                 Toggle("滚动时收起底栏", isOn: $tabBarMinimizes)
+                LabeledContent("第三方字体") {
+                    Text(customFontName.isEmpty ? "系统默认" : customFontName)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
                 Button {
                     showFontImporter = true
                 } label: {
-                    LabeledContent("第三方字体") {
-                        Text(customFontName.isEmpty ? "系统默认" : customFontName)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
+                    Label("导入字体文件…", systemImage: "square.and.arrow.down")
                 }
-                .buttonStyle(.plain)
+                .sheet(isPresented: $showFontImporter) {
+                    FontDocumentPicker { url in
+                        showFontImporter = false
+                        if let name = AppFontStore.shared.install(url) {
+                            customFontName = name
+                            ToastCenter.shared.show("已使用 \(name)")
+                        } else {
+                            ToastCenter.shared.show("这个字体无法安装")
+                        }
+                    } onCancel: {
+                        showFontImporter = false
+                    }
+                    .ignoresSafeArea()
+                }
                 if !customFontName.isEmpty {
                     Button("恢复系统字体", role: .destructive) {
                         AppFontStore.shared.clear()
@@ -677,21 +691,6 @@ struct SettingsView: View {
             }
         }
 #if os(iOS)
-        .fileImporter(
-            isPresented: $showFontImporter,
-            allowedContentTypes: [.font],
-            allowsMultipleSelection: false
-        ) { result in
-            guard case .success(let urls) = result, let url = urls.first else { return }
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            if let name = AppFontStore.shared.install(url) {
-                customFontName = name
-                ToastCenter.shared.show("已使用 \(name)")
-            } else {
-                ToastCenter.shared.show("这个字体无法安装")
-            }
-        }
         .fileImporter(
             isPresented: $isImportingBackgroundFile,
             allowedContentTypes: [.image],

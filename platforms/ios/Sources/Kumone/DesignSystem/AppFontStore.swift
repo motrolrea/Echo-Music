@@ -2,6 +2,8 @@
 import CoreText
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
+import UIKit
 
 /// 用户导入的第三方字体。只作用于界面文字，不改系统控件自己的字重。
 @MainActor
@@ -67,6 +69,50 @@ struct EchoCustomFontModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content.font(fontName.isEmpty ? nil : .custom(fontName, size: 17))
+    }
+}
+
+/// 字体文件选择器。用 sheet 打开系统文件选择器，避免和其他 fileImporter 叠加后无法弹出。
+struct FontDocumentPicker: UIViewControllerRepresentable {
+    let onPick: (URL) -> Void
+    let onCancel: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick, onCancel: onCancel)
+    }
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        var types: [UTType] = [.font]
+        if let ttf = UTType(filenameExtension: "ttf") { types.append(ttf) }
+        if let otf = UTType(filenameExtension: "otf") { types.append(otf) }
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
+        picker.allowsMultipleSelection = false
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        private let onPick: (URL) -> Void
+        private let onCancel: () -> Void
+
+        init(onPick: @escaping (URL) -> Void, onCancel: @escaping () -> Void) {
+            self.onPick = onPick
+            self.onCancel = onCancel
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            guard let url = urls.first else {
+                onCancel()
+                return
+            }
+            onPick(url)
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onCancel()
+        }
     }
 }
 #endif
