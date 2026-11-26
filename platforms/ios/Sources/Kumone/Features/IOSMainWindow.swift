@@ -63,6 +63,7 @@ public struct IOSMainWindow: View {
                 if floatingEffects { FloatingEffectOverlay() }
             }
             .preferredColorScheme(settings.appearance.colorScheme)
+            .modifier(EchoCustomFontModifier())
             .animation(reduceMotion ? nil : AppAnimation.smooth, value: settings.appearance)
             // Login is exposed on a separate account page. It is metadata
             // synchronisation only; audio URLs still come exclusively from LX.
@@ -78,6 +79,7 @@ public struct IOSMainWindow: View {
                 profilePath = NavigationPath()
             })
             .task {
+                AppFontStore.shared
                 backupStore.startAutomaticBackup()
                 ListeningStatsStore.shared.attach(player)
                 HighRefreshController.shared.apply()

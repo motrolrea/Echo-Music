@@ -238,7 +238,7 @@ public struct IOSStartupSplashView: View {
                     .frame(width: 124, height: 124)
                     .rotationEffect(.degrees(vinylSpin ? 360 : 0))
 
-                BrandIconView(name: "BrandAppIcon")
+                BrandIconView(name: colorScheme == .dark ? "BrandAppIconDark" : "BrandAppIcon")
                     .frame(width: 92, height: 92)
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .overlay {

@@ -92,23 +92,17 @@ struct LXSourceManagerView: View {
     }
 
     private var managerHeader: some View {
-        HStack(spacing: 14) {
-            Image(systemName: "waveform.circle.fill")
-                .font(.system(size: 44))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(Theme.accent)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("LX User API")
-                    .font(.title2.weight(.bold))
-                Text(lxStore.selectedSource.map { "当前使用：\($0.name)" } ?? "导入音源后即可开始搜索和播放")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("LX 音源")
+                .font(.system(size: 34, weight: .bold, design: .rounded))
+            Text(lxStore.selectedSource.map { "正在使用 \($0.name)" } ?? "导入后即可搜索和播放")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
         }
-        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 6)
+        .padding(.top, 8)
     }
 
     private var sourceListSection: some View {
@@ -268,12 +262,8 @@ struct LXSourceManagerView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         content()
-            .padding(16)
-            .mouMaterialBackground(.thinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-            }
+            .padding(18)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private func cardTitle(_ title: String, systemImage: String) -> some View {
@@ -302,9 +292,9 @@ struct LXSourceManagerView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.leading)
             }
-            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-            .padding(12)
-            .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
+            .padding(14)
+            .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
         .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))

@@ -6,7 +6,7 @@
 // ==========================================
 // Project Identity
 // ==========================================
-PRODUCT_NAME = EchoMusicIOS
+PRODUCT_NAME = EchoMusic
 PRODUCT_BUNDLE_IDENTIFIER = com.motrolrea.echomusic.ios
 // PRODUCT_DISPLAY_NAME is not a real build setting; the Home Screen
 // name comes from CFBundleDisplayName.

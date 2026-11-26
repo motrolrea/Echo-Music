@@ -36,6 +36,8 @@ struct SettingsView: View {
     @AppStorage(AppAppearanceKeys.accent) private var accentRaw = AppAccent.red.rawValue
     @AppStorage(AppAppearanceKeys.disableLiquid) private var disableLiquid = false
     @AppStorage(AppAppearanceKeys.floatingEffects) private var floatingEffects = false
+    @AppStorage(AppAppearanceKeys.customFont) private var customFontName = ""
+    @State private var showFontImporter = false
     @AppStorage("moumusic.tabBarMinimize") private var tabBarMinimizes = true
     @AppStorage("moumusic.appLanguage") private var appLanguage = "system"
     @AppStorage("moumusic.mixWithOthers") private var mixWithOthers = false
@@ -551,6 +553,25 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                 Toggle("全局漂浮特效", isOn: $floatingEffects)
                 Toggle("滚动时收起底栏", isOn: $tabBarMinimizes)
+                Button {
+                    showFontImporter = true
+                } label: {
+                    LabeledContent("第三方字体") {
+                        Text(customFontName.isEmpty ? "系统默认" : customFontName)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .buttonStyle(.plain)
+                if !customFontName.isEmpty {
+                    Button("恢复系统字体", role: .destructive) {
+                        AppFontStore.shared.clear()
+                        customFontName = ""
+                    }
+                }
+                Text("支持导入 ttf 或 otf。导入后重新打开页面即可看到效果。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Picker("语言", selection: $appLanguage) {
                     Text("跟随系统").tag("system")
                     Text("简体中文").tag("zh-Hans")
@@ -656,6 +677,21 @@ struct SettingsView: View {
             }
         }
 #if os(iOS)
+        .fileImporter(
+            isPresented: $showFontImporter,
+            allowedContentTypes: [.font],
+            allowsMultipleSelection: false
+        ) { result in
+            guard case .success(let urls) = result, let url = urls.first else { return }
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            if let name = AppFontStore.shared.install(url) {
+                customFontName = name
+                ToastCenter.shared.show("已使用 \(name)")
+            } else {
+                ToastCenter.shared.show("这个字体无法安装")
+            }
+        }
         .fileImporter(
             isPresented: $isImportingBackgroundFile,
             allowedContentTypes: [.image],

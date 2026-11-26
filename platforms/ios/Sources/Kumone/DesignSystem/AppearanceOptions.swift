@@ -5,6 +5,7 @@ enum AppAppearanceKeys {
     static let accent = "moumusic.accentColor"
     static let disableLiquid = "moumusic.disableLiquidGlass"
     static let floatingEffects = "moumusic.floatingEffects"
+    static let customFont = "moumusic.customFontPostScriptName"
 }
 
 /// Accent colour presets. The default keeps the original Moumusic red.

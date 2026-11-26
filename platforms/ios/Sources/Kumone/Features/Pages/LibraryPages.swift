@@ -3,26 +3,22 @@ import SwiftUI
 // MARK: - 最近播放
 
 struct RecentsView: View {
-    @State private var records: [PlayRecordItem] = []
-    /// NetEase only reports reliable play history for the last week.
-    private let week = true
-    @State private var isLoading = true
-
-    @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var player: PlayerService
+
+    private var tracks: [Track] { player.recentTracks }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Text("最近一周")
+                    Text("按本机最近播放排序")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
 
                     Spacer()
 
                     Button {
-                        player.play(tracks: records.map(\.song), source: .none, context: .recents)
+                        player.play(tracks: tracks, source: .none, context: .recents)
                     } label: {
                         Label("播放全部", systemImage: "play.fill")
                             .font(.system(size: 12.5, weight: .semibold))
@@ -32,16 +28,13 @@ struct RecentsView: View {
                             .background(Theme.accentGradient, in: Capsule())
                     }
                     .buttonStyle(.pressable)
-                    .disabled(records.isEmpty)
+                    .disabled(tracks.isEmpty)
                 }
                 .padding(.horizontal, Theme.Layout.contentInset)
                 .padding(.top, 12)
 
-                if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, minHeight: 300)
-                } else if records.isEmpty {
-                    EmptyStateView(icon: "clock", title: "暂无播放记录")
+                if tracks.isEmpty {
+                    EmptyStateView(icon: "clock", title: "暂无播放记录", subtitle: "在这里听过的歌会按时间出现")
                         .frame(minHeight: 300)
                 } else {
                     recordList
@@ -51,35 +44,20 @@ struct RecentsView: View {
             }
         }
         .navigationTitle("最近播放")
-        .task {
-            await load()
-        }
     }
 
     private var recordList: some View {
         LazyVStack(spacing: 1) {
-            ForEach(Array(records.enumerated()), id: \.element.song.id) { index, record in
+            ForEach(Array(tracks.enumerated()), id: \.element.playbackKey) { index, track in
                 TrackRow(
-                    track: record.song,
+                    track: track,
                     index: index + 1,
-                    style: .compact,
-                    trailingText: String(localized: "\(record.playCount) 次")
+                    style: .compact
                 ) {
-                    player.play(tracks: records.map(\.song), source: .none, startAt: record.song,
-                                   context: .recents)
+                    player.play(tracks: tracks, source: .none, startAt: track, context: .recents)
                 }
             }
         }
-    }
-
-    private func load() async {
-        guard let uid = account.profile?.userId else {
-            isLoading = false
-            return
-        }
-        isLoading = records.isEmpty
-        records = (try? await NeteaseAPI.playRecords(uid: uid, week: week)) ?? []
-        isLoading = false
     }
 }
 

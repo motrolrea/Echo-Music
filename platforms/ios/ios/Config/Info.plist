@@ -4,6 +4,10 @@
 <dict>
     <key>CADisableMinimumFrameDurationOnPhone</key>
     <true/>
+    <key>CFBundleDisplayName</key>
+    <string>Echo Music</string>
+    <key>CFBundleName</key>
+    <string>Echo Music</string>
     <key>UILaunchScreen</key>
     <dict/>
     <key>UIBackgroundModes</key>

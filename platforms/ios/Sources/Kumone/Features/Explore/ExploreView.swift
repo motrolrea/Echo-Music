@@ -424,7 +424,7 @@ struct ExploreView: View {
             await model.loadMore()
         }
         .onAppear {
-            guard !model.officialPlaylists.isEmpty || !model.playlists.isEmpty || !model.tracks.isEmpty else { return }
+            guard model.officialPlaylists.isEmpty, model.playlists.isEmpty, model.tracks.isEmpty else { return }
             model.refreshCurrent()
         }
         .onDisappear {

@@ -947,8 +947,10 @@ final class PlayerService: ObservableObject {
         if isPlaying {
             pauseWithFade()
         } else if engine.currentItem == nil {
-            // Restored session: re-resolve the source.
-            startPlaying(track, indexUnchanged: true, preserveTrackQualityOverride: true)
+            // Restored session: re-resolve the source and keep the saved position.
+            let resumeAt = SettingsManager.shared.resumePlaybackPosition ? pendingSeek : nil
+            startPlaying(track, indexUnchanged: true, resumeAt: resumeAt,
+                         preserveTrackQualityOverride: true)
             return
         } else {
             resumeWithFade()
@@ -2861,8 +2863,7 @@ final class PlayerService: ObservableObject {
             let songs = try await NeteaseAPI.cloudSongs().data?.compactMap(\.simpleSong) ?? []
             return (songs, .cloud)
         case .recents:
-            guard let uid = AccountStore.shared.profile?.userId else { return nil }
-            return (try await NeteaseAPI.playRecords(uid: uid, week: true).map(\.song), .none)
+            return (recentTracks, .none)
         case .heartbeat:
             // Regenerated from a fresh seed, the same way the Home card does it.
             guard let liked = AccountStore.shared.likedSongsPlaylist,
