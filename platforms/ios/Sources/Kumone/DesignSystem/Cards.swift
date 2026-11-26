@@ -248,3 +248,46 @@ struct MouGlassCard<Content: View>: View {
     }
 }
 #endif
+
+// MARK: - Settings card
+
+/// 设置页统一卡片：可选标题 + 内容，圆角、细描边和极轻投影，
+/// 让主设置页和各个子设置页共享同一套简洁的视觉语言。
+struct SettingsCard<Content: View>: View {
+    var title: String?
+    var icon: String?
+    var spacing: CGFloat = 12
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let title {
+                HStack(spacing: 9) {
+                    if let icon {
+                        Image(systemName: icon)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 26, height: 26)
+                            .background(Theme.accent.opacity(0.13),
+                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+            }
+            VStack(alignment: .leading, spacing: spacing) {
+                content()
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.045),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.8)
+        }
+        .shadow(color: .black.opacity(0.03), radius: 8, y: 3)
+    }
+}

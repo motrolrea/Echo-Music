@@ -856,45 +856,62 @@ struct SettingsView: View {
     ) -> some View {
         let isExpanded = expandedSettings.contains(title) || !settingsQuery.isEmpty
         if isSettingsGroupVisible(title) {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                guard settingsQuery.isEmpty else { return }
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    if expandedSettings.contains(title) {
-                        expandedSettings.remove(title)
-                    } else {
-                        expandedSettings.insert(title)
+            VStack(alignment: .leading, spacing: 0) {
+                Button {
+                    guard settingsQuery.isEmpty else { return }
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        if expandedSettings.contains(title) {
+                            expandedSettings.remove(title)
+                        } else {
+                            expandedSettings.insert(title)
+                        }
                     }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: settingsIcon(for: title))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 30, height: 30)
+                            .background(Theme.accent.opacity(0.13),
+                                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        Text(title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                            .frame(width: 24, height: 24)
+                            .background(Color.primary.opacity(0.05), in: Circle())
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 56)
+                    .contentShape(Rectangle())
                 }
-            } label: {
-                HStack(spacing: 10) {
-                    Label(title, systemImage: settingsIcon(for: title))
-                        .font(.body.weight(.semibold))
-                    Spacer(minLength: 0)
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+                .buttonStyle(.plain)
 
-            if isExpanded {
-                Divider()
-                VStack(alignment: .leading, spacing: 10) {
-                    content()
+                if isExpanded {
+                    Divider()
+                        .overlay(Color.primary.opacity(0.06))
+                        .padding(.horizontal, 16)
+                    VStack(alignment: .leading, spacing: 14) {
+                        content()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 16)
                 }
-                .padding(.top, 8)
-                .padding(.bottom, 6)
             }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 2)
-        .background {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(settingsCardFill)
-        }
+            .background {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(settingsCardFill)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.8)
+            }
+            .shadow(color: .black.opacity(0.04), radius: 10, y: 4)
         }
     }
 
@@ -998,6 +1015,7 @@ struct SettingsView: View {
     private var settingsNavigator: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
+                .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.secondary)
             TextField("搜索设置", text: $settingsQuery)
                 .textInputAutocapitalization(.never)
@@ -1006,14 +1024,23 @@ struct SettingsView: View {
                 Button {
                     settingsQuery = ""
                 } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
+                .transition(.opacity)
             }
         }
-        .padding(.horizontal, 12)
-        .frame(minHeight: 36)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 14)
+        .frame(minHeight: 44)
+        .background(Color.primary.opacity(0.05),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.8)
+        }
+        .animation(.easeInOut(duration: 0.15), value: settingsQuery.isEmpty)
     }
 #endif
 #if os(iOS)

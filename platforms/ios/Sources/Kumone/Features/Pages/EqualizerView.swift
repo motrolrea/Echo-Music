@@ -277,10 +277,12 @@ private struct EqualizerCurveView: View {
 private extension View {
     func glassContainer() -> some View {
         padding(16)
-            .mouMaterialBackground(.thinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .background(Color(.secondarySystemGroupedBackground),
+                        in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.8)
             }
+            .shadow(color: .black.opacity(0.03), radius: 8, y: 3)
     }
 }

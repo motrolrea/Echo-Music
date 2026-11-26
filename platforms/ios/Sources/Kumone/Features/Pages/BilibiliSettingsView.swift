@@ -164,12 +164,18 @@ struct BilibiliSettingsView: View {
 
     private func settingsCard<Content: View>(_ title: String,
                                              @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.headline.weight(.semibold))
-            VStack(alignment: .leading, spacing: 10, content: content)
-                .padding(14)
-                .mouMaterialBackground(.thinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        SettingsCard(title: title, icon: biliIcon(for: title)) {
+            content()
+        }
+    }
+
+    private func biliIcon(for title: String) -> String {
+        switch title {
+        case "内容": return "play.rectangle"
+        case "视频偏好": return "film"
+        case "弹幕": return "text.bubble"
+        case "首页推荐": return "sparkles"
+        default: return "info.circle"
         }
     }
 }

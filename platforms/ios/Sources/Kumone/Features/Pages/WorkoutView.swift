@@ -262,12 +262,6 @@ struct WorkoutView: View {
             Button { span = .yesterday } label: {
                 if span == .yesterday { Label("昨天", systemImage: "checkmark") } else { Text("昨天") }
             }
-            Button {
-                span = .singleDay
-                showCustomRange = true
-            } label: {
-                if span == .singleDay { Label("选择一天", systemImage: "checkmark") } else { Text("选择一天") }
-            }
             Button { span = .threeDays } label: {
                 if span == .threeDays { Label("近三天", systemImage: "checkmark") } else { Text("近三天") }
             }
@@ -276,6 +270,12 @@ struct WorkoutView: View {
             }
             Button { span = .month } label: {
                 if span == .month { Label("近一个月", systemImage: "checkmark") } else { Text("近一个月") }
+            }
+            Button {
+                span = .singleDay
+                showCustomRange = true
+            } label: {
+                if span == .singleDay { Label("选择一天", systemImage: "checkmark") } else { Text("选择一天") }
             }
             Button {
                 span = .custom

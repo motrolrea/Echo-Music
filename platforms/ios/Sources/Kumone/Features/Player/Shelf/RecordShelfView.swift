@@ -77,16 +77,20 @@ struct RecordShelfView: UIViewRepresentable {
         private var lastTickTime: CFTimeInterval = 0
         private var syncedTracks: [Track] = []
 
-        /// 与预览页一致的几何参数。
+        /// 与预览页全屏（cinema）参数一致的几何。
         private let albumSize: CGFloat = 0.62
         private let albumThickness: CGFloat = 0.62 / 22
-        private let pitch: CGFloat = 0.25
-        private let rightGap: CGFloat = 0.84
-        private let leftGap: CGFloat = 0.86
+        private let pitch: CGFloat = 0.17
+        private let rightGap: CGFloat = 0.56
+        private let leftGap: CGFloat = 0.65
         private let stackPitch: CGFloat = 0.19
         private let bodyZ: CGFloat = 0.32
         private let depthZ: CGFloat = 0.035
-        private let albumScale: Float = 1.60
+        private let albumScale: Float = 1.10
+        /// 全屏时整排书架略微左移，给右侧留出呼吸空间。
+        private let groupX: CGFloat = -0.18
+        /// 封面盒在厚度方向的额外压缩，和预览页的 thick 0.85 对齐。
+        private let thicknessScale: Float = 1.1 * 0.85
         private let spineAngle = Float(87.5 * Double.pi / 180)
         private let frontAngle = Float(16 * Double.pi / 180)
         private let frontTiltX = Float(-15 * Double.pi / 180)
@@ -197,7 +201,7 @@ struct RecordShelfView: UIViewRepresentable {
             camera.zNear = 0.01
             camera.zFar = 200
             cameraNode.camera = camera
-            cameraNode.position = SCNVector3(0, 0.07, 2.75)
+            cameraNode.position = SCNVector3(-0.18, 0.07, 3.03)
 
             let target = SCNNode()
             target.position = SCNVector3(0, 0.02, 0)
@@ -424,13 +428,13 @@ struct RecordShelfView: UIViewRepresentable {
                 let distance = album.index - expanded
                 let depth = CGFloat(min(abs(distance), 4))
                 if distance == 0 {
-                    expandedX = -0.02
+                    expandedX = groupX
                     expandedZ = 0.48
                 } else if distance > 0 {
-                    expandedX = -0.02 + rightGap + CGFloat(distance - 1) * stackPitch
+                    expandedX = groupX + rightGap + CGFloat(distance - 1) * stackPitch
                     expandedZ = bodyZ - depthZ * depth
                 } else {
-                    expandedX = -0.02 - leftGap + CGFloat(distance + 1) * stackPitch
+                    expandedX = groupX - leftGap + CGFloat(distance + 1) * stackPitch
                     expandedZ = bodyZ - depthZ * depth
                 }
             }
@@ -446,7 +450,7 @@ struct RecordShelfView: UIViewRepresentable {
                                                 frontTiltZ * Float(album.mix))
             // 展开时略微缩小，横屏里封面不会顶满画面。
             let shrink = albumScale * (1 - 0.05 * Float(album.mix))
-            album.node.scale = SCNVector3(shrink, shrink, shrink * 1.1)
+            album.node.scale = SCNVector3(shrink, shrink, shrink * thicknessScale)
             album.node.opacity = CGFloat(abs(offset) > CGFloat(windowRadius) ? 0.15 : 1)
         }
 
