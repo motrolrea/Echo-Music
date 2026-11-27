@@ -407,7 +407,7 @@ private struct WorkoutPatternCard<Header: View>: View {
                 .foregroundStyle(.secondary)
 
             WorkoutClock(hours: stats.hours, peakHour: stats.peakHour)
-                .frame(height: 196)
+                .frame(height: 128)
                 .frame(maxWidth: .infinity)
 
             WorkoutHeatmap(cells: stats.cells)
@@ -610,119 +610,60 @@ private struct WorkoutClock: View {
     let hours: [Double]
     let peakHour: Int
 
+    private let barAreaHeight: CGFloat = 96
+
     var body: some View {
-        GeometryReader { geo in
-            let size = geo.size
-            let peak = hours.max() ?? 0
-            let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let radius = min(size.width, size.height) * 0.24
-            let hasData = peak > 0
+        let peak = hours.max() ?? 0
+        let hasData = peak > 0
 
-            ZStack {
-                // 底座柔光：让峰值盘从卡片里浮起来。
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [Theme.accent.opacity(hasData ? 0.16 : 0.05), .clear],
-                            center: .center,
-                            startRadius: radius * 0.3,
-                            endRadius: radius * 2.1
-                        )
-                    )
-                    .frame(width: radius * 4.2, height: radius * 4.2)
-                    .position(center)
-                    .blur(radius: 6)
-
-                // 两条极细的基准圆，画出「表盘」的边界。
-                Circle()
-                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
-                    .frame(width: radius * 2 + 44, height: radius * 2 + 44)
-                    .position(center)
-                Circle()
-                    .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
-                    .frame(width: radius * 2 - 12, height: radius * 2 - 12)
-                    .position(center)
-
-                Canvas { context, canvasSize in
-                    let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
-                    let radius = min(canvasSize.width, canvasSize.height) * 0.24
-                    let peak = hours.max() ?? 0
-
-                    for hour in 0..<24 {
-                        let angle = CGFloat(hour) / 24 * .pi * 2 - .pi / 2
-                        let strength = peak > 0 ? min(max(hours[hour] / peak, 0), 1) : 0
-                        let isPeak = hour == peakHour && peak > 0
-                        let inner = radius + 6
-                        let smallTick = hour % 3 == 0
-                        let base: CGFloat = isPeak ? radius * 0.52 : radius * (smallTick ? 0.06 : 0.035)
-                        let length = base + radius * CGFloat(strength) * (isPeak ? 0.30 : 0.34)
-
-                        let start = CGPoint(x: center.x + cos(angle) * inner,
-                                            y: center.y + sin(angle) * inner)
-                        let end = CGPoint(x: center.x + cos(angle) * (inner + length),
-                                          y: center.y + sin(angle) * (inner + length))
-                        var bar = Path()
-                        bar.move(to: start)
-                        bar.addLine(to: end)
-
-                        // 峰值先垫一层同色柔光，形成高光托底。
-                        if isPeak {
-                            context.stroke(bar,
-                                           with: .color(Theme.accent.opacity(0.22)),
-                                           style: StrokeStyle(lineWidth: 14, lineCap: .round))
+        VStack(spacing: 10) {
+            // 24 小时柱状分布：只突出峰值那一根，其余保持克制的灰阶。
+            HStack(alignment: .bottom, spacing: 3) {
+                ForEach(0..<24, id: \.self) { hour in
+                    let ratio = (hasData && hours[hour] > 0) ? max(hours[hour] / peak, 0.08) : 0
+                    let isPeak = hasData && hour == peakHour
+                    RoundedRectangle(cornerRadius: 2.5, style: .continuous)
+                        .fill(barStyle(isPeak: isPeak, ratio: ratio))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: max(3, barAreaHeight * ratio))
+                        .overlay(alignment: .top) {
+                            if isPeak {
+                                Circle()
+                                    .fill(Theme.accent)
+                                    .frame(width: 4, height: 4)
+                                    .offset(y: -7)
+                            }
                         }
-
-                        let colors: [Color] = isPeak
-                            ? [Theme.accent.opacity(0.95), Theme.accent.opacity(0.65)]
-                            : [Color.primary.opacity(0.10 + strength * 0.34),
-                               Color.primary.opacity(0.06 + strength * 0.20)]
-                        context.stroke(bar,
-                                       with: .linearGradient(Gradient(colors: colors),
-                                                             startPoint: start,
-                                                             endPoint: end),
-                                       style: StrokeStyle(lineWidth: isPeak ? 5 : 2.4 + CGFloat(strength) * 1.4,
-                                                          lineCap: .round))
-
-                        if isPeak {
-                            let tip = CGPoint(x: center.x + cos(angle) * (inner + length + 7),
-                                              y: center.y + sin(angle) * (inner + length + 7))
-                            context.fill(Path(ellipseIn: CGRect(x: tip.x - 3, y: tip.y - 3,
-                                                                width: 6, height: 6)),
-                                         with: .color(Theme.accent))
-                        }
-                    }
                 }
-
-                VStack(spacing: 3) {
-                    Text(hasData ? String(format: "%02d:00", peakHour) : "—")
-                        .font(.system(size: 25, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(hasData ? Color.primary : Color.secondary)
-                    Text("最高峰")
-                        .font(.system(size: 10, weight: .medium))
-                        .tracking(1.4)
-                        .foregroundStyle(.tertiary)
-                }
-
-                Text("0")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                    .position(x: size.width / 2, y: max(size.height * 0.045, 5))
-                Text("6")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                    .position(x: size.width * 0.955, y: size.height / 2)
-                Text("12")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                    .position(x: size.width / 2, y: size.height * 0.955)
-                Text("18")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                    .position(x: size.width * 0.045, y: size.height / 2)
             }
-            .frame(width: size.width, height: size.height)
+            .frame(height: barAreaHeight, alignment: .bottom)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(height: 1)
+            }
+
+            HStack(spacing: 0) {
+                Text("0").frame(maxWidth: .infinity, alignment: .leading)
+                Text("6").frame(maxWidth: .infinity)
+                Text("12").frame(maxWidth: .infinity)
+                Text("18").frame(maxWidth: .infinity)
+                Text("24").frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(.tertiary)
         }
+    }
+
+    private func barStyle(isPeak: Bool, ratio: Double) -> AnyShapeStyle {
+        if isPeak {
+            return AnyShapeStyle(
+                LinearGradient(colors: [Theme.accent, Theme.accent.opacity(0.55)],
+                               startPoint: .top,
+                               endPoint: .bottom)
+            )
+        }
+        return AnyShapeStyle(Color.primary.opacity(0.10 + ratio * 0.26))
     }
 }
 

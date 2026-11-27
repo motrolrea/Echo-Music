@@ -716,7 +716,7 @@ struct ProfileView: View {
     }
 
     private var profileVersionFooter: some View {
-        Text("Echo Music 1.4.99")
+        Text("Echo Music 0.9.0")
             .font(BeansFont.appFont(11))
             .foregroundStyle(Color.beansComment.opacity(0.7))
             .multilineTextAlignment(.center)

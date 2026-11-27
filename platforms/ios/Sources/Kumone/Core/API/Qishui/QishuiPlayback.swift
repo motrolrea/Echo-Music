@@ -70,17 +70,67 @@ enum QishuiPlayback {
     static func resolve(trackID: String, lxQuality: String) async throws -> AudioSource {
         let requested = requestedTier(lxQuality)
         let credential = await MainActor.run { QishuiSessionStore.shared.credential }
+        var candidates: [AudioSource] = []
 
-        if let credential {
-            if let entity = try? await QishuiCatalogService.trackEntity(id: trackID, credential: credential),
-               let source = try? await resolve(entity: entity, requested: requested),
-               !source.preview {
-                return source
-            }
+        // 登录态优先：带票据的媒体接口能拿到整曲。
+        if let credential,
+           let entity = try? await QishuiCatalogService.trackEntity(id: trackID, credential: credential),
+           let player = entity["player_info"] as? [String: Any],
+           let source = try? await resolve(player: player, requested: requested) {
+            if !source.preview { return source }
+            candidates.append(source)
         }
 
-        let entity = try await QishuiCatalogService.trackEntity(id: trackID)
-        return try await resolve(entity: entity, requested: requested)
+        // 匿名 Web 的 track_v2（与 Coda 相同的来源，不涉及任何第三方签名）：
+        // 未登录时通常只给试听，但它偶尔能拿到完整的明文流，作为优先候补。
+        if let webPlayer = await webPlayerInfo(trackID: trackID),
+           let source = try? await resolve(player: webPlayer, requested: requested) {
+            if !source.preview, credential == nil { return source }
+            candidates.append(source)
+        }
+
+        if let entity = try? await QishuiCatalogService.trackEntity(id: trackID),
+           let player = entity["player_info"] as? [String: Any],
+           let source = try? await resolve(player: player, requested: requested) {
+            if !source.preview { return source }
+            candidates.append(source)
+        }
+
+        if let best = candidates.first(where: { !$0.preview }) ?? candidates.first {
+            return best
+        }
+        throw QishuiError(.notPlayable, "汽水没有返回可播放的音源")
+    }
+
+    private static let webUserAgent =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+
+    /// 汽水 PC Web 的曲目接口，返回 `track_player`（内含 `video_model`）。
+    /// 只发一条普通 GET，不需要登录 Cookie 或签名服务。
+    private static func webPlayerInfo(trackID: String) async -> [String: Any]? {
+        var components = URLComponents(string: "https://api.qishui.com/luna/pc/track_v2")
+        components?.queryItems = [
+            URLQueryItem(name: "track_id", value: trackID),
+            URLQueryItem(name: "media_type", value: "track"),
+            URLQueryItem(name: "aid", value: "386088"),
+            URLQueryItem(name: "device_platform", value: "web"),
+            URLQueryItem(name: "channel", value: "pc_web"),
+        ]
+        guard let url = components?.url else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 12
+        request.setValue(webUserAgent, forHTTPHeaderField: "User-Agent")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        if let player = (root["seo_track"] as? [String: Any])?["track_player"] as? [String: Any] {
+            return player
+        }
+        if let player = root["track_player"] as? [String: Any] { return player }
+        if let player = (root["data"] as? [String: Any])?["track_player"] as? [String: Any] {
+            return player
+        }
+        return nil
     }
 
     /// 把解析结果变成播放器可以直接打开的地址：明文直链原样返回，
@@ -174,10 +224,7 @@ enum QishuiPlayback {
         }
     }
 
-    private static func resolve(entity: [String: Any], requested: Tier) async throws -> AudioSource {
-        guard let player = entity["player_info"] as? [String: Any] else {
-            throw QishuiError(.notPlayable, "汽水没有返回播放信息")
-        }
+    private static func resolve(player: [String: Any], requested: Tier) async throws -> AudioSource {
         for variant in ["full", "preview"] {
             guard let info = (player[variant] as? [String: Any])?["video_model_info"] as? [String: Any] else {
                 continue
@@ -236,18 +283,110 @@ enum QishuiPlayback {
                                preview: preview, clipStartMS: clipStart,
                                encryption: best.encryption, codec: best.codec)
         }
+
+        // 字段结构不标准时（PC Web 的 track_v2、旧版本返回），递归扫描
+        // 任意层级的可播放地址，尽量把能播的音源捡回来。
+        var modelSource: Any = player
+        if let value = player["video_model"] { modelSource = value }
+        else if let value = player["full"] { modelSource = value }
+        else if let value = player["preview"] { modelSource = value }
+        let tolerant = tolerantCandidates(modelSource)
+            if let best = tolerant.max(by: {
+                ($0.preview ? 0 : 1, $0.tier.rawValue, $0.bitrate) < ($1.preview ? 0 : 1, $1.tier.rawValue, $1.bitrate)
+            }) {
+                return AudioSource(url: best.url, quality: best.tier.lxToken,
+                                   preview: best.preview, clipStartMS: 0,
+                                   encryption: best.encryption, codec: best.codec)
+        }
         throw QishuiError(.notPlayable, "汽水没有返回可播放的音源")
+    }
+
+    private struct RawCandidate {
+        let url: URL
+        let tier: Tier
+        let bitrate: Int
+        let codec: String
+        let encryption: EncryptedSource?
+        let preview: Bool
+    }
+
+    private static func tolerantCandidates(_ node: Any,
+                                           depth: Int = 0,
+                                           inheritedAuth: String = "") -> [RawCandidate] {
+        guard depth < 12 else { return [] }
+        if let text = node as? String, let data = text.data(using: .utf8),
+           let parsed = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) {
+            return tolerantCandidates(parsed, depth: depth + 1, inheritedAuth: inheritedAuth)
+        }
+        if let list = node as? [Any] {
+            return list.flatMap { tolerantCandidates($0, depth: depth + 1, inheritedAuth: inheritedAuth) }
+        }
+        guard let entry = node as? [String: Any] else { return [] }
+
+        let meta = entry["video_meta"] as? [String: Any] ?? [:]
+        let encrypt = entry["encrypt_info"] as? [String: Any] ?? [:]
+        var auth = inheritedAuth
+        for key in ["play_auth", "PlayAuth", "spade_a", "SpadeA", "spadeA"] {
+            if let value = QishuiFields.text(entry[key]), !value.isEmpty { auth = value; break }
+        }
+        if auth.isEmpty {
+            for key in ["spade_a", "SpadeA", "spadeA", "play_auth", "PlayAuth"] {
+                if let value = QishuiFields.text(encrypt[key]), !value.isEmpty { auth = value; break }
+            }
+        }
+
+        var results: [RawCandidate] = []
+        let addresses = ["main_url", "main_play_url", "MainPlayUrl", "MainUrl",
+                         "url", "backup_url", "backup_play_url", "BackupPlayUrl", "BackupUrl"]
+        if let raw = addresses.lazy.compactMap({ QishuiFields.text(entry[$0]) }).first,
+           let url = trustedURL(raw) {
+            let tier = Tier(name: QishuiFields.text(entry["quality"] ?? entry["Quality"] ?? meta["quality"])) ?? .standard
+            let codec = (QishuiFields.text(entry["codec_type"])
+                ?? QishuiFields.text(meta["codec_type"]) ?? "").lowercased()
+            let bitrate = QishuiFields.int(entry["bitrate"]) ?? QishuiFields.int(meta["bitrate"]) ?? 0
+            // 条目自带时长且明显短于整曲（约 30 秒）时按试听处理。
+            let rawDuration = QishuiFields.int(entry["video_duration"]
+                ?? entry["duration"] ?? entry["Duration"] ?? meta["duration"]) ?? 0
+            let durationMS = rawDuration > 1000 ? rawDuration : rawDuration * 1000
+            let looksPreview = durationMS > 0 && durationMS < 60_000
+            results.append(RawCandidate(url: url,
+                                        tier: tier,
+                                        bitrate: bitrate,
+                                        codec: codec,
+                                        encryption: auth.isEmpty
+                                            ? nil
+                                            : EncryptedSource(spadeA: auth, playAuth: nil, method: nil),
+                                        preview: looksPreview))
+        }
+        for value in entry.values {
+            results += tolerantCandidates(value, depth: depth + 1, inheritedAuth: auth)
+        }
+        return results
     }
 
     private static func encryptionInfo(_ item: [String: Any]) -> EncryptedSource? {
         var spade: String?
         var method: String?
+        var playAuth: String?
         if let encrypt = item["encrypt_info"] as? [String: Any] {
             method = QishuiFields.text(encrypt["encryption_method"])
-            if let value = QishuiFields.text(encrypt["spade_a"]), !value.isEmpty { spade = value }
+            for key in ["spade_a", "SpadeA", "spadeA"] {
+                if let value = QishuiFields.text(encrypt[key]), !value.isEmpty { spade = value; break }
+            }
+            for key in ["play_auth", "PlayAuth"] {
+                if let value = QishuiFields.text(encrypt[key]), !value.isEmpty { playAuth = value; break }
+            }
         }
-        var playAuth: String?
-        if let value = QishuiFields.text(item["PlayAuth"]), !value.isEmpty { playAuth = value }
+        if spade == nil {
+            for key in ["spade_a", "SpadeA", "spadeA"] {
+                if let value = QishuiFields.text(item[key]), !value.isEmpty { spade = value; break }
+            }
+        }
+        if playAuth == nil {
+            for key in ["play_auth", "PlayAuth"] {
+                if let value = QishuiFields.text(item[key]), !value.isEmpty { playAuth = value; break }
+            }
+        }
         var flagged = spade != nil || playAuth != nil
             || QishuiFields.bool((item["encrypt_info"] as? [String: Any])?["encrypt"])
         if let encrypt = QishuiFields.int(item["Encrypt"]), encrypt != 0 { flagged = true }

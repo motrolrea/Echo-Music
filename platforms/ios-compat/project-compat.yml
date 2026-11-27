@@ -30,7 +30,7 @@ targets:
       base:
         PRODUCT_NAME: EchoMusic
         PRODUCT_BUNDLE_IDENTIFIER: com.motrolrea.echomusic.ios
-        MARKETING_VERSION: "1.4.99"
+        MARKETING_VERSION: "0.9.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_OBJC_BRIDGING_HEADER: Moumusic/Beans-Bridging-Header.h
