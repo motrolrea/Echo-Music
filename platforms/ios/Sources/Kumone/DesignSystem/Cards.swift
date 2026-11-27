@@ -256,8 +256,18 @@ struct MouGlassCard<Content: View>: View {
 struct SettingsCard<Content: View>: View {
     var title: String?
     var icon: String?
-    var spacing: CGFloat = 12
-    @ViewBuilder var content: () -> Content
+    var spacing: CGFloat
+    private let content: Content
+
+    init(title: String? = nil,
+         icon: String? = nil,
+         spacing: CGFloat = 12,
+         @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.spacing = spacing
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -277,7 +287,7 @@ struct SettingsCard<Content: View>: View {
                 }
             }
             VStack(alignment: .leading, spacing: spacing) {
-                content()
+                content
             }
         }
         .padding(16)
