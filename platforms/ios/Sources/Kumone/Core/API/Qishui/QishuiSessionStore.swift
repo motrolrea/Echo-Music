@@ -1,8 +1,8 @@
 import Foundation
 import Combine
 
-/// Persists the Qishui ticket-guard credential. The private key never leaves
-/// the keychain entry; only the decoded credential is handed to `QishuiClient`.
+/// Persists the Qishui PC cookie. Playback and catalogue reads only receive
+/// the filtered account cookie, never the whole website data store.
 @MainActor
 final class QishuiSessionStore: ObservableObject {
     static let shared = QishuiSessionStore()
@@ -50,8 +50,7 @@ final class QishuiSessionStore: ObservableObject {
         } catch let error as QishuiError where error.kind == .authRequired {
             signOut()
         } catch {
-            // Network failures keep the stored session; the next playback or
-            // manual refresh can renew it.
+            // A network failure should not drop a still-valid cookie.
         }
     }
 
@@ -65,16 +64,16 @@ final class QishuiSessionStore: ObservableObject {
         sessionRevision &+= 1
     }
 
-    // MARK: - Storage
-
     private func restore() {
         guard let raw = ProviderSessionSupport.readCookie(service: keychainService),
               let data = raw.data(using: .utf8),
-              let stored = try? JSONDecoder().decode(QishuiCredential.self, from: data) else {
+              let stored = try? JSONDecoder().decode(QishuiCredential.self, from: data),
+              stored.isValid else {
             return
         }
         credential = stored
-        profileName = stored.nickname.isEmpty ? nil : stored.nickname
+        let name = stored.nickname?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        profileName = name.isEmpty ? nil : name
         avatarURL = stored.avatarURL
         isVIP = stored.isVIP
     }

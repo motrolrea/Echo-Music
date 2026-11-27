@@ -1,6 +1,6 @@
 import Foundation
 
-/// Resolves a playable URL from the `player_info` carried by `/media/mget/`.
+/// Resolves a playable URL from the PC `/luna/pc/track_v2` player payload.
 ///
 /// 汽水对每个档位都返回 CENC(`cenc-aes-ctr`) 加密媒体，并给出 `spade_a`
 /// （或登录态下的 `PlayAuth`）。明文候选优先；只有加密候选时先下载，再用
@@ -72,7 +72,7 @@ enum QishuiPlayback {
         let credential = await MainActor.run { QishuiSessionStore.shared.credential }
         var candidates: [AudioSource] = []
 
-        // 登录态优先：带票据的媒体接口能拿到整曲。
+        // 登录态优先：签名后的 PC track_v2 才能拿到整曲。
         if let credential,
            let entity = try? await QishuiCatalogService.trackEntity(id: trackID, credential: credential),
            let player = entity["player_info"] as? [String: Any],
@@ -348,7 +348,13 @@ enum QishuiPlayback {
             let rawDuration = QishuiFields.int(entry["video_duration"]
                 ?? entry["duration"] ?? entry["Duration"] ?? meta["duration"]) ?? 0
             let durationMS = rawDuration > 1000 ? rawDuration : rawDuration * 1000
-            let looksPreview = durationMS > 0 && durationMS < 60_000
+            let range = (entry["playable_range"] as? [String: Any]) ?? (meta["playable_range"] as? [String: Any])
+            let rangeStart = QishuiFields.int(range?["start"]) ?? 0
+            let rangeDuration = QishuiFields.int(range?["duration"]) ?? 0
+            let rangeMS = rangeDuration > 1000 ? rangeDuration : (rangeDuration > 0 ? rangeDuration * 1000 : 0)
+            let looksPreview = rangeStart != 0
+                || (rangeMS > 0 && rangeMS < 60_000)
+                || (durationMS > 0 && durationMS < 60_000)
             results.append(RawCandidate(url: url,
                                         tier: tier,
                                         bitrate: bitrate,

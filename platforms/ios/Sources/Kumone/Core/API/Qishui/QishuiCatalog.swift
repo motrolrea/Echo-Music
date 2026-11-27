@@ -1,59 +1,51 @@
 import Foundation
 
-/// Catalogue reads for the Qishui car protocol. Public reads work anonymously;
-/// passing a credential switches to the account's own entitlement.
+/// Catalogue reads for the Qishui PC protocol.
+/// Account libraries use the saved website cookie. Search, scenes and playback
+/// go through the signer.
 enum QishuiCatalogService {
     static func search(_ keyword: String, limit: Int = 30, offset: Int = 0,
                        credential: QishuiCredential? = nil) async throws -> [Track] {
         let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        let searchID = UUID().uuidString.lowercased()
-        let data = try await QishuiClient.shared.platform(
-            path: "/search/",
-            body: [
+        let root = try await QishuiClient.shared.signedGet(
+            path: "/luna/pc/search/track",
+            extras: [
                 "q": trimmed,
-                "cursor": String(offset),
-                "search_id": searchID,
-                "from_search_id": searchID,
-                "search_method": "input",
-                "search_type": "track",
-                "search_scene": "normal",
-                "scene_name": "search",
-                "ab_param": "",
-                "last_viewed_media": [String: Any](),
+                "cursor": String(max(0, offset)),
+                "count": String(max(1, min(limit, 50))),
             ],
-            credential: credential
+            cookie: credential?.accountCookie
         )
-        let groups = QishuiFields.objects(data["result_groups"])
-        let group = groups.first { QishuiFields.text($0["id"]) == "tracks" } ?? groups.first
-        guard let group else { return [] }
-        let rows = QishuiFields.objects(group["data"])
-        let items = rows.compactMap { row -> [String: Any]? in
-            let entity = row["entity"] as? [String: Any]
-            return entity?["track"] as? [String: Any]
-        }
-        return items.prefix(max(1, limit)).compactMap { QishuiMapping.track(from: $0) }
+        return Array(tracks(in: root).prefix(max(1, limit)))
     }
 
-    /// Full `track_entity` including `player_info`; needed by playback.
+    /// Full track object, including `player_info` when the PC player payload is present.
     static func trackEntity(id: String,
                             credential: QishuiCredential? = nil) async throws -> [String: Any] {
-        let data = try await QishuiClient.shared.platform(
-            path: "/media/mget/",
-            body: [
-                "media_list": [["id": id, "type": "track"]],
-                "card_context": [String: Any](),
-            ],
-            credential: credential
-        )
-        let mediaList = QishuiFields.objects(data["media_list"])
-        let media = mediaList.first { item in
-            let entity = item["track_entity"] as? [String: Any]
-            let entityID = QishuiFields.text((entity?["base_info"] as? [String: Any])?["id"])
-            let itemID = QishuiFields.text(item["media_id"]) ?? entityID
-            return itemID == id
-        } ?? mediaList.first
-        guard let entity = media?["track_entity"] as? [String: Any] else {
+        let root: [String: Any]
+        if let credential {
+            root = try await QishuiClient.shared.signedPost(
+                path: "/luna/pc/track_v2",
+                body: playerBody(id),
+                cookie: credential.accountCookie
+            )
+        } else {
+            root = try await QishuiClient.shared.get(
+                path: "/luna/pc/track_v2",
+                extras: [
+                    "track_id": id,
+                    "media_type": "track",
+                    "device_platform": "web",
+                    "channel": "pc_web",
+                ]
+            )
+        }
+        var entity = trackObject(in: root) ?? [:]
+        if entity["player_info"] == nil, let player = playerObject(in: root) {
+            entity["player_info"] = player
+        }
+        guard entity["player_info"] != nil || QishuiFields.text(entity["id"] ?? entity["track_id"]) != nil else {
             throw QishuiError(.notPlayable, "汽水没有返回这首歌")
         }
         return entity
@@ -73,66 +65,54 @@ enum QishuiCatalogService {
                                limit: Int = 100, offset: Int = 0,
                                credential: QishuiCredential? = nil,
                                playlistType: Int? = nil) async throws -> PlaylistPage {
-        // 歌单游标不是行号，要从头顺序翻页；只取首页会把 100 首以上的歌单截断。
         var cursor = "0"
         var seen: Set<String> = []
         var all: [Track] = []
-        var firstPage: [String: Any] = [:]
-        let typeValue: Any
-        if let playlistType {
-            typeValue = playlistType
-        } else {
-            typeValue = NSNull()
-        }
-        for _ in 0..<12 {
+        var playlist: [String: Any] = [:]
+        var hasMore = false
+        for _ in 0..<20 {
             seen.insert(cursor)
-            let body: [String: Any] = [
+            var extras = [
                 "playlist_id": id,
-                "owner_id": ownerId,
-                "count": 100,
                 "cursor": cursor,
-                "type": typeValue,
+                "count": "50",
             ]
-            let data: [String: Any]
-            if credential == nil {
-                data = try await QishuiClient.shared.platform(path: "/playlist/detail/", body: body,
-                                                              credential: nil)
+            if !ownerId.isEmpty { extras["owner_id"] = ownerId }
+            if let playlistType { extras["type"] = String(playlistType) }
+            let root: [String: Any]
+            if credential != nil {
+                root = try await accountGet(path: "/luna/pc/playlist/detail", extras: extras,
+                                            credential: credential)
             } else {
-                data = try await accountRequest(path: "/playlist/detail/", body: body,
-                                                credential: credential)
+                root = try await QishuiClient.shared.get(path: "/luna/pc/playlist/detail", extras: extras)
             }
-            if firstPage.isEmpty { firstPage = data }
-            var batch = QishuiFields.objects(data["media_entities"])
-            if batch.isEmpty { batch = QishuiFields.objects(data["media_list"]) }
-            all += batch.compactMap { QishuiMapping.track(from: $0) }
+            if playlist.isEmpty {
+                playlist = (root["playlist"] as? [String: Any]) ?? [:]
+            }
+            let batch = QishuiFields.objects(root["media_resources"]).compactMap(track(fromResource:))
+            all += batch
+            hasMore = QishuiFields.bool(root["has_more"])
             if all.count >= offset + limit, limit > 0 { break }
-            guard QishuiFields.bool(data["has_more"]) else { break }
-            let next = QishuiFields.text(data["next_cursor"]) ?? ""
+            guard hasMore else { break }
+            let next = QishuiFields.text(root["next_cursor"]) ?? ""
             guard !next.isEmpty, !seen.contains(next) else { break }
             cursor = next
         }
 
-        let playlist = firstPage["playlist"] as? [String: Any] ?? [:]
-        let base = playlist["base_info"] as? [String: Any] ?? playlist
-        let display = playlist["display_info"] as? [String: Any] ?? [:]
-        let relation = playlist["relation_info"] as? [String: Any] ?? [:]
-        let owner = relation["owner"] as? [String: Any] ?? [:]
-        let stats = playlist["stats"] as? [String: Any] ?? [:]
         let tracks = Array(all.dropFirst(max(0, offset)).prefix(max(1, limit)))
-
-        let coverValue: Any? = display["url_cover"] ?? display["cover_url"]
+        let owner = (playlist["creator"] as? [String: Any])
+            ?? (playlist["owner"] as? [String: Any])
+            ?? [:]
         return PlaylistPage(
-            name: QishuiFields.text(base["title"]) ?? QishuiFields.text(base["name"]) ?? "汽水歌单",
-            coverURL: QishuiMapping.coverURL(coverValue),
-            description: QishuiFields.text(base["description"]),
-            author: QishuiFields.text(owner["nickname"]) ?? QishuiFields.text(owner["name"]),
+            name: QishuiFields.text(playlist["title"] ?? playlist["name"]) ?? "汽水歌单",
+            coverURL: QishuiFields.imageURL(playlist["url_cover"] ?? playlist["cover"]),
+            description: QishuiFields.text(playlist["desc"] ?? playlist["description"]),
+            author: QishuiFields.text(owner["nickname"] ?? owner["name"]),
             tracks: tracks,
-            hasMore: all.count > offset + tracks.count,
-            total: QishuiFields.int(base["resource_cnt"]) ?? QishuiFields.int(stats["count"]) ?? all.count
+            hasMore: hasMore || all.count > offset + tracks.count,
+            total: QishuiFields.int(playlist["count_tracks"] ?? playlist["track_count"]) ?? all.count
         )
     }
-
-    // MARK: - Account library
 
     struct PlaylistSummary: Identifiable, Hashable {
         let id: String
@@ -142,59 +122,34 @@ enum QishuiCatalogService {
         let trackCount: Int
         let author: String?
         let description: String?
-        /// 自己创建的歌单（否则是收藏的歌单）。
         let isOwned: Bool
-        /// 汽水的「我喜欢的音乐」是 type == 1 的内置歌单。
+        /// 「我喜欢的音乐」：PC 用 special_type == 5，旧接口用 type == 1。
         let isLiked: Bool
     }
 
-    private static func playlistSummary(from raw: [String: Any], owned: Bool) -> PlaylistSummary? {
-        let playlist = raw["playlist"] as? [String: Any] ?? raw
-        let base = playlist["base_info"] as? [String: Any] ?? playlist
-        guard let id = QishuiFields.text(base["id"]), !id.isEmpty else { return nil }
-        let display = playlist["display_info"] as? [String: Any] ?? [:]
-        let relation = playlist["relation_info"] as? [String: Any] ?? [:]
-        let owner = relation["owner"] as? [String: Any] ?? [:]
-        let stats = playlist["stats"] as? [String: Any] ?? [:]
-        let coverValue: Any? = display["url_cover"] ?? display["cover_url"]
-        return PlaylistSummary(
-            id: id,
-            ownerId: QishuiFields.text(base["owner_id"]) ?? QishuiFields.text(owner["id"]) ?? "",
-            name: QishuiFields.text(base["title"]) ?? QishuiFields.text(base["name"]) ?? "汽水歌单",
-            coverURL: QishuiMapping.coverURL(coverValue),
-            trackCount: QishuiFields.int(base["resource_cnt"]) ?? QishuiFields.int(stats["count"]) ?? 0,
-            author: QishuiFields.text(owner["nickname"]) ?? QishuiFields.text(owner["name"]),
-            description: QishuiFields.text(base["description"]),
-            isOwned: owned,
-            isLiked: QishuiFields.int(base["type"]) == 1
-        )
-    }
-
-    /// 车机协议里账号歌单只有两个来源：`/me/playlist/`（自建）和
-    /// `/me/collection/mixed/`（收藏）。两个都要按游标翻页。
     static func myPlaylists(credential: QishuiCredential? = nil) async throws -> [PlaylistSummary] {
-        guard let credential else { return [] }
+        guard credential != nil else { return [] }
         var items: [PlaylistSummary] = []
         var lastError: Error?
-        for (path, field, owned) in [("/me/playlist/", "playlists", true),
-                                     ("/me/collection/mixed/", "mixed_collections", false)] {
+        let sources: [(String, String, Bool, [String: String])] = [
+            ("/luna/pc/me/playlist", "playlists", true, [:]),
+            ("/luna/me/collection/mixed", "mixed_collections", false, ["item_types": "playlist"]),
+        ]
+        for (path, field, owned, extra) in sources {
             do {
                 var cursor = ""
                 var seen: Set<String> = []
                 for _ in 0..<20 {
                     seen.insert(cursor)
-                    let data = try await accountRequest(
-                        path: path,
-                        body: ["count": 100, "cursor": cursor, "item_types": ["playlist"]],
-                        credential: credential
-                    )
-                    var rows = QishuiFields.objects(data[field])
-                    if path == "/me/playlist/" { rows += QishuiFields.objects(data["playlist_list"]) }
-                    for row in rows {
+                    var extras = extra
+                    extras["cursor"] = cursor
+                    extras["count"] = "50"
+                    let root = try await accountGet(path: path, extras: extras, credential: credential)
+                    for row in QishuiFields.objects(root[field]) {
                         if let summary = playlistSummary(from: row, owned: owned) { items.append(summary) }
                     }
-                    guard QishuiFields.bool(data["has_more"]) else { break }
-                    let next = QishuiFields.text(data["next_cursor"]) ?? ""
+                    guard QishuiFields.bool(root["has_more"]) else { break }
+                    let next = QishuiFields.text(root["next_cursor"]) ?? ""
                     guard !next.isEmpty, !seen.contains(next) else { break }
                     cursor = next
                 }
@@ -207,134 +162,63 @@ enum QishuiCatalogService {
         return items.filter { seen.insert($0.id).inserted }
     }
 
-    /// 找到「我喜欢的音乐」歌单（type == 1）。它的 id 不固定，只能从自建歌单里认。
-    private static func likedPlaylist(credential: QishuiCredential) async throws -> PlaylistSummary? {
-        var cursor = ""
-        var seen: Set<String> = []
-        for _ in 0..<20 {
-            seen.insert(cursor)
-            let data = try await accountRequest(
-                path: "/me/playlist/",
-                body: ["count": 100, "cursor": cursor],
-                credential: credential
-            )
-            let rows = QishuiFields.objects(data["playlists"]) + QishuiFields.objects(data["playlist_list"])
-            if let summary = rows.compactMap({ playlistSummary(from: $0, owned: true) })
-                .first(where: { $0.isLiked }) {
-                return summary
-            }
-            guard QishuiFields.bool(data["has_more"]) else { return nil }
-            let next = QishuiFields.text(data["next_cursor"]) ?? ""
-            guard !next.isEmpty, !seen.contains(next) else { return nil }
-            cursor = next
-        }
-        return nil
-    }
-
     static func likedTracks(limit: Int = 300,
                             credential: QishuiCredential? = nil) async throws -> [Track] {
-        guard let credential, let liked = try await likedPlaylist(credential: credential) else { return [] }
+        guard let credential else { return [] }
+        let lists = try await myPlaylists(credential: credential)
+        guard let liked = lists.first(where: \.isLiked) else { return [] }
         return try await playlistDetail(id: liked.id, ownerId: liked.ownerId,
                                         limit: min(max(1, limit), 1000), offset: 0,
                                         credential: credential, playlistType: 1).tracks
     }
 
-    /// `/me/recent-played/`：每行 `media.track_entity`，另有 `play_start_timestamp`。
     static func recentPlayed(limit: Int = 60,
                              credential: QishuiCredential? = nil) async throws -> [Track] {
-        guard let credential else { return [] }
+        guard credential != nil else { return [] }
         var cursor = ""
         var seenCursors: Set<String> = []
         var seenTracks: Set<Int> = []
         var tracks: [Track] = []
-        for _ in 0..<6 {
+        for _ in 0..<8 {
             seenCursors.insert(cursor)
-            let data = try await accountRequest(
-                path: "/me/recent-played/",
-                body: ["count": 100, "cursor": cursor, "media_type": "track", "scene": "me_tab"],
+            let root = try await accountGet(
+                path: "/luna/pc/me/recently-played-media",
+                extras: ["media_type": "track", "cursor": cursor, "count": "50"],
                 credential: credential
             )
-            for row in QishuiFields.objects(data["media"]) {
-                guard let media = row["media"] as? [String: Any],
-                      media["track_entity"] != nil,
-                      let track = QishuiMapping.track(from: media),
-                      seenTracks.insert(track.id).inserted else { continue }
+            for row in QishuiFields.objects(root["media_resources"]) {
+                guard let track = track(fromResource: row), seenTracks.insert(track.id).inserted else { continue }
                 tracks.append(track)
                 if tracks.count >= limit { break }
             }
-            guard tracks.count < limit, QishuiFields.bool(data["has_more"]) else { break }
-            let next = QishuiFields.text(data["next_cursor"]) ?? ""
+            guard tracks.count < limit, QishuiFields.bool(root["has_more"]) else { break }
+            let next = QishuiFields.text(root["next_cursor"]) ?? ""
             guard !next.isEmpty, !seenCursors.contains(next) else { break }
             cursor = next
         }
         return Array(tracks.prefix(max(1, limit)))
     }
 
-    /// `/search/` 的 playlist 组：返回真实歌单（汽水没有歌单广场，但搜索有）。
     static func searchPlaylists(_ keyword: String, limit: Int = 30, offset: Int = 0,
                                 credential: QishuiCredential? = nil) async throws -> [PlaylistSummary] {
         let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        let searchID = UUID().uuidString.lowercased()
-        let data = try await QishuiClient.shared.platform(
-            path: "/search/",
-            body: [
+        let root = try await QishuiClient.shared.signedGet(
+            path: "/luna/pc/search/playlist",
+            extras: [
                 "q": trimmed,
-                "cursor": String(offset),
-                "search_id": searchID,
-                "from_search_id": searchID,
-                "search_method": "input",
-                "search_type": "playlist",
-                "search_scene": "normal",
-                "scene_name": "search",
-                "ab_param": "",
-                "last_viewed_media": [String: Any](),
+                "cursor": String(max(0, offset)),
+                "count": String(max(1, min(limit, 50))),
             ],
-            credential: credential
+            cookie: credential?.accountCookie
         )
-        let groups = QishuiFields.objects(data["result_groups"])
-        let group = groups.first {
-            (QishuiFields.text($0["id"]) ?? "").hasPrefix("playlist")
-        } ?? groups.first
-        guard let group else { return [] }
-        let rows = QishuiFields.objects(group["data"]).compactMap { row -> PlaylistSummary? in
-            guard let playlist = (row["entity"] as? [String: Any])?["playlist"] as? [String: Any] else { return nil }
+        let rows = searchRows(root).compactMap { row -> PlaylistSummary? in
+            let playlist = ((row["entity"] as? [String: Any])?["playlist"] as? [String: Any])
+                ?? (row["playlist"] as? [String: Any])
+                ?? row
             return playlistSummary(from: playlist, owned: false)
         }
         return Array(rows.prefix(max(1, limit)))
-    }
-
-    /// 账号读接口：票据过期时先静默续期再重试一次；续期也被拒绝就退出登录，
-    /// 这样界面会回到「请登录」，而不是一直提示「登录已失效」。
-    private static func accountRequest(path: String, body: [String: Any],
-                                       credential: QishuiCredential?) async throws -> [String: Any] {
-        guard let credential else {
-            throw QishuiError(.authRequired, "请先登录汽水音乐")
-        }
-        do {
-            return try await QishuiClient.shared.platform(path: path, body: body, credential: credential)
-        } catch let error as QishuiError where error.kind == .authRequired {
-            do {
-                if let renewed = try await renewQishuiSession() {
-                    return try await QishuiClient.shared.platform(path: path, body: body, credential: renewed)
-                }
-            } catch {
-                // 续期时的网络失败不该被当成账号失效：保留原错误，会话也保留。
-            }
-            throw error
-        }
-    }
-
-    /// 在 MainActor 上续期票据；只有明确的鉴权失败才清会话。
-    @MainActor
-    private static func renewQishuiSession() async throws -> QishuiCredential? {
-        do {
-            _ = try await QishuiAuthService.shared.refresh()
-        } catch let error as QishuiError where error.kind == .authRequired {
-            QishuiSessionStore.shared.signOut()
-            return nil
-        }
-        return QishuiSessionStore.shared.credential
     }
 
     struct LyricsPayload {
@@ -342,19 +226,209 @@ enum QishuiCatalogService {
         let yrc: String?
     }
 
-    /// Qishui returns KRC (`[startMs,durationMs]<offset,dur,0>字…`) for most
-    /// tracks and plain LRC for a few. Emit line-level LRC for the existing
-    /// lyrics pipeline; word timing is intentionally not claimed.
     static func lyrics(id: String) async throws -> LyricsPayload {
         let entity = try await trackEntity(id: id)
-        let display = entity["display_info"] as? [String: Any] ?? [:]
-        let lyricInfo = display["lyric_info"] as? [String: Any] ?? [:]
-        let lyricEntity = lyricInfo["lyric_entity"] as? [String: Any] ?? [:]
-        let content = QishuiFields.text(lyricEntity["content"]) ?? ""
+        let content = lyricText(entity)
         guard !content.isEmpty else {
             throw QishuiError(.invalidResponse, "汽水没有返回歌词")
         }
         return parseLyrics(content)
+    }
+
+    struct FeedMode: Identifiable {
+        let id: String
+        let name: String
+        let group: String
+        let coverURL: String?
+    }
+
+    static func feedModes() async throws -> [FeedMode] {
+        let root = try await QishuiClient.shared.signedPost(path: "/luna/pc/feed/mode", body: [:])
+        let blocks = QishuiFields.objects(root["feed_mode_block"])
+        if blocks.isEmpty, let data = root["data"] as? [String: Any] {
+            return modes(from: QishuiFields.objects(data["feed_mode_block"]))
+        }
+        return modes(from: blocks)
+    }
+
+    static func feed(scene: String? = nil, preference: String? = nil,
+                     limit: Int = 20) async throws -> [Track] {
+        var feedPreference: [String: Any] = [
+            "total_request_count": 1,
+            "preference_mode_request_count": 1,
+            "current_mode_request_count": 1,
+        ]
+        if let scene { feedPreference["scene_mode_id"] = Int(scene) ?? scene }
+        if let preference { feedPreference["preference_mode"] = preference }
+        let root = try await QishuiClient.shared.signedPost(
+            path: "/luna/pc/feed/song-tab",
+            body: [
+                "feed_preference": feedPreference,
+                "cursor": "0",
+                "count": max(1, limit),
+                "played_media": [Any](),
+                "is_first_request": true,
+            ]
+        )
+        let items = QishuiFields.objects(root["items"]).isEmpty
+            ? QishuiFields.objects((root["data"] as? [String: Any])?["items"])
+            : QishuiFields.objects(root["items"])
+        return Array(items.compactMap { item -> Track? in
+            if let type = item["type"] as? String, type != "track", item["entity"] == nil { return nil }
+            return track(fromResource: item) ?? QishuiMapping.track(from: item)
+        }.prefix(max(1, limit)))
+    }
+
+    /// 推荐页优先用发现页的热歌，场景流作为兜底。
+    static func freshRecommendedTracks(limit: Int = 30) async -> [Track] {
+        if let discovered = try? await discoverTracks(limit: limit), !discovered.isEmpty {
+            return discovered
+        }
+        if let modes = try? await feedModes(), let pick = modes.randomElement(),
+           let tracks = try? await feed(scene: pick.id, limit: limit), !tracks.isEmpty {
+            return tracks
+        }
+        return (try? await feed(limit: limit)) ?? []
+    }
+
+    // MARK: - Account
+
+    private static func accountGet(path: String, extras: [String: String],
+                                   credential: QishuiCredential?) async throws -> [String: Any] {
+        guard let credential else {
+            throw QishuiError(.authRequired, "请先登录汽水音乐")
+        }
+        do {
+            return try await QishuiClient.shared.get(path: path, extras: extras,
+                                                     cookie: credential.accountCookie)
+        } catch let error as QishuiError where error.kind == .authRequired {
+            await MainActor.run { QishuiSessionStore.shared.signOut() }
+            throw error
+        }
+    }
+
+    private static func playlistSummary(from raw: [String: Any], owned: Bool) -> PlaylistSummary? {
+        let nested = raw["playlist"] as? [String: Any]
+        let playlist = nested ?? raw
+        guard let id = QishuiFields.text(playlist["id"] ?? playlist["playlist_id"]), !id.isEmpty else {
+            return nil
+        }
+        let owner = (playlist["creator"] as? [String: Any]) ?? (playlist["owner"] as? [String: Any]) ?? [:]
+        let name = QishuiFields.text(playlist["title"] ?? playlist["name"]) ?? "汽水歌单"
+        let special = QishuiFields.int(playlist["special_type"] ?? playlist["type"]) ?? 0
+        let liked = special == 5 || special == 1 || name.contains("我喜欢")
+        return PlaylistSummary(
+            id: id,
+            ownerId: QishuiFields.text(playlist["owner_id"] ?? owner["id"] ?? owner["user_id"]) ?? "",
+            name: name,
+            coverURL: QishuiFields.imageURL(playlist["url_cover"] ?? playlist["cover"] ?? playlist["cover_url"]),
+            trackCount: QishuiFields.int(playlist["count_tracks"] ?? playlist["track_count"] ?? playlist["count"]) ?? 0,
+            author: QishuiFields.text(owner["nickname"] ?? owner["name"]),
+            description: QishuiFields.text(playlist["desc"] ?? playlist["description"]),
+            isOwned: owned && !liked,
+            isLiked: liked
+        )
+    }
+
+    // MARK: - Discovery
+
+    private static func discoverTracks(limit: Int) async throws -> [Track] {
+        let root = try await QishuiClient.shared.post(path: "/luna/pc/discover", body: [:])
+        let blocks = QishuiFields.objects(root["blocks"])
+        let songs = blocks.first { QishuiFields.text($0["type"]) == "discover_top_song_list" } ?? blocks.first
+        let rows = QishuiFields.objects(songs?["inner_block"])
+        return Array(rows.compactMap(track(fromResource:)).prefix(max(1, limit)))
+    }
+
+    private static func modes(from blocks: [[String: Any]]) -> [FeedMode] {
+        blocks.flatMap { block -> [FeedMode] in
+            let title = QishuiFields.text(block["title"] ?? block["text"]) ?? ""
+            return QishuiFields.objects(block["feed_mode"]).compactMap { item in
+                let mode = ((item["entity"] as? [String: Any])?["feed_mode"] as? [String: Any]) ?? item
+                let scene = (mode["scene_mode"] as? [String: Any])?["scene_mode_id"] ?? mode["scene_mode_id"]
+                guard let id = QishuiFields.text(scene ?? mode["sub_queue_type"]), !id.isEmpty else { return nil }
+                return FeedMode(id: id,
+                                name: QishuiFields.text(mode["text"] ?? mode["title"]) ?? "场景电台",
+                                group: title,
+                                coverURL: QishuiFields.imageURL(mode["url_info"] ?? mode["url_cover"]))
+            }
+        }
+    }
+
+    // MARK: - Parsing
+
+    private static func playerBody(_ id: String) -> [String: Any] {
+        [
+            "track_id": id,
+            "media_type": "track",
+            "aid": QishuiProtocol.aid,
+            "device_platform": QishuiProtocol.devicePlatform,
+        ]
+    }
+
+    private static func tracks(in root: [String: Any]) -> [Track] {
+        searchRows(root).compactMap { row in
+            track(fromResource: row) ?? QishuiMapping.track(from: row)
+        }
+    }
+
+    private static func searchRows(_ root: [String: Any]) -> [[String: Any]] {
+        let direct = QishuiFields.objects(root["search_results"])
+        if !direct.isEmpty { return direct }
+        let results = QishuiFields.objects(root["results"])
+        if !results.isEmpty { return results }
+        if let data = root["data"] as? [String: Any] {
+            let nested = QishuiFields.objects(data["search_results"])
+            if !nested.isEmpty { return nested }
+            return QishuiFields.objects(data["results"])
+        }
+        return []
+    }
+
+    private static func track(fromResource row: [String: Any]) -> Track? {
+        if let entity = row["entity"] as? [String: Any] {
+            if let track = entity["track"] as? [String: Any], let mapped = QishuiMapping.track(from: track) {
+                return mapped
+            }
+            if let mapped = QishuiMapping.track(from: entity) { return mapped }
+        }
+        if let track = row["track"] as? [String: Any], let mapped = QishuiMapping.track(from: track) {
+            return mapped
+        }
+        return QishuiMapping.track(from: row)
+    }
+
+    private static func trackObject(in root: [String: Any]) -> [String: Any]? {
+        if let seo = root["seo_track"] as? [String: Any], let track = seo["track"] as? [String: Any] {
+            return track
+        }
+        if let track = root["track"] as? [String: Any] { return track }
+        if let data = root["data"] as? [String: Any] { return trackObject(in: data) }
+        return nil
+    }
+
+    private static func playerObject(in root: [String: Any]) -> [String: Any]? {
+        if let seo = root["seo_track"] as? [String: Any],
+           let player = seo["track_player"] as? [String: Any] { return player }
+        if let player = root["track_player"] as? [String: Any] { return player }
+        if let data = root["data"] as? [String: Any] { return playerObject(in: data) }
+        return nil
+    }
+
+    private static func lyricText(_ value: Any?) -> String {
+        if let text = value as? String {
+            if text.contains("[") && (text.contains("]") || text.contains(",")) { return text }
+            return ""
+        }
+        guard let object = value as? [String: Any] else { return "" }
+        for key in ["content", "lyric", "lyrics", "lrc", "krc"] {
+            if let text = lyricText(object[key]), !text.isEmpty { return text }
+        }
+        for nested in object.values {
+            let text = lyricText(nested)
+            if !text.isEmpty { return text }
+        }
+        return ""
     }
 
     private static func parseLyrics(_ content: String) -> LyricsPayload {
@@ -378,65 +452,5 @@ enum QishuiCatalogService {
             lines.append(String(format: "[%02d:%02d.%02d]%@", minutes, seconds, centiseconds, text))
         }
         return LyricsPayload(lrc: lines.joined(separator: "\n"), yrc: nil)
-    }
-
-    struct FeedMode: Identifiable {
-        let id: String
-        let name: String
-        let group: String
-        let coverURL: String?
-    }
-
-    static func feedModes() async throws -> [FeedMode] {
-        let data = try await QishuiClient.shared.platform(path: "/feed/mode/")
-        let blocks = QishuiFields.objects(data["feed_mode_block"])
-        return blocks.flatMap { block -> [FeedMode] in
-            let title = QishuiFields.text(block["title"]) ?? ""
-            return QishuiFields.objects(block["feed_mode"]).compactMap { item in
-                let mode = (item["entity"] as? [String: Any])?["feed_mode"] as? [String: Any]
-                let scene = (mode?["scene_mode"] as? [String: Any])?["scene_mode_id"]
-                guard let id = QishuiFields.text(scene) else { return nil }
-                return FeedMode(id: id,
-                                name: QishuiFields.text(mode?["text"]) ?? "场景电台",
-                                group: title,
-                                coverURL: QishuiMapping.coverURL(mode?["url_info"]))
-            }
-        }
-    }
-
-    static func feed(scene: String? = nil, preference: String? = nil,
-                     limit: Int = 20) async throws -> [Track] {
-        var feedPreference: [String: Any] = [
-            "total_request_count": 1,
-            "preference_mode_request_count": 1,
-            "current_mode_request_count": 1,
-        ]
-        if let scene { feedPreference["scene_mode_id"] = Int(scene) ?? 0 }
-        if let preference { feedPreference["preference_mode"] = preference }
-        let data = try await QishuiClient.shared.platform(
-            path: "/feed/song-tab/",
-            body: [
-                "played_media": [Any](),
-                "is_first_request": true,
-                "with_client_cache": false,
-                "is_did_first_request": false,
-                "count": max(1, limit),
-                "feed_preference": feedPreference,
-            ]
-        )
-        let items = QishuiFields.objects(data["items"])
-        return items.compactMap { item -> Track? in
-            if let type = item["type"] as? String, type != "track" { return nil }
-            return QishuiMapping.track(from: item)
-        }
-    }
-
-    /// 「推荐歌曲」用随机场景的第一屏，比固定的首刷歌单更新鲜。
-    static func freshRecommendedTracks(limit: Int = 30) async -> [Track] {
-        if let modes = try? await feedModes(), let pick = modes.randomElement(),
-           let tracks = try? await feed(scene: pick.id, limit: limit), !tracks.isEmpty {
-            return tracks.shuffled()
-        }
-        return (try? await feed(limit: limit)) ?? []
     }
 }
