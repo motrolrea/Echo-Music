@@ -422,7 +422,8 @@ enum QishuiCatalogService {
         }
         guard let object = value as? [String: Any] else { return "" }
         for key in ["content", "lyric", "lyrics", "lrc", "krc"] {
-            if let text = lyricText(object[key]), !text.isEmpty { return text }
+            let text = lyricText(object[key])
+            if !text.isEmpty { return text }
         }
         for nested in object.values {
             let text = lyricText(nested)
