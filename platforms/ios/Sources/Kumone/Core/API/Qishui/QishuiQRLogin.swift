@@ -178,7 +178,11 @@ final class QishuiQRLogin: NSObject, WKNavigationDelegate {
             "X-Tt-Passport-Trace-Id": String(trace.prefix(8)),
             "X-Tt-Trace-Id": "00-\(trace)-\(trace.prefix(16))-01",
         ]
-        if let csrf = await cookieValue("passport_csrf_token") ?? cookieValue("passport_csrf_token_default") {
+        var csrf = await cookieValue("passport_csrf_token")
+        if csrf == nil {
+            csrf = await cookieValue("passport_csrf_token_default")
+        }
+        if let csrf {
             headers["X-Tt-Passport-Csrf-Token"] = csrf
         }
         let bodyText: String?
