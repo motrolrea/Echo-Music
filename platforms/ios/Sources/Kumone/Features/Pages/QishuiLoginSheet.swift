@@ -2,6 +2,7 @@
 import CoreImage.CIFilterBuiltins
 import SwiftUI
 import UIKit
+import WebKit
 
 /// 汽水登录。官网首页只有下载按钮，这里改成汽水 App 扫码。
 struct QishuiLoginSheet: View {
@@ -21,6 +22,7 @@ struct QishuiLoginSheet: View {
     @State private var didStartLogin = false
     @State private var didAutoRefreshExpiredCode = false
     @State private var loginGeneration = UUID()
+    @State private var login: QishuiQRLogin?
 
     var body: some View {
         NavigationStack {
@@ -42,12 +44,26 @@ struct QishuiLoginSheet: View {
                     }
                 }
             }
+            .background {
+                QishuiPassportHost { engine in
+                    login = engine
+                    guard didStartLogin, pollTask == nil, !session.isLoggedIn else { return }
+                    startLogin(using: engine)
+                }
+                .frame(width: 390, height: 700)
+                .opacity(0.01)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
             .onAppear {
                 guard !session.isLoggedIn, !didStartLogin else { return }
                 didStartLogin = true
-                startLogin()
+                if let login, pollTask == nil { startLogin(using: login) }
             }
-            .onDisappear { pollTask?.cancel() }
+            .onDisappear {
+                pollTask?.cancel()
+                login?.close()
+            }
             .onChange(of: session.isLoggedIn) { loggedIn in
                 guard loggedIn else { return }
                 pollTask?.cancel()
@@ -201,8 +217,12 @@ struct QishuiLoginSheet: View {
         }
     }
 
-    private func startLogin(automaticRefresh: Bool = false) {
+    private func startLogin(using supplied: QishuiQRLogin? = nil, automaticRefresh: Bool = false) {
         guard !session.isLoggedIn else { return }
+        guard let engine = supplied ?? self.login else {
+            phase = .failed("汽水登录组件还没有准备好，请重试")
+            return
+        }
         pollTask?.cancel()
         let generation = UUID()
         loginGeneration = generation
@@ -214,8 +234,7 @@ struct QishuiLoginSheet: View {
                 if generation == loginGeneration { pollTask = nil }
             }
             do {
-                let login = QishuiQRLogin()
-                let code = try await login.fetch()
+                let code = try await engine.fetch()
                 guard generation == loginGeneration else { return }
                 guard let image = Self.makeQRImage(from: code.scanURL.absoluteString) else {
                     throw QishuiError(.invalidResponse, "登录二维码无法显示，请重试")
@@ -228,7 +247,7 @@ struct QishuiLoginSheet: View {
                     guard generation == loginGeneration else { return }
                     try await Task.sleep(for: .seconds(2))
                     do {
-                        let status = try await login.poll(token: code.token, expiresAt: code.expiresAt)
+                        let status = try await engine.poll(token: code.token, expiresAt: code.expiresAt)
                         guard generation == loginGeneration else { return }
                         switch status {
                         case .waiting:
@@ -275,6 +294,29 @@ struct QishuiLoginSheet: View {
                     phase = .failed(error.localizedDescription)
                 }
             }
+        }
+    }
+
+    private struct QishuiPassportHost: UIViewRepresentable {
+        var onReady: (QishuiQRLogin) -> Void
+
+        func makeCoordinator() -> Coordinator { Coordinator() }
+
+        func makeUIView(context: Context) -> WKWebView {
+            let view = QishuiQRLogin.makeWebView()
+            if !context.coordinator.started {
+                context.coordinator.started = true
+                let engine = QishuiQRLogin()
+                engine.attach(view)
+                DispatchQueue.main.async { onReady(engine) }
+            }
+            return view
+        }
+
+        func updateUIView(_ uiView: WKWebView, context: Context) {}
+
+        final class Coordinator {
+            var started = false
         }
     }
 
