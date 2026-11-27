@@ -23,6 +23,7 @@ struct QishuiLoginSheet: View {
     @State private var didAutoRefreshExpiredCode = false
     @State private var loginGeneration = UUID()
     @State private var login: QishuiQRLogin?
+    @State private var isVerifying = false
 
     var body: some View {
         NavigationStack {
@@ -44,16 +45,18 @@ struct QishuiLoginSheet: View {
                     }
                 }
             }
-            .background {
+            .overlay {
                 QishuiPassportHost { engine in
                     login = engine
+                    engine.onVerification = { isVerifying = $0 }
                     guard didStartLogin, pollTask == nil, !session.isLoggedIn else { return }
                     startLogin(using: engine)
                 }
-                .frame(width: 390, height: 700)
-                .opacity(0.01)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(isVerifying ? Color(uiColor: .systemBackground) : .clear)
+                .opacity(isVerifying ? 1 : 0.01)
+                .allowsHitTesting(isVerifying)
+                .accessibilityHidden(!isVerifying)
             }
             .onAppear {
                 guard !session.isLoggedIn, !didStartLogin else { return }
@@ -283,6 +286,8 @@ struct QishuiLoginSheet: View {
                             }
                         }
                         errors = 0
+                    } catch let error as QishuiError where error.kind == .unavailable {
+                        throw error
                     } catch {
                         errors += 1
                         if errors >= 6 { throw error }
@@ -303,10 +308,12 @@ struct QishuiLoginSheet: View {
         func makeCoordinator() -> Coordinator { Coordinator() }
 
         func makeUIView(context: Context) -> WKWebView {
-            let view = QishuiQRLogin.makeWebView()
+            let engine = context.coordinator.engine ?? QishuiQRLogin()
+            context.coordinator.engine = engine
+            let view = context.coordinator.view ?? engine.makeWebView()
+            context.coordinator.view = view
             if !context.coordinator.started {
                 context.coordinator.started = true
-                let engine = QishuiQRLogin()
                 engine.attach(view)
                 DispatchQueue.main.async { onReady(engine) }
             }
@@ -317,6 +324,8 @@ struct QishuiLoginSheet: View {
 
         final class Coordinator {
             var started = false
+            var engine: QishuiQRLogin?
+            var view: WKWebView?
         }
     }
 
