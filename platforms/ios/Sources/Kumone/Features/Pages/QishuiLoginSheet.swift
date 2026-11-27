@@ -1,17 +1,26 @@
 #if os(iOS)
+import CoreImage.CIFilterBuiltins
 import SwiftUI
-import WebKit
+import UIKit
 
-/// Official-site sign-in for Qishui. The page keeps the captured cookie and
-/// checks it with `/luna/pc/me`.
+/// 汽水登录。官网首页只有下载按钮，这里改成汽水 App 扫码。
 struct QishuiLoginSheet: View {
+    private enum Phase: Equatable {
+        case loading
+        case waiting
+        case scanned
+        case expired
+        case failed(String)
+    }
+
     @ObservedObject private var session = QishuiSessionStore.shared
     @Environment(\.dismiss) private var dismiss
-    @State private var webView: WKWebView?
-    @State private var isReadingCookies = false
-    @State private var errorMessage: String?
-
-    private let pageURL = URL(string: "https://www.qishui.com/")!
+    @State private var phase: Phase = .loading
+    @State private var qrImage: UIImage?
+    @State private var pollTask: Task<Void, Never>?
+    @State private var didStartLogin = false
+    @State private var didAutoRefreshExpiredCode = false
+    @State private var loginGeneration = UUID()
 
     var body: some View {
         NavigationStack {
@@ -23,32 +32,26 @@ struct QishuiLoginSheet: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.vertical, 12)
             .navigationTitle("汽水音乐")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("关闭") { dismiss() }
-                }
-                if !session.isLoggedIn {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("登录完成") { readCookiesAndSignIn() }
-                            .fontWeight(.semibold)
-                            .disabled(isReadingCookies || webView == nil)
+                    Button(session.isLoggedIn ? "关闭" : "取消") {
+                        pollTask?.cancel()
+                        dismiss()
                     }
                 }
             }
-            .task(id: webView != nil) {
-                guard !session.isLoggedIn else { return }
-                await monitorCookies()
+            .onAppear {
+                guard !session.isLoggedIn, !didStartLogin else { return }
+                didStartLogin = true
+                startLogin()
             }
-            .alert("登录失败", isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )) {
-                Button("知道了", role: .cancel) { errorMessage = nil }
-            } message: {
-                Text(errorMessage ?? "请完成登录后重试")
+            .onDisappear { pollTask?.cancel() }
+            .onChange(of: session.isLoggedIn) { loggedIn in
+                guard loggedIn else { return }
+                pollTask?.cancel()
+                pollTask = nil
             }
         }
     }
@@ -104,151 +107,185 @@ struct QishuiLoginSheet: View {
 
             Spacer()
         }
+        .padding(.vertical, 12)
     }
 
     private var loginBody: some View {
-        VStack(spacing: 12) {
-            Text("在汽水官网登录后会自动保存。收藏、自建歌单和「我喜欢」都会保留，登录后可以播放完整歌曲。")
+        VStack(spacing: 18) {
+            Text("使用汽水音乐 App 扫码登录")
+                .font(.title3.weight(.semibold))
+                .padding(.top, 16)
+
+            Text("打开手机上的汽水音乐，扫描下面的二维码并确认。收藏、自建歌单和「我喜欢」都会保留，登录后可以播放完整歌曲。")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 24)
 
-            QishuiSiteWebView(webView: $webView, url: pageURL)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .padding(.horizontal, 12)
-                .overlay {
-                    if isReadingCookies {
-                        ProgressView("正在确认登录状态…")
-                            .padding(16)
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            qrCard
+            statusView
+
+            if phase == .expired || isFailed {
+                Button("重新获取二维码") { startLogin() }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.accent)
+            }
+        }
+        .padding(.vertical, 12)
+    }
+
+    private var qrCard: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(.white)
+                .frame(width: 272, height: 272)
+                .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+            if let qrImage {
+                Image(uiImage: qrImage)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .frame(width: 232, height: 232)
+                    .opacity(phase == .expired ? 0.25 : 1)
+            } else if isFailed {
+                VStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 30))
+                        .foregroundStyle(Theme.accent)
+                    Text("二维码暂时不可用")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                ProgressView()
+            }
+            if phase == .expired || phase == .scanned {
+                VStack(spacing: 8) {
+                    Image(systemName: phase == .expired ? "arrow.clockwise.circle.fill" : "checkmark.circle.fill")
+                        .font(.system(size: 34))
+                        .foregroundStyle(phase == .expired ? Theme.accent : .green)
+                    Text(phase == .expired ? "二维码已失效" : "已扫码，请在手机上确认")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .padding(16)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("汽水音乐扫码登录二维码")
+    }
+
+    private var isFailed: Bool {
+        if case .failed = phase { return true }
+        return false
+    }
+
+    @ViewBuilder
+    private var statusView: some View {
+        switch phase {
+        case .loading:
+            Label("正在获取二维码…", systemImage: "arrow.triangle.2.circlepath")
+        case .waiting:
+            Label("打开汽水音乐 App 扫一扫", systemImage: "qrcode.viewfinder")
+        case .scanned:
+            Label("已扫码，等待手机确认…", systemImage: "iphone")
+        case .expired:
+            Label("二维码已过期", systemImage: "clock.badge.exclamationmark")
+                .foregroundStyle(Theme.accent)
+        case .failed(let message):
+            Label(message, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(Theme.accent)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+        }
+    }
+
+    private func startLogin(automaticRefresh: Bool = false) {
+        guard !session.isLoggedIn else { return }
+        pollTask?.cancel()
+        let generation = UUID()
+        loginGeneration = generation
+        phase = .loading
+        qrImage = nil
+        if !automaticRefresh { didAutoRefreshExpiredCode = false }
+        pollTask = Task { @MainActor in
+            defer {
+                if generation == loginGeneration { pollTask = nil }
+            }
+            do {
+                let login = QishuiQRLogin()
+                let code = try await login.fetch()
+                guard generation == loginGeneration else { return }
+                guard let image = Self.makeQRImage(from: code.scanURL.absoluteString) else {
+                    throw QishuiError(.invalidResponse, "登录二维码无法显示，请重试")
+                }
+                qrImage = image
+                phase = .waiting
+
+                var errors = 0
+                while !Task.isCancelled {
+                    guard generation == loginGeneration else { return }
+                    try await Task.sleep(for: .seconds(2))
+                    do {
+                        let status = try await login.poll(token: code.token, expiresAt: code.expiresAt)
+                        guard generation == loginGeneration else { return }
+                        switch status {
+                        case .waiting:
+                            phase = .waiting
+                        case .scanned, .processing:
+                            phase = .scanned
+                        case .expired:
+                            pollTask = nil
+                            if !didAutoRefreshExpiredCode {
+                                didAutoRefreshExpiredCode = true
+                                phase = .loading
+                                try? await Task.sleep(for: .milliseconds(350))
+                                guard !Task.isCancelled,
+                                      generation == loginGeneration,
+                                      !session.isLoggedIn else { return }
+                                startLogin(automaticRefresh: true)
+                            } else {
+                                phase = .expired
+                            }
+                            return
+                        case .confirmed(let cookie):
+                            do {
+                                _ = try await QishuiAuthService.shared.signIn(cookie: cookie)
+                                guard generation == loginGeneration else { return }
+                                ToastCenter.shared.show("汽水音乐登录成功")
+                                pollTask = nil
+                                dismiss()
+                                return
+                            } catch {
+                                pollTask = nil
+                                phase = .failed(error.localizedDescription)
+                                return
+                            }
+                        }
+                        errors = 0
+                    } catch {
+                        errors += 1
+                        if errors >= 6 { throw error }
                     }
                 }
-        }
-    }
-
-    private func readCookiesAndSignIn() {
-        guard !isReadingCookies else { return }
-        guard let store = webView?.configuration.websiteDataStore.httpCookieStore else {
-            errorMessage = "登录页面还没有准备好，请稍后重试"
-            return
-        }
-        isReadingCookies = true
-        store.getAllCookies { cookies in
-            let header = Self.cookieHeader(cookies)
-            Task { @MainActor in
-                guard Self.isLoggedIn(header) else {
-                    isReadingCookies = false
-                    errorMessage = "还没有检测到汽水登录状态，请先在网页里完成登录"
-                    return
+            } catch {
+                if !Task.isCancelled, generation == loginGeneration {
+                    pollTask = nil
+                    phase = .failed(error.localizedDescription)
                 }
-                await signIn(cookie: header)
             }
         }
     }
 
-    @MainActor
-    private func monitorCookies() async {
-        while !Task.isCancelled, !session.isLoggedIn {
-            guard !isReadingCookies,
-                  let store = webView?.configuration.websiteDataStore.httpCookieStore else {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                continue
-            }
-            let header = await Self.cookieHeader(from: store)
-            if Self.isLoggedIn(header) {
-                await signIn(cookie: header)
-                return
-            }
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
-        }
-    }
-
-    @MainActor
-    private func signIn(cookie: String) async {
-        isReadingCookies = true
-        do {
-            _ = try await QishuiAuthService.shared.signIn(cookie: cookie)
-            isReadingCookies = false
-            ToastCenter.shared.show("汽水音乐登录成功")
-            dismiss()
-        } catch {
-            isReadingCookies = false
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private static func isLoggedIn(_ header: String) -> Bool {
-        QishuiProtocol.sessionID(from: header) != nil
-    }
-
-    private static func cookieHeader(_ cookies: [HTTPCookie]) -> String {
-        var values: [String: String] = [:]
-        let ordered = cookies.filter { accepts($0.domain) }.sorted { lhs, rhs in
-            let left = lhs.domain.lowercased().contains("qishui.com")
-            let right = rhs.domain.lowercased().contains("qishui.com")
-            if left != right { return !left && right }
-            return lhs.name < rhs.name
-        }
-        for cookie in ordered {
-            values[cookie.name] = cookie.value
-        }
-        return values.sorted { $0.key < $1.key }
-            .map { "\($0.key)=\($0.value)" }
-            .joined(separator: "; ")
-    }
-
-    private static func cookieHeader(from store: WKHTTPCookieStore) async -> String {
-        await withCheckedContinuation { continuation in
-            store.getAllCookies { cookies in
-                continuation.resume(returning: cookieHeader(cookies))
-            }
-        }
-    }
-
-    private static func accepts(_ domain: String) -> Bool {
-        let host = domain.lowercased()
-        return host.contains("qishui.com") || host.contains("douyin.com")
-    }
-}
-
-private struct QishuiSiteWebView: UIViewRepresentable {
-    @Binding var webView: WKWebView?
-    let url: URL
-
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = .nonPersistent()
-        configuration.defaultWebpagePreferences.preferredContentMode = .desktop
-        let view = WKWebView(frame: .zero, configuration: configuration)
-        view.customUserAgent = QishuiProtocol.browserUserAgent
-        view.allowsBackForwardNavigationGestures = true
-        view.navigationDelegate = context.coordinator
-        view.load(URLRequest(url: url))
-        DispatchQueue.main.async { webView = view }
-        return view
-    }
-
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    final class Coordinator: NSObject, WKNavigationDelegate {
-        var lastURL: URL?
-
-        func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-            if let url = webView.url { lastURL = url }
-        }
-
-        func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-            if let url = lastURL ?? webView.url {
-                webView.load(URLRequest(url: url))
-            } else {
-                webView.reload()
-            }
-        }
+    private static func makeQRImage(from value: String) -> UIImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(value.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 12, y: 12))
+        guard let cgImage = CIContext().createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 }
 #endif

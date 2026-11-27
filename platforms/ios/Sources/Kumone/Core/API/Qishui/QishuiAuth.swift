@@ -1,7 +1,7 @@
 import Foundation
 
-/// Signs in with the cookie captured from `www.qishui.com`, then checks it
-/// against `/luna/pc/me`.
+/// Signs in with the cookie captured from the Qishui app QR flow, then
+/// checks it against `/luna/pc/me`.
 @MainActor
 final class QishuiAuthService {
     static let shared = QishuiAuthService()
@@ -11,7 +11,7 @@ final class QishuiAuthService {
     func signIn(cookie: String) async throws -> QishuiProfile {
         let filtered = QishuiProtocol.accountCookie(cookie)
         guard QishuiProtocol.sessionID(from: filtered) != nil else {
-            throw QishuiError(.authRequired, "没有读取到汽水登录状态，请先在网页里完成登录")
+            throw QishuiError(.authRequired, "没有读取到汽水登录状态，请先完成扫码")
         }
         let profile = try await profile(cookie: filtered)
         let credential = QishuiCredential(cookie: filtered, userId: profile.id,
