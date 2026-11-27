@@ -597,6 +597,7 @@ struct NowPlayingView: View {
                 tracks: player.activeQueue,
                 currentIndex: player.currentIndex,
                 currentArtwork: artworkImage,
+                wide: UIDevice.current.userInterfaceIdiom == .pad,
                 onSelect: player.playQueueIndex
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -689,6 +690,7 @@ struct NowPlayingView: View {
                 tracks: player.activeQueue,
                 currentIndex: player.currentIndex,
                 currentArtwork: artworkImage,
+                wide: UIDevice.current.userInterfaceIdiom == .pad,
                 onSelect: player.playQueueIndex
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -3457,6 +3459,12 @@ struct NowPlayingScrubber: View {
         return min(max(value / player.duration, 0), 1)
     }
 
+    /// 显示的已播放时间同时受总时长约束。
+    private var elapsedDisplay: TimeInterval {
+        let value = isDragging ? dragProgress : clock.progress
+        return player.duration > 0 ? min(value, player.duration) : value
+    }
+
     var body: some View {
         VStack(spacing: 5) {
             GeometryReader { geo in
@@ -3498,7 +3506,10 @@ struct NowPlayingScrubber: View {
             }
 
             HStack(alignment: .center, spacing: 8) {
-                Text(Formatters.duration(isDragging ? dragProgress : clock.progress))
+                // 已播放时间永远不超过总时长（音源长度和曲库元数据不一致时，
+                // 播放器的真实位置可能先一步超过元数据时长）。
+                Text(Formatters.duration(elapsedDisplay))
+                    .lineLimit(1)
                 Spacer()
                 if let onShowQuality {
                     Button(action: onShowQuality) {

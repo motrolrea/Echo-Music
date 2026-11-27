@@ -216,7 +216,7 @@ public struct IOSStartupSplashView: View {
     private var hero: some View {
         VStack(spacing: 26) {
             emblem
-                .frame(height: 236)
+                .frame(height: 300)
 
             VStack(spacing: 12) {
                 Text("Echo Music")
@@ -246,7 +246,7 @@ public struct IOSStartupSplashView: View {
                 // 不确定进度：一条细光在轨道里来回滑动。
                 Capsule()
                     .fill(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.07))
-                    .frame(width: 128, height: 3)
+                    .frame(width: 140, height: 5)
                     .overlay(alignment: .leading) {
                         Capsule()
                             .fill(
@@ -256,11 +256,11 @@ public struct IOSStartupSplashView: View {
                                     endPoint: .trailing
                                 )
                             )
-                            .frame(width: 44, height: 3)
-                            .offset(x: bar ? 84 : 0)
+                            .frame(width: 48, height: 5)
+                            .offset(x: bar ? 92 : 0)
                     }
                     .clipShape(Capsule())
-                    .padding(.top, 10)
+                    .padding(.top, 26)
                     .opacity(reduceMotion ? 0.5 : 1)
             }
             .padding(.horizontal, 32)
@@ -269,6 +269,23 @@ public struct IOSStartupSplashView: View {
 
     private var emblem: some View {
         ZStack {
+            // 图标背后的大范围柔光，充当光环的底座。
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            StartupPalette.teal.opacity(colorScheme == .dark ? 0.20 : 0.13),
+                            StartupPalette.indigo.opacity(colorScheme == .dark ? 0.10 : 0.07),
+                            .clear,
+                        ],
+                        center: .center,
+                        startRadius: 10,
+                        endRadius: 190
+                    )
+                )
+                .frame(width: 340, height: 340)
+                .blur(radius: 18)
+
             // 向外扩散的同心光环，像声波一圈圈推开。
             if !reduceMotion {
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
@@ -278,18 +295,18 @@ public struct IOSStartupSplashView: View {
                             let phase = (now / 3.2 + Double(index) / 3.0)
                                 .truncatingRemainder(dividingBy: 1)
                             Circle()
-                                .stroke(StartupPalette.indigo.opacity(0.30 * (1 - phase)), lineWidth: 0.8)
-                                .frame(width: 150, height: 150)
-                                .scaleEffect(0.84 + CGFloat(phase) * 0.56)
+                                .stroke(StartupPalette.indigo.opacity(0.32 * (1 - phase)), lineWidth: 0.9)
+                                .frame(width: 190, height: 190)
+                                .scaleEffect(0.82 + CGFloat(phase) * 0.68)
                         }
                     }
                 }
-                .frame(width: 240, height: 240)
+                .frame(width: 300, height: 300)
             }
 
             Circle()
                 .stroke(Color.primary.opacity(0.08), lineWidth: 0.8)
-                .frame(width: 148, height: 148)
+                .frame(width: 190, height: 190)
 
             // 唱片外圈：青蓝渐变细环，缓慢自转。
             Circle()
@@ -303,21 +320,21 @@ public struct IOSStartupSplashView: View {
                         ],
                         center: .center
                     ),
-                    lineWidth: 1.4
+                    lineWidth: 1.6
                 )
-                .frame(width: 132, height: 132)
+                .frame(width: 168, height: 168)
                 .rotationEffect(.degrees(discSpin ? 360 : 0))
 
             Circle()
-                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 6)
-                .frame(width: 120, height: 120)
+                .strokeBorder(Color.primary.opacity(0.06), lineWidth: 7)
+                .frame(width: 150, height: 150)
 
             // 图标下方的柔和投影，替代原来的彩色光斑。
             Ellipse()
                 .fill(StartupPalette.teal.opacity(colorScheme == .dark ? 0.18 : 0.12))
-                .frame(width: 116, height: 22)
-                .blur(radius: 22)
-                .offset(y: 76)
+                .frame(width: 128, height: 24)
+                .blur(radius: 24)
+                .offset(y: 80)
 
             BrandIconView(name: colorScheme == .dark ? "BrandAppIconDark" : "BrandAppIcon")
                 .frame(width: 92, height: 92)

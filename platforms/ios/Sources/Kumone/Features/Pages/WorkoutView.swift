@@ -407,7 +407,7 @@ private struct WorkoutPatternCard<Header: View>: View {
                 .foregroundStyle(.secondary)
 
             WorkoutClock(hours: stats.hours, peakHour: stats.peakHour)
-                .frame(height: 160)
+                .frame(height: 196)
                 .frame(maxWidth: .infinity)
 
             WorkoutHeatmap(cells: stats.cells)
@@ -614,62 +614,100 @@ private struct WorkoutClock: View {
         GeometryReader { geo in
             let size = geo.size
             let peak = hours.max() ?? 0
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let radius = min(size.width, size.height) * 0.24
+            let hasData = peak > 0
+
             ZStack {
+                // 底座柔光：让峰值盘从卡片里浮起来。
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Theme.accent.opacity(hasData ? 0.16 : 0.05), .clear],
+                            center: .center,
+                            startRadius: radius * 0.3,
+                            endRadius: radius * 2.1
+                        )
+                    )
+                    .frame(width: radius * 4.2, height: radius * 4.2)
+                    .position(center)
+                    .blur(radius: 6)
+
+                // 两条极细的基准圆，画出「表盘」的边界。
+                Circle()
+                    .strokeBorder(Color.primary.opacity(0.06), lineWidth: 1)
+                    .frame(width: radius * 2 + 44, height: radius * 2 + 44)
+                    .position(center)
+                Circle()
+                    .strokeBorder(Color.primary.opacity(0.05), lineWidth: 1)
+                    .frame(width: radius * 2 - 12, height: radius * 2 - 12)
+                    .position(center)
+
                 Canvas { context, canvasSize in
                     let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
-                    let radius = min(canvasSize.width, canvasSize.height) * 0.26
-                    let ring = Path(ellipseIn: CGRect(x: center.x - radius,
-                                                      y: center.y - radius,
-                                                      width: radius * 2,
-                                                      height: radius * 2))
-                    context.stroke(ring,
-                                   with: .color(Color.primary.opacity(0.18)),
-                                   style: StrokeStyle(lineWidth: 1.6, lineCap: .round, dash: [1, 6]))
+                    let radius = min(canvasSize.width, canvasSize.height) * 0.24
+                    let peak = hours.max() ?? 0
 
                     for hour in 0..<24 {
                         let angle = CGFloat(hour) / 24 * .pi * 2 - .pi / 2
                         let strength = peak > 0 ? min(max(hours[hour] / peak, 0), 1) : 0
                         let isPeak = hour == peakHour && peak > 0
-                        let inner = radius + 3
-                        let length = radius * (0.08 + CGFloat(strength) * 0.36)
-                            + (isPeak ? radius * 0.07 : 0)
-                        let width: CGFloat = isPeak ? 4.6 : 2.2 + CGFloat(strength) * 1.2
+                        let inner = radius + 6
+                        let smallTick = hour % 3 == 0
+                        let base: CGFloat = isPeak ? radius * 0.52 : radius * (smallTick ? 0.06 : 0.035)
+                        let length = base + radius * CGFloat(strength) * (isPeak ? 0.30 : 0.34)
+
+                        let start = CGPoint(x: center.x + cos(angle) * inner,
+                                            y: center.y + sin(angle) * inner)
+                        let end = CGPoint(x: center.x + cos(angle) * (inner + length),
+                                          y: center.y + sin(angle) * (inner + length))
                         var bar = Path()
-                        bar.move(to: CGPoint(x: center.x + cos(angle) * inner,
-                                             y: center.y + sin(angle) * inner))
-                        bar.addLine(to: CGPoint(x: center.x + cos(angle) * (inner + length),
-                                                y: center.y + sin(angle) * (inner + length)))
+                        bar.move(to: start)
+                        bar.addLine(to: end)
+
+                        // 峰值先垫一层同色柔光，形成高光托底。
                         if isPeak {
                             context.stroke(bar,
-                                           with: .color(Color.primary.opacity(0.10)),
-                                           style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                                           with: .color(Theme.accent.opacity(0.22)),
+                                           style: StrokeStyle(lineWidth: 14, lineCap: .round))
                         }
+
+                        let colors: [Color] = isPeak
+                            ? [Theme.accent.opacity(0.95), Theme.accent.opacity(0.65)]
+                            : [Color.primary.opacity(0.10 + strength * 0.34),
+                               Color.primary.opacity(0.06 + strength * 0.20)]
                         context.stroke(bar,
-                                       with: .color(isPeak ? Theme.accent : Color.primary.opacity(0.16 + strength * 0.55)),
-                                       style: StrokeStyle(lineWidth: width, lineCap: .round))
+                                       with: .linearGradient(Gradient(colors: colors),
+                                                             startPoint: start,
+                                                             endPoint: end),
+                                       style: StrokeStyle(lineWidth: isPeak ? 5 : 2.4 + CGFloat(strength) * 1.4,
+                                                          lineCap: .round))
+
                         if isPeak {
-                            let tip = CGPoint(x: center.x + cos(angle) * (inner + length),
-                                              y: center.y + sin(angle) * (inner + length))
-                            context.fill(Path(ellipseIn: CGRect(x: tip.x - 2.2, y: tip.y - 2.2,
-                                                                width: 4.4, height: 4.4)),
+                            let tip = CGPoint(x: center.x + cos(angle) * (inner + length + 7),
+                                              y: center.y + sin(angle) * (inner + length + 7))
+                            context.fill(Path(ellipseIn: CGRect(x: tip.x - 3, y: tip.y - 3,
+                                                                width: 6, height: 6)),
                                          with: .color(Theme.accent))
                         }
                     }
                 }
 
-                VStack(spacing: 2) {
-                    Text(peak > 0 ? "\(peakHour) 点" : "—")
-                        .font(.system(size: 24, weight: .semibold, design: .rounded))
+                VStack(spacing: 3) {
+                    Text(hasData ? String(format: "%02d:00", peakHour) : "—")
+                        .font(.system(size: 25, weight: .semibold, design: .rounded))
                         .monospacedDigit()
+                        .foregroundStyle(hasData ? Color.primary : Color.secondary)
                     Text("最高峰")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 10, weight: .medium))
+                        .tracking(1.4)
+                        .foregroundStyle(.tertiary)
                 }
 
                 Text("0")
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.tertiary)
-                    .position(x: size.width / 2, y: size.height * 0.045)
+                    .position(x: size.width / 2, y: max(size.height * 0.045, 5))
                 Text("6")
                     .font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.tertiary)
@@ -918,15 +956,27 @@ private struct WorkoutRecordDetail: View {
     private var peakSection: some View {
         WorkoutCard {
             VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Text("峰值")
-                        .font(.title3.weight(.semibold))
+                HStack(spacing: 8) {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 26, height: 26)
+                        .background(Theme.accent.opacity(0.13),
+                                    in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("最高峰")
+                            .font(.title3.weight(.semibold))
+                        Text("这一次的最高表现")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                     Spacer()
                     Text("约 15 秒采样")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 20) {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+                          spacing: 12) {
                     WorkoutPeakCell(title: "配速",
                                     value: fastestPace.flatMap { workoutPaceText($0.pace) } ?? "—",
                                     caption: fastestPaceCaption,
@@ -1090,25 +1140,50 @@ private struct WorkoutPeakCell: View {
     let caption: String?
     let points: [WorkoutIntervalPoint]
 
+    private var hasValue: Bool { value != "—" }
+
     var body: some View {
-        VStack(spacing: 6) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(hasValue ? Theme.accent : Color.primary.opacity(0.16))
+                    .frame(width: 5, height: 5)
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+            }
+
             Text(value)
-                .font(.headline.weight(.semibold))
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
                 .monospacedDigit()
                 .lineLimit(1)
-                .minimumScaleFactor(0.65)
-            Text(caption ?? "没有逐点数据")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .foregroundStyle(hasValue ? Color.primary : Color.secondary)
+
+            HStack(spacing: 3) {
+                if caption != nil, hasValue {
+                    Image(systemName: "clock")
+                        .font(.system(size: 8, weight: .semibold))
+                }
+                Text(caption ?? "没有逐点数据")
+                    .font(.system(size: 9))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.tertiary)
+
             WorkoutMiniBars(points: points)
-                .frame(height: 30)
+                .frame(height: 34)
+                .padding(.top, 2)
         }
-        .frame(maxWidth: .infinity)
-        .multilineTextAlignment(.center)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.035),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.05), lineWidth: 0.8)
+        }
     }
 }
 
@@ -1130,6 +1205,10 @@ private struct WorkoutMiniBars: View {
             let maxValue = max(bars.map(\.value).max() ?? 0, 0.0001)
             let gap: CGFloat = 2
             let width = max((size.width - gap * CGFloat(bars.count - 1)) / CGFloat(bars.count), 1)
+            let gradientColors: [Color] = [
+                Theme.accent.opacity(0.85),
+                Theme.accent.opacity(0.22),
+            ]
             for (index, point) in bars.enumerated() {
                 let ratio = point.value / maxValue
                 let height = max(size.height * CGFloat(ratio), 1.5)
@@ -1138,8 +1217,20 @@ private struct WorkoutMiniBars: View {
                                   width: width,
                                   height: height)
                 let isPeak = point.value >= maxValue * 0.999
-                context.fill(Path(roundedRect: rect, cornerRadius: min(width / 2, 2)),
-                             with: .color(isPeak ? Theme.accent : Color.primary.opacity(0.16 + ratio * 0.5)))
+                let radius = min(width / 2, 2.4)
+                let path = Path(roundedRect: rect, cornerRadius: radius)
+                if isPeak {
+                    context.fill(path, with: .linearGradient(Gradient(colors: gradientColors),
+                                                             startPoint: CGPoint(x: rect.midX, y: rect.minY),
+                                                             endPoint: CGPoint(x: rect.midX, y: rect.maxY)))
+                    // 峰值顶部加一颗小亮点，和峰值盘呼应。
+                    context.fill(Path(ellipseIn: CGRect(x: rect.midX - 1.6, y: rect.minY - 4.4,
+                                                        width: 3.2, height: 3.2)),
+                                 with: .color(Theme.accent))
+                } else {
+                    context.fill(path,
+                                 with: .color(Color.primary.opacity(0.10 + ratio * 0.28)))
+                }
             }
         }
     }

@@ -282,11 +282,17 @@ struct ScrubberLane: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            timeLabel(isDragging ? dragProgress : clock.progress)
+            timeLabel(elapsedDisplay)
             track
             timeLabel(player.duration)
         }
         .frame(maxWidth: 460)
+    }
+
+    /// 已播放时间不能超过总时长，避免音源长度和元数据不一致时显示越界。
+    private var elapsedDisplay: TimeInterval {
+        let value = isDragging ? dragProgress : clock.progress
+        return player.duration > 0 ? min(value, player.duration) : value
     }
 
     private func timeLabel(_ value: TimeInterval) -> some View {

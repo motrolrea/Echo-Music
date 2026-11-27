@@ -319,6 +319,12 @@ enum NeteaseAPI {
     }
 
     /// `play` weblog — increments the listening-ranking play count and time.
+    ///
+    /// `sourceId` / `content` describe the *playing context*, not the audio
+    /// provider. Sending the third-party LX source id here made the server
+    /// treat the event as a foreign-source play: the time was not added to
+    /// 听歌时长 and the day's aggregate could be discarded. Keep them empty so
+    /// the event is a plain NetEase song play.
     @discardableResult
     static func scrobbleFinish(trackID: Int, sourceID: Int, seconds: Int) async -> Bool {
         guard seconds > 0 else { return false }
@@ -326,10 +332,9 @@ enum NeteaseAPI {
             "action": "play",
             "json": [
                 "download": 0, "end": "playend", "id": trackID,
-                "sourceId": String(sourceID), "time": seconds,
+                "sourceId": "", "time": seconds,
                 "type": "song", "wifi": 0, "source": "list",
                 "mainsite": "1", "mainsiteWeb": "1",
-                "content": "id=\(sourceID)",
             ],
         ]])
     }

@@ -726,6 +726,20 @@ final class PlayerService: ObservableObject {
                 // only publishes when the line actually changes.
                 self.updateLyricsCursor(at: seconds)
 
+                // 音源给出的音频长度有时和曲库元数据不一致（例如解析到了另一版
+                // 录音）。只信曲库时长会让「已播放」超过「总时长」，进度条也会溢出。
+                // 真实音频更长时以它为准，更新一次即可。
+                if let item = self.engine.currentItem {
+                    let itemSeconds = item.duration.seconds
+                    if itemSeconds.isFinite, itemSeconds > 1,
+                       itemSeconds > self.duration + 0.75,
+                       let track = self.currentTrack {
+                        self.duration = itemSeconds
+                        NowPlayingManager.shared.updateMetadata(for: track, duration: itemSeconds)
+                        if self.progress > itemSeconds { self.progress = itemSeconds }
+                    }
+                }
+
                 // The scrubber does not. Publishing the position every tick
                 // re-renders it — and SwiftUI rebuilds the display list for the
                 // whole tree each time — to move the thumb a fraction of a
@@ -1305,7 +1319,12 @@ final class PlayerService: ObservableObject {
                     ToastCenter.shared.show(String(localized: "已经是最后一首了"))
                 } else {
                     isPlaying = false
-                    NowPlayingManager.shared.updateElapsed(progress, rate: 0)
+                    // 队列自然播完：把进度归零再持久化，下次启动不会又停在
+                    // 结尾位置（否则会显示成上一次听完时的进度）。
+                    progress = 0
+                    updateLyricsCursor(at: 0)
+                    NowPlayingManager.shared.updateElapsed(0, rate: 0)
+                    savePlaybackProgress()
                 }
                 return
             }
@@ -1444,6 +1463,11 @@ final class PlayerService: ObservableObject {
         progress = resumeAt ?? 0
         pendingSeek = resumeAt
         duration = track.duration
+        // 已经接近结尾的旧进度不再续播，避免一打开就停在末尾或立刻跳下一首。
+        if let resumeAt, track.duration > 0, resumeAt >= track.duration - 3 {
+            progress = 0
+            pendingSeek = nil
+        }
         servedQuality = nil
         servedSourceLabel = nil
         servedQualityTrackKey = nil
@@ -2797,18 +2821,31 @@ final class PlayerService: ObservableObject {
 
     private func scrobbleIfNeeded(completed: Bool) {
         guard let track = currentTrack, !scrobbled, progress > 1 else { return }
+        let played = Int(progress)
+        let total = Int(duration.rounded())
+        // 秒切歌不算一次收听。网易云对「播放时长明显小于歌曲长度」的事件会
+        // 判为异常，写入后可能拖累整天的听歌时长统计，所以过短的播放直接不报。
+        if !completed {
+            let threshold = total > 0 ? min(30, Int(Double(total) * 0.3)) : 30
+            guard played >= max(5, threshold) else { return }
+        }
+        // 上报的秒数绝不能超过这首歌的真实长度：一旦超过，服务端会认为
+        // 数据异常并丢弃，表现为「听歌时长不加」甚至历史记录被清空。
+        let reported: Int
+        if total > 0 {
+            reported = min(completed ? max(total, played) : played, total)
+        } else {
+            reported = played
+        }
+        guard reported > 0, reported < 3 * 3600 else { return }
         scrobbled = true
-        // Some LX results omit duration metadata. On completion the AVPlayer
-        // progress is still authoritative, so never turn a real listening
-        // interval into a zero-second weblog event.
-        let seconds = completed ? max(Int(duration), Int(progress)) : Int(progress)
         let sourceID = source.sourceID
 #if os(iOS)
-        syncListeningFinish(track: track, sourceID: sourceID, seconds: seconds)
+        syncListeningFinish(track: track, sourceID: sourceID, seconds: reported)
 #else
         if AccountStore.shared.isLoggedIn {
             Task.detached {
-                await NeteaseAPI.scrobbleFinish(trackID: track.id, sourceID: sourceID, seconds: seconds)
+                await NeteaseAPI.scrobbleFinish(trackID: track.id, sourceID: sourceID, seconds: reported)
             }
         } else {
             ListeningSyncStore.shared.markSignedOut()
@@ -2968,8 +3005,12 @@ final class PlayerService: ObservableObject {
             let savedTime = SettingsManager.shared.resumePlaybackPosition
                 ? max(0, state.currentTime ?? 0)
                 : 0
-            progress = savedTime
-            pendingSeek = savedTime > 1 ? savedTime : nil
+            // 上次已经听到结尾的进度不再恢复：否则重新打开会停在末尾，
+            // 看起来像是「记住了上上次的进度」。
+            let resume = (savedTime > 1 && (duration <= 0 || savedTime < duration - 3))
+                ? savedTime : 0
+            progress = resume
+            pendingSeek = resume > 0 ? resume : nil
             NowPlayingManager.shared.updateMetadata(for: activeQueue[idx], duration: duration)
             Task {
                 await loadLyrics(for: activeQueue[idx], generation: resolveGeneration)
