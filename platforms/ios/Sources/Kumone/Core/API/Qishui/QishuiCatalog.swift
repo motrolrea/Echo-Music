@@ -204,6 +204,146 @@ enum QishuiCatalogService {
         return Array(tracks.prefix(max(1, limit)))
     }
 
+    // MARK: - 收藏的专辑 / 歌手
+
+    struct AlbumSummary: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let coverURL: String?
+        let artistName: String
+        let trackCount: Int
+    }
+
+    struct ArtistSummary: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let avatarURL: String?
+    }
+
+    /// 「我的 → 音乐收藏」里的专辑。PC 端把图片放在 `url_cover`、歌手放在 `artists`。
+    static func collectedAlbums(limit: Int = 100,
+                                credential: QishuiCredential? = nil) async throws -> [AlbumSummary] {
+        let rows = try await collectionRows(kind: "album", credential: credential)
+        return Array(rows.compactMap { raw -> AlbumSummary? in
+            let album = (raw["album"] as? [String: Any]) ?? raw
+            guard let id = QishuiFields.text(album["id"]), !id.isEmpty else { return nil }
+            let name = QishuiFields.text(album["name"] ?? album["title"]) ?? "汽水专辑"
+            let artists = (album["artists"] as? [[String: Any]] ?? [])
+                .compactMap { QishuiFields.text($0["name"]) }
+            return AlbumSummary(
+                id: id,
+                name: name,
+                coverURL: QishuiFields.imageURL(album["url_cover"] ?? album["cover_url"]),
+                artistName: artists.joined(separator: " / "),
+                trackCount: QishuiFields.int(album["count_tracks"]) ?? 0
+            )
+        }.prefix(max(1, limit)))
+    }
+
+    /// 「我的 → 音乐收藏」里的歌手。歌手收藏走单独的 `/luna/me/collection/artist`。
+    static func collectedArtists(limit: Int = 100,
+                                 credential: QishuiCredential? = nil) async throws -> [ArtistSummary] {
+        let rows = try await collectionRows(kind: "artist", credential: credential)
+        return Array(rows.compactMap { raw -> ArtistSummary? in
+            let artist = (raw["artist"] as? [String: Any]) ?? raw
+            guard let id = QishuiFields.text(artist["id"]), !id.isEmpty else { return nil }
+            let name = QishuiFields.text(artist["name"] ?? artist["simple_display_name"])
+                ?? QishuiFields.text((artist["user_info"] as? [String: Any])?["nickname"])
+            guard let name, !name.isEmpty else { return nil }
+            return ArtistSummary(
+                id: id,
+                name: name,
+                avatarURL: QishuiFields.imageURL(artist["url_avatar"] ?? artist["avatar_url"]
+                                                 ?? artist["avatar"] ?? artist["url_cover"])
+            )
+        }.prefix(max(1, limit)))
+    }
+
+    private static func collectionRows(kind: String,
+                                       credential: QishuiCredential?) async throws -> [[String: Any]] {
+        guard let credential else { return [] }
+        let path = kind == "artist" ? "/luna/me/collection/artist" : "/luna/me/collection/mixed"
+        var rows: [[String: Any]] = []
+        var cursor = ""
+        var seen: Set<String> = []
+        for _ in 0..<20 {
+            seen.insert(cursor)
+            var extras = ["cursor": cursor, "count": "100"]
+            if kind != "artist" { extras["item_types"] = kind }
+            let root = try await accountGet(path: path, extras: extras, credential: credential)
+            let field = kind == "artist" ? "artists" : "mixed_collections"
+            let batch = QishuiFields.objects(root[field])
+                .isEmpty ? QishuiFields.objects(root["artist_collections"]) : QishuiFields.objects(root[field])
+            rows += batch
+            guard QishuiFields.bool(root["has_more"]) else { break }
+            let next = QishuiFields.text(root["next_cursor"]) ?? ""
+            guard !next.isEmpty, !seen.contains(next) else { break }
+            cursor = next
+        }
+        return rows
+    }
+
+    /// 专辑详情里的歌曲（原生接口，不依赖搜索兜底）。
+    static func albumTracks(id: String, credential: QishuiCredential? = nil) async throws -> [Track] {
+        var cookie = credential?.accountCookie
+        if cookie == nil { cookie = await currentAccountCookie() }
+        let root = try await QishuiClient.shared.get(path: "/luna/pc/albums/\(id)",
+                                                     extras: [:], cookie: cookie)
+        let body = (root["data"] as? [String: Any]) ?? root
+        let album = body["album_info"] as? [String: Any]
+        let rows = QishuiFields.objects(body["tracks"])
+        let tracks = rows.compactMap { row -> Track? in
+            var item = row
+            // 专辑歌曲行偶尔省略专辑信息；补上后封面和专辑名才不会缺。
+            if item["album"] == nil, let album { item["album"] = album }
+            return QishuiMapping.track(from: item) ?? track(fromResource: item)
+        }
+        guard !tracks.isEmpty else { throw QishuiError(.invalidResponse, "汽水专辑没有返回歌曲") }
+        return tracks
+    }
+
+    /// 歌手歌曲：先用歌手详情的热门歌曲，再用 `/artists/<id>/tracks` 补全。
+    static func artistTracks(id: String, limit: Int = 100) async throws -> [Track] {
+        guard !id.isEmpty, id.allSatisfy(\.isNumber) else {
+            throw QishuiError(.invalidResponse, "汽水歌手 ID 无效")
+        }
+        let cookie = await currentAccountCookie()
+        var tracks: [Track] = []
+        var seen: Set<Int> = []
+        if let root = try? await QishuiClient.shared.get(path: "/luna/pc/artists/\(id)",
+                                                         extras: [:], cookie: cookie) {
+            let body = (root["data"] as? [String: Any]) ?? root
+            for row in QishuiFields.objects(body["hot_tracks"]) {
+                guard let track = QishuiMapping.track(from: row) ?? track(fromResource: row),
+                      seen.insert(track.id).inserted else { continue }
+                tracks.append(track)
+            }
+        }
+        var cursor = ""
+        var seenCursors: Set<String> = []
+        while tracks.count < limit, seenCursors.count < 20 {
+            seenCursors.insert(cursor)
+            guard let root = try? await QishuiClient.shared.get(
+                path: "/luna/pc/artists/\(id)/tracks",
+                extras: ["cursor": cursor, "count": "50"], cookie: cookie
+            ) else { break }
+            let body = (root["data"] as? [String: Any]) ?? root
+            let rows = QishuiFields.objects(body["tracks"])
+            for row in rows {
+                guard let track = QishuiMapping.track(from: row) ?? track(fromResource: row),
+                      seen.insert(track.id).inserted else { continue }
+                tracks.append(track)
+                if tracks.count >= limit { break }
+            }
+            guard QishuiFields.bool(body["has_more"]) else { break }
+            let next = QishuiFields.text(body["next_cursor"]) ?? ""
+            guard !next.isEmpty, !seenCursors.contains(next) else { break }
+            cursor = next
+        }
+        guard !tracks.isEmpty else { throw QishuiError(.invalidResponse, "汽水歌手没有返回歌曲") }
+        return Array(tracks.prefix(max(1, limit)))
+    }
+
     static func searchPlaylists(_ keyword: String, limit: Int = 30, offset: Int = 0,
                                 credential: QishuiCredential? = nil) async throws -> [PlaylistSummary] {
         let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -425,11 +565,17 @@ enum QishuiCatalogService {
                   let id = QishuiFields.text(row["inner_block_id"]), !id.isEmpty,
                   let title = QishuiFields.text(row["title"]), !title.isEmpty,
                   seen.insert(id).inserted else { continue }
-            let resources = QishuiFields.objects(row["inner_block"])
+            // 榜单行把歌曲放在 `resources`（行本身的 `inner_block` 是空/嵌套块）。
+            var resources = QishuiFields.objects(row["resources"])
+            if resources.isEmpty { resources = QishuiFields.objects(row["inner_block"]) }
             let cover = knownCharts.first { $0.id == id }?.coverURL
                 ?? resources.lazy.compactMap { resource -> String? in
-                    let ranked = (resource["entity"] as? [String: Any])?["ranked_track"] as? [String: Any]
-                    return QishuiFields.imageURL((ranked?["track"] as? [String: Any])?["url_cover"])
+                    let entity = resource["entity"] as? [String: Any]
+                    let ranked = (entity?["ranked_track"] as? [String: Any])
+                        ?? (entity?["track_wrapper"] as? [String: Any])
+                    let track = (ranked?["track"] as? [String: Any]) ?? (entity?["track"] as? [String: Any])
+                    return QishuiFields.imageURL(track?["album"].flatMap { ($0 as? [String: Any])?["url_cover"] })
+                        ?? QishuiFields.imageURL(track?["url_cover"])
                 }.first
             result.append(Chart(id: id, name: title, coverURL: cover))
         }
@@ -483,9 +629,13 @@ enum QishuiCatalogService {
     // MARK: - Parsing
 
     private static func playerBody(_ id: String) -> [String: Any] {
+        // `queue_type` / `scene_name` 告诉服务端这次取流来自曲库播放：VIP 账号
+        // 少了这两个字段时只会拿到 30 秒试听片段（Coda 的请求也是这么带的）。
         [
             "track_id": id,
             "media_type": "track",
+            "queue_type": "favorite_track_playlist",
+            "scene_name": "library",
             "aid": QishuiProtocol.aid,
             "device_platform": QishuiProtocol.devicePlatform,
         ]

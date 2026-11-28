@@ -121,27 +121,64 @@ enum QishuiFields {
     }
 
     /// 封面可能是字符串、`{url_list:[...]}`、`{urls:[...]}` 或 `{uri,template_prefix}`。
-    static func imageURL(_ value: Any?) -> String? {
+    /// 汽水大多数图片对象形如
+    /// `{"uri":"ies-music/pgc_cover_xxx","urls":["https://p3-luna.douyinpic.com/img/"],"template_prefix":"tplv-..."}`，
+    /// 其中 `urls` 只是 CDN 目录前缀，直接使用会得到一张 404 的空白图 ——
+    /// 这种情况下必须用 `urls[0] + uri + "~" + template_prefix + "-resize:..."` 拼出真实地址。
+    static func imageURL(_ value: Any?, size: Int = 960) -> String? {
         if let string = value as? String, !string.isEmpty { return string }
         if let array = value as? [String] { return array.first(where: { !$0.isEmpty }) }
         guard let object = value as? [String: Any] else { return nil }
-        for key in ["url_list", "urls"] {
-            if let list = object[key] as? [String], let first = list.first(where: { !$0.isEmpty }) {
-                return first
+
+        let uri = text(object["uri"])
+        let template = text(object["template_prefix"])
+        // 已经给出完整图片地址时优先用它；只有「目录前缀」才需要和 uri 拼。
+        if let full = fullImageURL(in: object) { return full }
+        if let uri, !uri.contains("://") {
+            if let prefix = basePrefix(in: object) {
+                var url = prefix + uri
+                if let template, !template.isEmpty {
+                    url += "~\(template)-resize:\(size):\(size).png"
+                }
+                return url
             }
+            if let template, !template.isEmpty {
+                return "https://p3-luna.douyinpic.com/img/\(uri)~\(template)-resize:\(size):\(size).png"
+            }
+        }
+
+        for key in ["url_list", "urls"] {
             if let list = object[key] as? [Any] {
                 for item in list {
-                    if let url = imageURL(item) { return url }
+                    if let url = imageURL(item, size: size) { return url }
                 }
             }
         }
-        let uri = text(object["uri"])
-        let template = text(object["template_prefix"])
-        if let uri, let template, !uri.contains("://") {
-            return "https://p3-luna.douyinpic.com/img/\(uri)~\(template)-resize:960:960.png"
-        }
+        // 只剩目录前缀且没有 uri：拼不出可用地址，交给调用方走占位图。
         for key in ["url", "uri", "image", "cover", "avatar"] {
             if let url = text(object[key]) { return url }
+        }
+        return nil
+    }
+
+    /// 列表里已经存在的完整图片地址（不以 `/` 结尾、也不是纯域名）。
+    private static func fullImageURL(in object: [String: Any]) -> String? {
+        for key in ["url_list", "urls"] {
+            let list = (object[key] as? [String]) ?? []
+            if let full = list.first(where: { !$0.isEmpty && !$0.hasSuffix("/") && !$0.hasSuffix("/img") }) {
+                return full
+            }
+        }
+        return nil
+    }
+
+    /// 图片对象里的 CDN 基地址（`urls`/`url_list` 中的目录前缀）。
+    private static func basePrefix(in object: [String: Any]) -> String? {
+        for key in ["urls", "url_list"] {
+            let list = (object[key] as? [String]) ?? []
+            if let prefix = list.first(where: { !$0.isEmpty && ($0.hasSuffix("/") || $0.hasSuffix("/img")) }) {
+                return prefix.hasSuffix("/") ? prefix : prefix + "/"
+            }
         }
         return nil
     }

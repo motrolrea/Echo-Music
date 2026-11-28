@@ -7,6 +7,8 @@ struct QishuiAccountLibrary: View {
     @ObservedObject private var session = QishuiSessionStore.shared
     @State private var playlists: [QishuiCatalogService.PlaylistSummary] = []
     @State private var recentTracks: [Track] = []
+    @State private var albums: [QishuiCatalogService.AlbumSummary] = []
+    @State private var artists: [QishuiCatalogService.ArtistSummary] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
 
@@ -32,15 +34,15 @@ struct QishuiAccountLibrary: View {
             }
 
             if !session.isLoggedIn {
-                Text("登录汽水音乐后，这里会显示我喜欢的音乐、最近播放、我的歌单和收藏歌单。")
+                Text("登录汽水音乐后，这里会显示我喜欢的音乐、最近播放、我的歌单、收藏歌单、收藏专辑和收藏歌手。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-            } else if isLoading && playlists.isEmpty && recentTracks.isEmpty {
+            } else if isLoading && playlists.isEmpty && recentTracks.isEmpty && albums.isEmpty && artists.isEmpty {
                 Text("正在读取汽水账号…")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-            } else if playlists.isEmpty && recentTracks.isEmpty {
+            } else if playlists.isEmpty && recentTracks.isEmpty && albums.isEmpty && artists.isEmpty {
                 Text(errorMessage ?? "汽水账号暂时没有可显示的内容")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -79,6 +81,12 @@ struct QishuiAccountLibrary: View {
                 if !collected.isEmpty {
                     group("收藏的歌单", Array(collected.prefix(10)))
                 }
+                if !albums.isEmpty {
+                    albumGroup(Array(albums.prefix(10)))
+                }
+                if !artists.isEmpty {
+                    artistGroup(Array(artists.prefix(20)))
+                }
             }
 
             if let errorMessage, !(playlists.isEmpty && recentTracks.isEmpty) {
@@ -97,6 +105,77 @@ struct QishuiAccountLibrary: View {
                 .foregroundStyle(.secondary)
             ForEach(items) { item in
                 playlistRow(item)
+            }
+        }
+    }
+
+    private func albumGroup(_ items: [QishuiCatalogService.AlbumSummary]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("收藏的专辑")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ForEach(items) { album in
+                NavigationLink {
+                    LXAlbumDetailView(source: .sd, albumID: album.id, albumName: album.name,
+                                      artistName: album.artistName, coverURL: album.coverURL)
+                } label: {
+                    HStack(spacing: 12) {
+                        CachedAsyncImage(url: album.coverURL?.resizedImageURL(160)) {
+                            RoundedRectangle(cornerRadius: 8).fill(.secondary.opacity(0.18))
+                        }
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(album.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            Text(album.trackCount > 0 ? "\(album.trackCount) 首"
+                                                      : (album.artistName.isEmpty ? "专辑" : album.artistName))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// 收藏歌手用头像格，比一行一行的列表更容易翻。
+    private func artistGroup(_ items: [QishuiCatalogService.ArtistSummary]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("收藏的歌手")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 16) {
+                    ForEach(items) { artist in
+                        NavigationLink {
+                            LXArtistDetailView(source: .sd, artistName: artist.name,
+                                               avatarURL: artist.avatarURL, artistID: artist.id)
+                        } label: {
+                            VStack(spacing: 6) {
+                                CachedAsyncImage(url: artist.avatarURL?.resizedImageURL(240)) {
+                                    Circle().fill(.secondary.opacity(0.18))
+                                        .overlay {
+                                            Image(systemName: "person.fill")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                }
+                                .frame(width: 64, height: 64)
+                                .clipShape(Circle())
+                                Text(artist.name)
+                                    .font(.caption)
+                                    .lineLimit(1)
+                                    .frame(width: 72)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
             }
         }
     }
@@ -172,6 +251,8 @@ struct QishuiAccountLibrary: View {
         guard session.isLoggedIn, let credential = session.credential else {
             playlists = []
             recentTracks = []
+            albums = []
+            artists = []
             errorMessage = nil
             return
         }
@@ -188,6 +269,10 @@ struct QishuiAccountLibrary: View {
             DiagnosticLogStore.shared.append(level: .error, category: "汽水",
                                              message: "账号歌单读取失败", detail: "\(error)")
         }
+        async let albumTask = QishuiCatalogService.collectedAlbums(credential: credential)
+        async let artistTask = QishuiCatalogService.collectedArtists(credential: credential)
+        albums = (try? await albumTask) ?? []
+        artists = (try? await artistTask) ?? []
         recentTracks = (try? await QishuiCatalogService.recentPlayed(limit: 60, credential: credential)) ?? []
     }
 }

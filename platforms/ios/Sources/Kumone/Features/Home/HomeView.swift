@@ -547,11 +547,18 @@ struct HomeView: View {
                     if part.count > 1 { assigned[chart.id] = part }
                 }
             }
+            // 漫游卡用 LX 推荐流的封面；心动模式仍是网易云红心歌曲，
+            // 封面不能跟着清空，否则「进软件后这两张卡一直没有图，切平台回来才恢复」。
+            let likedIDs = Array(account.likedTrackIDs.prefix(8))
+            var likedTracks: [Track] = []
+            if !likedIDs.isEmpty {
+                likedTracks = (try? await NeteaseAPI.songDetails(ids: likedIDs))?.songs ?? []
+            }
             guard coverToken == token else { return }
             lxChartCovers = assigned
             chartCovers = [:]
-            roamCovers = []
-            heartbeatCovers = []
+            roamCovers = pool
+            heartbeatCovers = echoCoverURLs(from: likedTracks)
             return
         }
 
@@ -576,8 +583,18 @@ struct HomeView: View {
             for await item in group { result.append(item) }
             return result
         }
-        let fm = await fmTracks
-        let liked = await likedTracks
+        var fm = await fmTracks
+        var liked = await likedTracks
+        // 刚启动时网易云登录态/网络可能还没就绪，FM 和红心歌单会返回空；
+        // 之前只能「切个平台再回来」才恢复，这里补一次短重试。
+        if fm.isEmpty, account.isLoggedIn {
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            fm = (try? await NeteaseAPI.personalFM()) ?? []
+        }
+        if liked.isEmpty, account.isLoggedIn, !account.likedTrackIDs.isEmpty {
+            let retryIDs = Array(account.likedTrackIDs.prefix(8))
+            liked = (try? await NeteaseAPI.songDetails(ids: retryIDs))?.songs ?? []
+        }
         guard coverToken == token else { return }
         roamCovers = echoCoverURLs(from: fm)
         heartbeatCovers = echoCoverURLs(from: liked)
@@ -702,7 +719,8 @@ struct HomeView: View {
 
             #if os(iOS)
             // QQ 音乐 home has no 我的歌单 shelf; account playlists live on the account page.
-            if model.activePlatform != .tx {
+            // 汽水的推荐页也不放「我的歌单」，收藏歌单统一收在「我的 → 汽水收藏」。
+            if model.activePlatform != .tx, model.activePlatform != .sd {
                 PlatformAccountPlaylists(platform: model.activePlatform)
             }
             #endif
@@ -719,7 +737,9 @@ struct HomeView: View {
                     }
                     if model.activePlatform == .sd {
                         // 汽水的场景入口改成「点一下随机播放」的卡片，不再依赖歌单封面。
+                        // 与上方排行榜卡片拉开距离，否则两排标题贴在一起。
                         QishuiSceneRadio()
+                            .padding(.top, 22)
                     } else if model.lxToplists.isEmpty, !model.lxRecommendPlaylists.isEmpty {
                         Shelf(title: "热门歌单", rowHeight: 208) {
                             ForEach(model.lxRecommendPlaylists.prefix(12)) { playlist in
@@ -1024,11 +1044,20 @@ struct HomeView: View {
     }
 
     private func startHeartbeatMode() {
-        guard account.isLoggedIn, let likedList = account.likedSongsPlaylist else {
+        guard account.isLoggedIn else {
             ToastCenter.shared.show(String(localized: "登录网易云后即可使用心动模式"))
             return
         }
         Task {
+            // 启动时账号资料可能还没同步完（likedSongsPlaylist / 红心歌单为空），
+            // 这里补拉一次，避免「刚进软件点心动模式没反应，切平台回来才好」。
+            if account.likedSongsPlaylist == nil || account.likedTrackIDs.isEmpty {
+                await account.refreshLibrary()
+            }
+            guard let likedList = account.likedSongsPlaylist else {
+                ToastCenter.shared.show(String(localized: "心动模式暂时不可用，请稍后重试"))
+                return
+            }
             guard let seed = account.likedTrackIDs.randomElement() else {
                 ToastCenter.shared.show(String(localized: "先收藏一些喜欢的歌曲吧"))
                 return

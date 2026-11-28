@@ -197,6 +197,11 @@ enum LXCatalogService {
                             name: String, artistName: String) async throws -> [Track] {
         guard source != .aggregate else { throw LXCatalogError.unsupported }
         let albumName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 汽水有原生专辑详情：直接用 ID 读，避免按名字搜索匹配到同名的别家专辑。
+        if source == .sd, let albumID, !albumID.isEmpty,
+           let tracks = try? await QishuiCatalogService.albumTracks(id: albumID), !tracks.isEmpty {
+            return tracks
+        }
         guard !albumName.isEmpty else { throw LXCatalogError.invalidResponse }
         let requestLimit = source == .tx ? 50 : 100
         let query = [albumName, artistName.trimmingCharacters(in: .whitespacesAndNewlines)]
@@ -1988,7 +1993,7 @@ extension LXCatalogService {
             return charts.map {
                 LXPlaylistSummary(id: "top:\($0.id)", name: $0.name, coverURL: $0.coverURL,
                                   playCount: 0, trackCount: 0, description: nil,
-                                  author: "汽水音乐", source: .sd)
+                                  author: nil, source: .sd)
             }
         case .mg, .aggregate:
             return []

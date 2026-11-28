@@ -46,11 +46,19 @@ final class QishuiSessionStore: ObservableObject {
     func refreshProfile() async {
         guard credential != nil else { return }
         do {
+            // refresh() 内部会把最新的昵称/VIP 状态写回本 store。
             _ = try await QishuiAuthService.shared.refresh()
         } catch let error as QishuiError where error.kind == .authRequired {
+            // 服务端明确说登录失效才清凭证；网络/签名服务故障保留登录态，
+            // 否则用户会莫名其妙退登录、VIP 歌也只能听 30 秒。
             signOut()
         } catch {
-            // A network failure should not drop a still-valid cookie.
+            // 网络失败 / 签名服务挂掉：cookie 大概率还是对的，不要动凭证。
+            DiagnosticLogStore.shared.append(
+                level: .warning, category: "汽水登录",
+                message: "刷新个人信息失败（保留现有登录态）",
+                detail: error.localizedDescription
+            )
         }
     }
 

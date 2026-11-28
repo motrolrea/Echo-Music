@@ -7,7 +7,7 @@ private final class LXArtistDetailViewModel: ObservableObject {
     @Published private(set) var hasLoaded = false
     @Published private(set) var errorMessage: String?
 
-    func load(source: LXCatalogPlatform, artistName: String) async {
+    func load(source: LXCatalogPlatform, artistName: String, artistID: String? = nil) async {
         guard !isLoading else { return }
         isLoading = true
         hasLoaded = false
@@ -17,6 +17,13 @@ private final class LXArtistDetailViewModel: ObservableObject {
             hasLoaded = true
         }
 
+        // 汽水收藏的歌手带 ID：直接读原生歌手歌曲，比按名字搜索更准。
+        if source == .sd, let artistID, !artistID.isEmpty,
+           let native = try? await QishuiCatalogService.artistTracks(id: artistID, limit: 100),
+           !native.isEmpty {
+            tracks = native
+            return
+        }
         do {
             let results = try await LXCatalogService.search(artistName, platform: source, limit: 100)
             let target = Self.normalized(artistName)
@@ -58,6 +65,8 @@ struct LXArtistDetailView: View {
     let source: LXCatalogPlatform
     let artistName: String
     let avatarURL: String?
+    /// 汽水收藏歌手带平台 ID；为空时退回按名字搜索。
+    var artistID: String? = nil
 
     @StateObject private var model = LXArtistDetailViewModel()
     @EnvironmentObject private var player: PlayerService
@@ -72,7 +81,7 @@ struct LXArtistDetailView: View {
                         .frame(maxWidth: .infinity, minHeight: 280)
                 } else if let errorMessage = model.errorMessage, model.tracks.isEmpty {
                     ErrorStateView(message: errorMessage) {
-                        Task { await model.load(source: source, artistName: artistName) }
+                        Task { await model.load(source: source, artistName: artistName, artistID: artistID) }
                     }
                     .frame(minHeight: 280)
                 } else if model.tracks.isEmpty {
@@ -103,8 +112,8 @@ struct LXArtistDetailView: View {
         }
         .navigationTitle(artistName)
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: "\(source.rawValue)-\(artistName)") {
-            await model.load(source: source, artistName: artistName)
+        .task(id: "\(source.rawValue)-\(artistID ?? artistName)") {
+            await model.load(source: source, artistName: artistName, artistID: artistID)
         }
     }
 

@@ -737,10 +737,12 @@ final class PlayerService: ObservableObject {
                 guard !self.isScrubbing else { return }
                 let seconds = time.seconds
                 guard seconds.isFinite else { return }
-                // 定位后引擎会继续报告旧位置（在线流尤其明显）：在它真正接近目标前，
+                // 定位后引擎会继续报告旧位置（在线流尤其明显）：在它真正到目标前，
                 // 歌词与进度都锁在目标时间上，否则歌词会先跳回旧行、进度条也会回弹。
+                // 只有 seek 完成回调会清 anchor；这里只负责把引擎新时间拉回目标对齐，
+                // 避免在引擎刚报到"接近目标"时就清 anchor、歌词被拉回还没到的时间。
                 if let anchor = self.lyricAnchorTime {
-                    if abs(seconds - anchor) <= 1.25 || Date() > self.lyricAnchorDeadline {
+                    if Date() > self.lyricAnchorDeadline {
                         self.clearLyricAnchor()
                     } else {
                         self.updateLyricsCursor(at: anchor)
@@ -1177,8 +1179,11 @@ final class PlayerService: ObservableObject {
                 guard let self else { return }
                 self.seekInFlight = false
                 if self.queuedSeekTarget == nil {
-                    // 定位完成时引擎不一定已报告新位置：有锚点就先按目标时间对齐歌词。
-                    self.updateLyricsCursor(at: self.lyricAnchorTime ?? self.livePlaybackTime)
+                    // 引擎确认 seek 完成时，清掉歌词锚点，之后让歌词跟随真实时间继续前进。
+                    let targetAnchor = self.lyricAnchorTime
+                    self.clearLyricAnchor()
+                    // 先按目标时间对齐一次，再让时间观察器接管（它会用 livePlaybackTime 继续刷新）。
+                    self.updateLyricsCursor(at: targetAnchor ?? self.livePlaybackTime)
                     let completions = self.queuedSeekCompletions
                     self.queuedSeekCompletions = []
                     completions.forEach { $0() }
@@ -1317,7 +1322,16 @@ final class PlayerService: ObservableObject {
             }
             if fmUpcoming.isEmpty {
                 let platform = SettingsManager.shared.homeRecommendationPlatform
-                fmUpcoming = (try? await LXCatalogService.recommendedTracks(platform: platform, limit: 30)) ?? []
+                // 刚启动时推荐流偶尔返回空（登录态 / 网络尚未就绪），
+                // 之前只能「换个平台再回来」才恢复，这里补几次短重试。
+                for attempt in 0..<3 {
+                    let tracks = (try? await LXCatalogService.recommendedTracks(platform: platform, limit: 30)) ?? []
+                    if !tracks.isEmpty {
+                        fmUpcoming = tracks
+                        break
+                    }
+                    if attempt < 2 { try? await Task.sleep(for: .seconds(1)) }
+                }
             }
             guard !fmUpcoming.isEmpty else {
                 ToastCenter.shared.show("LX 漫游暂时没有歌曲，请检查网络或更换推荐平台")
@@ -1902,8 +1916,11 @@ final class PlayerService: ObservableObject {
                       generation == self.resolveGeneration,
                       self.engine.currentItem === item else { return }
                 self.isRestoringSeek = false
+                // 续播 seek 也会给歌词一个锚点，引擎真的到位后就放它走。
+                let restoredAnchor = self.lyricAnchorTime
+                self.clearLyricAnchor()
                 self.engine.playImmediately(atRate: self.playbackRate)
-                self.updateLyricsCursor(at: self.lyricAnchorTime ?? self.livePlaybackTime)
+                self.updateLyricsCursor(at: restoredAnchor ?? self.livePlaybackTime)
             }
             engine.seek(to: CMTime(seconds: seekPosition, preferredTimescale: 600),
                         toleranceBefore: .positiveInfinity,
