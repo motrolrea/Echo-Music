@@ -64,16 +64,23 @@ struct NowPlayingView: View {
             let phoneLandscape = isPhoneLandscape(size: geo.size)
             ZStack {
                 if embedded {
+                    #if os(iOS)
+                    if settings.nowPlayingMode == .shelf {
+                        shelfBackdrop
+                    } else {
+                        artworkBackdrop
+                    }
+                    #else
                     artworkBackdrop
+                    #endif
                 } else {
                     backdrop
                 }
 
                 #if os(iOS)
                 // 唱片架只提供横屏布局：即使旋转还没完成，也先按横屏排。
-                if embedded {
-                    shelfLandscapeLayout(size: geo.size)
-                } else if settings.nowPlayingMode == .shelf {
+                // 嵌入 iPad 右栏时同样尊重设置里选中的播放器模式，不再锁死成唱片架。
+                if settings.nowPlayingMode == .shelf {
                     shelfLandscapeLayout(size: geo.size)
                 } else if phoneLandscape {
                     phoneLandscapeLayout(size: geo.size)
@@ -346,6 +353,32 @@ struct NowPlayingView: View {
                 startPoint: .top, endPoint: .bottom
             )
         }
+    }
+
+    /// 唱片架背景：像网页预览一样，用当前封面做大幅模糊底图，
+    /// 再压暗四周，让立着的唱片成为画面主体。
+    private var shelfBackdrop: some View {
+        ZStack {
+            Color.black
+            if let artworkImage {
+                Image(platformImage: artworkImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .scaleEffect(1.18)
+                    .blur(radius: 64, opaque: true)
+                    .opacity(0.9)
+            }
+            RadialGradient(
+                colors: [.black.opacity(0.02), .black.opacity(0.42), .black.opacity(0.80)],
+                center: .center, startRadius: 40, endRadius: 640
+            )
+            LinearGradient(
+                colors: [.black.opacity(0.58), .black.opacity(0.12), .black.opacity(0.90)],
+                startPoint: .top, endPoint: .bottom
+            )
+        }
+        .clipped()
+        .ignoresSafeArea()
     }
 
     private func loadArtwork() async {
@@ -917,6 +950,11 @@ struct NowPlayingView: View {
     /// 唱片架只做横屏：进入时锁横屏，切换其他播放器或关闭播放页时恢复。
     /// iPad 常驻双栏可以自由旋转，不做方向锁。
     private func updateShelfOrientation() {
+        // iPad 常驻双栏可以自由旋转，不做方向锁（之前这里把 iPad 也锁成横屏）。
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            ShelfOrientation.unlock()
+            return
+        }
         if settings.nowPlayingMode == .shelf {
             ShelfOrientation.lockLandscape()
             // 全屏转场（zoom / cover）期间发起的旋转请求会被系统忽略，
@@ -1500,7 +1538,7 @@ struct LyricMainText: View {
                     size: rubySize,
                     weight: .bold,
                     color: .white,
-                    alphas: karaokeAlphas(words, at: player.livePlaybackTime + settings.effectiveLyricsOffset)
+                    alphas: karaokeAlphas(words, at: player.lyricDisplayTime + settings.effectiveLyricsOffset)
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -1514,7 +1552,7 @@ struct LyricMainText: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         } else if isActive, verbatim, line.hasVerbatimTimings, let words = line.words {
             TimelineView(.animation(paused: !player.isPlaying)) { _ in
-                karaoke(words, at: player.livePlaybackTime + settings.effectiveLyricsOffset).font(font)
+                karaoke(words, at: player.lyricDisplayTime + settings.effectiveLyricsOffset).font(font)
                     .minimumScaleFactor(0.72)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1579,7 +1617,7 @@ private struct AMLLyricText: View {
                     ZStack(alignment: .leading) {
                         Text(line.text)
                             .foregroundStyle(.white.opacity(0.28))
-                        timedText(words, at: player.livePlaybackTime + settings.effectiveLyricsOffset)
+                        timedText(words, at: player.lyricDisplayTime + settings.effectiveLyricsOffset)
                     }
                 }
             } else {

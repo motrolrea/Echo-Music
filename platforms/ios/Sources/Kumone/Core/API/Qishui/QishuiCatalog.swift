@@ -83,7 +83,9 @@ enum QishuiCatalogService {
                 root = try await accountGet(path: "/luna/pc/playlist/detail", extras: extras,
                                             credential: credential)
             } else {
-                root = try await QishuiClient.shared.get(path: "/luna/pc/playlist/detail", extras: extras)
+                // 收藏里的私人歌单需要登录态才看得到歌曲；未显式传入时借用当前账号 Cookie。
+                root = try await QishuiClient.shared.get(path: "/luna/pc/playlist/detail", extras: extras,
+                                                         cookie: await currentAccountCookie())
             }
             // PC 歌单详情把数据包在 data 里；直接读顶层会得到空列表。
             let body = (root["data"] as? [String: Any]) ?? root
@@ -371,7 +373,21 @@ enum QishuiCatalogService {
         let blocks = QishuiFields.objects(root["blocks"])
         let songs = blocks.first { QishuiFields.text($0["type"]) == "discover_top_song_list" } ?? blocks.first
         let rows = QishuiFields.objects(songs?["inner_block"])
-        return Array(rows.compactMap(track(fromResource:)).prefix(max(1, limit)))
+        var tracks: [Track] = []
+        var seen: Set<Int> = []
+        for row in rows {
+            // 榜单行本身只有元信息，歌曲在行内的 resources 里。
+            var resources = QishuiFields.objects(row["resources"])
+            if resources.isEmpty { resources = QishuiFields.objects(row["inner_block"]) }
+            if resources.isEmpty { resources = [row] }
+            for resource in resources {
+                guard let track = track(fromResource: resource),
+                      seen.insert(track.id).inserted else { continue }
+                tracks.append(track)
+                if tracks.count >= limit { return tracks }
+            }
+        }
+        return tracks
     }
 
     struct Chart: Identifiable, Hashable {
@@ -422,16 +438,23 @@ enum QishuiCatalogService {
     }
 
     static func chartTracks(id: String, limit: Int = 100) async throws -> (name: String?, tracks: [Track]) {
-        let root = try await QishuiClient.shared.signedPost(path: "/luna/pc/charts/\(id)", body: [:],
-                                                            cookie: await currentAccountCookie())
+        // 榜单详情只接受 GET；用 POST 会被服务器当成不存在的路由，直接返回 404。
+        let root = try await QishuiClient.shared.signedGet(path: "/luna/pc/charts/\(id)",
+                                                           cookie: await currentAccountCookie())
         let body = (root["data"] as? [String: Any]) ?? root
-        guard let chart = body["chart"] as? [String: Any] else {
-            throw QishuiError(.invalidResponse, "汽水榜单没有返回歌曲")
-        }
-        let rows = QishuiFields.objects(chart["track_ranks"])
-        let tracks = rows.compactMap { row -> Track? in
-            guard let track = row["track"] as? [String: Any] else { return nil }
-            return QishuiMapping.track(from: track)
+        let chart = (body["chart"] as? [String: Any]) ?? (root["chart"] as? [String: Any]) ?? [:]
+        var rows = QishuiFields.objects(chart["track_ranks"])
+        if rows.isEmpty { rows = QishuiFields.objects(body["track_ranks"]) }
+        var tracks: [Track] = []
+        for row in rows {
+            if let track = track(fromResource: row) {
+                tracks.append(track)
+                continue
+            }
+            if let track = row["track"] as? [String: Any],
+               let mapped = QishuiMapping.track(from: track) {
+                tracks.append(mapped)
+            }
         }
         guard !tracks.isEmpty else { throw QishuiError(.invalidResponse, "汽水榜单没有返回歌曲") }
         return (QishuiFields.text(chart["title"] ?? chart["name"]),
@@ -489,6 +512,12 @@ enum QishuiCatalogService {
 
     private static func track(fromResource row: [String: Any]) -> Track? {
         if let entity = row["entity"] as? [String: Any] {
+            // 歌单详情 / 最近播放：真实歌曲挂在 entity.track_wrapper.track。
+            if let wrapper = entity["track_wrapper"] as? [String: Any],
+               let track = wrapper["track"] as? [String: Any],
+               let mapped = QishuiMapping.track(from: track) {
+                return mapped
+            }
             if let track = entity["track"] as? [String: Any], let mapped = QishuiMapping.track(from: track) {
                 return mapped
             }
@@ -499,6 +528,12 @@ enum QishuiCatalogService {
                 return mapped
             }
             if let mapped = QishuiMapping.track(from: entity) { return mapped }
+        }
+        // 少数接口把 wrapper 直接放在行上。
+        if let wrapper = row["track_wrapper"] as? [String: Any],
+           let track = wrapper["track"] as? [String: Any],
+           let mapped = QishuiMapping.track(from: track) {
+            return mapped
         }
         if let track = row["track"] as? [String: Any], let mapped = QishuiMapping.track(from: track) {
             return mapped
