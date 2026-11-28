@@ -78,7 +78,6 @@ enum QishuiCatalogService {
                 "count": "50",
             ]
             if !ownerId.isEmpty { extras["owner_id"] = ownerId }
-            if let playlistType { extras["type"] = String(playlistType) }
             let root: [String: Any]
             if credential != nil {
                 root = try await accountGet(path: "/luna/pc/playlist/detail", extras: extras,
@@ -86,15 +85,19 @@ enum QishuiCatalogService {
             } else {
                 root = try await QishuiClient.shared.get(path: "/luna/pc/playlist/detail", extras: extras)
             }
+            // PC 歌单详情把数据包在 data 里；直接读顶层会得到空列表。
+            let body = (root["data"] as? [String: Any]) ?? root
             if playlist.isEmpty {
-                playlist = (root["playlist"] as? [String: Any]) ?? [:]
+                playlist = (body["playlist"] as? [String: Any])
+                    ?? (body["playlist_info"] as? [String: Any])
+                    ?? [:]
             }
-            let batch = QishuiFields.objects(root["media_resources"]).compactMap(track(fromResource:))
+            let batch = QishuiFields.objects(body["media_resources"]).compactMap(track(fromResource:))
             all += batch
-            hasMore = QishuiFields.bool(root["has_more"])
+            hasMore = QishuiFields.bool(body["has_more"])
             if all.count >= offset + limit, limit > 0 { break }
             guard hasMore else { break }
-            let next = QishuiFields.text(root["next_cursor"]) ?? ""
+            let next = QishuiFields.text(body["next_cursor"]) ?? ""
             guard !next.isEmpty, !seen.contains(next) else { break }
             cursor = next
         }
@@ -242,33 +245,60 @@ enum QishuiCatalogService {
         let coverURL: String?
     }
 
-    static func feedModes() async throws -> [FeedMode] {
-        let root = try await QishuiClient.shared.signedPost(path: "/luna/pc/feed/mode", body: [:])
-        let blocks = QishuiFields.objects(root["feed_mode_block"])
-        if blocks.isEmpty, let data = root["data"] as? [String: Any] {
-            return modes(from: QishuiFields.objects(data["feed_mode_block"]))
-        }
-        return modes(from: blocks)
+    /// 官方推荐模式（对应 Coda 的默认 / 熟悉 / 新鲜），始终排在场景前面。
+    private static let preferenceModes: [FeedMode] = [
+        FeedMode(id: "default", name: "默认推荐", group: "推荐模式", coverURL: nil),
+        FeedMode(id: "familiar", name: "熟悉模式", group: "推荐模式", coverURL: nil),
+        FeedMode(id: "fresh", name: "新鲜模式", group: "推荐模式", coverURL: nil),
+    ]
+
+    /// 推荐流需要登录态，未显式传入时读取当前汽水账号的 Cookie。
+    private static func currentAccountCookie() async -> String? {
+        await MainActor.run { QishuiSessionStore.shared.credential?.accountCookie }
+    }
+
+    static func feedModes(credential: QishuiCredential? = nil) async throws -> [FeedMode] {
+        let cookie = credential?.accountCookie ?? await currentAccountCookie()
+        let root = try await QishuiClient.shared.signedPost(
+            path: "/luna/pc/feed/mode", body: [:], cookie: cookie
+        )
+        let rawBlocks = root["feed_mode_block"]
+            ?? (root["data"] as? [String: Any])?["feed_mode_block"]
+        var seen = Set(preferenceModes.map(\.id))
+        return preferenceModes + modes(from: objectsOrSingle(rawBlocks)).filter { seen.insert($0.id).inserted }
+    }
+
+    /// 汽水部分接口会把「只有一个元素的数组」直接写成字典。
+    private static func objectsOrSingle(_ value: Any?) -> [[String: Any]] {
+        if let list = value as? [[String: Any]] { return list }
+        if let single = value as? [String: Any] { return [single] }
+        return QishuiFields.objects(value)
     }
 
     static func feed(scene: String? = nil, preference: String? = nil,
-                     limit: Int = 20) async throws -> [Track] {
-        var feedPreference: [String: Any] = [
-            "total_request_count": 1,
-            "preference_mode_request_count": 1,
-            "current_mode_request_count": 1,
+                     limit: Int = 20, credential: QishuiCredential? = nil) async throws -> [Track] {
+        let cookie = credential?.accountCookie ?? await currentAccountCookie()
+        var body: [String: Any] = [
+            "played_media": [Any](),
+            "did_first_use_time": Int(Date().timeIntervalSince1970),
+            "is_first_request": true,
+            "is_did_first_request": true,
+            "feed_counts": ["mix_session_count": 1],
         ]
-        if let scene { feedPreference["scene_mode_id"] = Int(scene) ?? scene }
-        if let preference { feedPreference["preference_mode"] = preference }
+        if let scene, !scene.isEmpty {
+            // 数字是场景 id；「default / familiar / fresh」是推荐模式。
+            if let sceneID = Int(scene) {
+                body["feed_preference"] = ["scene_mode_id": sceneID]
+            } else if scene != "default" {
+                body["feed_preference"] = ["preference_mode": scene]
+            }
+        } else if let preference, !preference.isEmpty, preference != "default" {
+            body["feed_preference"] = ["preference_mode": preference]
+        }
         let root = try await QishuiClient.shared.signedPost(
             path: "/luna/pc/feed/song-tab",
-            body: [
-                "feed_preference": feedPreference,
-                "cursor": "0",
-                "count": max(1, limit),
-                "played_media": [Any](),
-                "is_first_request": true,
-            ]
+            body: body,
+            cookie: cookie
         )
         let items = QishuiFields.objects(root["items"]).isEmpty
             ? QishuiFields.objects((root["data"] as? [String: Any])?["items"])
@@ -333,18 +363,88 @@ enum QishuiCatalogService {
     // MARK: - Discovery
 
     private static func discoverTracks(limit: Int) async throws -> [Track] {
-        let root = try await QishuiClient.shared.post(path: "/luna/pc/discover", body: [:])
+        // 发现页和榜单一样需要签名请求，未签名会返回空 blocks。
+        let root = try await QishuiClient.shared.signedPost(path: "/luna/pc/discover", body: [:],
+                                                            cookie: await currentAccountCookie())
         let blocks = QishuiFields.objects(root["blocks"])
         let songs = blocks.first { QishuiFields.text($0["type"]) == "discover_top_song_list" } ?? blocks.first
         let rows = QishuiFields.objects(songs?["inner_block"])
         return Array(rows.compactMap(track(fromResource:)).prefix(max(1, limit)))
     }
 
+    struct Chart: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let coverURL: String?
+    }
+
+    /// 官方兜底榜单：即使 discover 接口结构变化也保证有榜可点。
+    private static let knownCharts: [Chart] = [
+        Chart(id: "7036274230471712007", name: "热歌榜",
+              coverURL: chartCover("tos-cn-i-b829550vbb/discover-mix-tophits")),
+        Chart(id: "7060812597884869927", name: "新歌榜",
+              coverURL: chartCover("tos-cn-i-b829550vbb/discover-mix-newcharts")),
+        Chart(id: "7061475546400005410", name: "欧美榜",
+              coverURL: chartCover("tos-cn-i-b829550vbb/discover-mix-ushits")),
+        Chart(id: "7415959718721494311", name: "音乐人歌曲榜",
+              coverURL: chartCover("tos-cn-v-2774c002/o8FQKiQQBxHWa2hzsBNAgYOX6iEHEAibADAbfB")),
+    ]
+
+    private static func chartCover(_ uri: String) -> String {
+        "https://p3-luna.douyinpic.com/img/\(uri)~tplv-b829550vbb-resize:960:960.png"
+    }
+
+    static func charts() async -> [Chart] {
+        let root = try? await QishuiClient.shared.signedPost(path: "/luna/pc/discover", body: [:],
+                                                             cookie: await currentAccountCookie())
+        let blocks = QishuiFields.objects(root?["blocks"])
+        let rows = blocks.filter { QishuiFields.text($0["type"]) == "discover_top_song_list" }
+            .flatMap { QishuiFields.objects($0["inner_block"]) }
+        var seen: Set<String> = []
+        var result: [Chart] = []
+        for row in rows {
+            guard QishuiFields.text(row["type"]) == "discover_track_top_list",
+                  let id = QishuiFields.text(row["inner_block_id"]), !id.isEmpty,
+                  let title = QishuiFields.text(row["title"]), !title.isEmpty,
+                  seen.insert(id).inserted else { continue }
+            let resources = QishuiFields.objects(row["inner_block"])
+            let cover = knownCharts.first { $0.id == id }?.coverURL
+                ?? resources.lazy.compactMap { resource -> String? in
+                    let ranked = (resource["entity"] as? [String: Any])?["ranked_track"] as? [String: Any]
+                    return QishuiFields.imageURL((ranked?["track"] as? [String: Any])?["url_cover"])
+                }.first
+            result.append(Chart(id: id, name: title, coverURL: cover))
+        }
+        result += knownCharts.filter { seen.insert($0.id).inserted }
+        return result
+    }
+
+    static func chartTracks(id: String, limit: Int = 100) async throws -> (name: String?, tracks: [Track]) {
+        let root = try await QishuiClient.shared.signedPost(path: "/luna/pc/charts/\(id)", body: [:],
+                                                            cookie: await currentAccountCookie())
+        let body = (root["data"] as? [String: Any]) ?? root
+        guard let chart = body["chart"] as? [String: Any] else {
+            throw QishuiError(.invalidResponse, "汽水榜单没有返回歌曲")
+        }
+        let rows = QishuiFields.objects(chart["track_ranks"])
+        let tracks = rows.compactMap { row -> Track? in
+            guard let track = row["track"] as? [String: Any] else { return nil }
+            return QishuiMapping.track(from: track)
+        }
+        guard !tracks.isEmpty else { throw QishuiError(.invalidResponse, "汽水榜单没有返回歌曲") }
+        return (QishuiFields.text(chart["title"] ?? chart["name"]),
+                Array(tracks.prefix(max(1, limit))))
+    }
+
     private static func modes(from blocks: [[String: Any]]) -> [FeedMode] {
         blocks.flatMap { block -> [FeedMode] in
             let title = QishuiFields.text(block["title"] ?? block["text"]) ?? ""
-            return QishuiFields.objects(block["feed_mode"]).compactMap { item in
-                let mode = ((item["entity"] as? [String: Any])?["feed_mode"] as? [String: Any]) ?? item
+            return objectsOrSingle(block["feed_mode"]).compactMap { item in
+                let entity = item["entity"] as? [String: Any]
+                // 场景真实挂在 entity.feed_scene_mode 下；旧代码读的是 feed_mode，导致整页场景为空。
+                let mode = (entity?["feed_scene_mode"] as? [String: Any])
+                    ?? (entity?["feed_mode"] as? [String: Any])
+                    ?? item
                 let scene = (mode["scene_mode"] as? [String: Any])?["scene_mode_id"] ?? mode["scene_mode_id"]
                 guard let id = QishuiFields.text(scene ?? mode["sub_queue_type"]), !id.isEmpty else { return nil }
                 return FeedMode(id: id,
@@ -388,6 +488,12 @@ enum QishuiCatalogService {
     private static func track(fromResource row: [String: Any]) -> Track? {
         if let entity = row["entity"] as? [String: Any] {
             if let track = entity["track"] as? [String: Any], let mapped = QishuiMapping.track(from: track) {
+                return mapped
+            }
+            // 发现页 / 榜单行是 entity.ranked_track.track。
+            if let ranked = entity["ranked_track"] as? [String: Any],
+               let track = ranked["track"] as? [String: Any],
+               let mapped = QishuiMapping.track(from: track) {
                 return mapped
             }
             if let mapped = QishuiMapping.track(from: entity) { return mapped }

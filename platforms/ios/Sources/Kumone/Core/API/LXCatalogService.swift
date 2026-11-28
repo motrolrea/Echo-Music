@@ -1983,7 +1983,14 @@ extension LXCatalogService {
                                          playCount: int(item["listen"]) ?? 0, trackCount: 0,
                                          description: text(item["info"]), author: nil, source: .kw)
             }
-        case .mg, .sd, .aggregate:
+        case .sd:
+            let charts = await QishuiCatalogService.charts()
+            return charts.map {
+                LXPlaylistSummary(id: "top:\($0.id)", name: $0.name, coverURL: $0.coverURL,
+                                  playCount: 0, trackCount: 0, description: nil,
+                                  author: "汽水音乐", source: .sd)
+            }
+        case .mg, .aggregate:
             return []
         }
     }
@@ -2049,7 +2056,12 @@ extension LXCatalogService {
                                     coverURL: normalizedImageURL(firstText(root?["pic"], root?["v9_pic2"])),
                                     description: text(root?["info"]), author: nil, playCount: 0,
                                     tracks: tracks, source: .kw)
-        case .wy, .mg, .sd, .aggregate:
+        case .sd:
+            let chart = try await QishuiCatalogService.chartTracks(id: id, limit: 100)
+            return LXPlaylistDetail(id: "top:\(id)", name: chart.name ?? "汽水榜单",
+                                    coverURL: nil, description: nil, author: nil, playCount: 0,
+                                    tracks: chart.tracks, source: .sd)
+        case .wy, .mg, .aggregate:
             throw LXCatalogError.unsupported
         }
     }

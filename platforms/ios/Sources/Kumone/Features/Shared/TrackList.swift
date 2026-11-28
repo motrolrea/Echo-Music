@@ -26,6 +26,7 @@ struct TrackRow: View {
     @EnvironmentObject private var player: PlayerService
     @EnvironmentObject private var account: AccountStore
     @ObservedObject private var favorites = FavoritesStore.shared
+    @ObservedObject private var cloudFavorites = CloudFavoriteStore.shared
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ScaledMetric(relativeTo: .body) private var compactArtworkSize: CGFloat = 48
     @ScaledMetric(relativeTo: .body) private var compactRowHeight: CGFloat = 64
@@ -39,6 +40,7 @@ struct TrackRow: View {
 
     private var isCurrent: Bool { player.currentTrack?.playbackKey == track.playbackKey }
     private var isLocallyFavorite: Bool { favorites.contains(track) }
+    private var isCloudFavorite: Bool { cloudFavorites.contains(track) }
     private var isPlayable: Bool { playability == .playable }
     private var showsArtwork: Bool { style != .albumTrack }
     private var showsVIPBadge: Bool {
@@ -207,7 +209,19 @@ struct TrackRow: View {
     }
 
     private var likeAndDuration: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
+            if isLocallyFavorite {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.yellow)
+                    .accessibilityLabel("本地收藏")
+            }
+            if isCloudFavorite {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("平台歌单已收藏")
+            }
             Text(Formatters.duration(track.duration))
                 .font(.system(size: 11.5).monospacedDigit())
                 .foregroundStyle(.tertiary)

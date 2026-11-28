@@ -559,6 +559,13 @@ final class PlayerService: ObservableObject {
         let t = engine.currentTime().seconds
         return t.isFinite ? t : progress
     }
+
+    /// 歌词定位用的时间。续播时音频还没挂到播放器上，引擎时间恒为 0，
+    /// 此时用已恢复的进度，避免歌词先显示第一行再跳行。
+    private var lyricReferenceTime: TimeInterval {
+        if isRestoringSeek || engine.currentItem == nil { return progress }
+        return livePlaybackTime
+    }
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var statusObservation: NSKeyValueObservation?
@@ -592,6 +599,9 @@ final class PlayerService: ObservableObject {
         UserDefaults.standard.set(knownQualityTiers.mapValues { Array($0) }, forKey: "moumusic.knownQualityTiers")
     }
     private var pendingSeek: TimeInterval?
+    /// 续播时正处在「先 seek 后放声」的窗口内：此时引擎时间还是 0，
+    /// 歌词和进度都必须以 `progress`（恢复的位置）为准。
+    private var isRestoringSeek = false
     /// URLs already found to be 30-second previews, per track, so the re-resolve asks for another one.
     private var previewRejects: [String: Set<String>] = [:]
     /// URLs that failed inside AVPlayer (HTTP error, HTML body, unreadable stream): excluded when re-resolving.
@@ -710,6 +720,13 @@ final class PlayerService: ObservableObject {
                 // Only briefly: a slow streamed seek must not freeze the lyrics while the audio keeps playing.
                 if (self.seekInFlight || self.queuedSeekTarget != nil),
                    Date().timeIntervalSince(self.lastSeekRequestAt) < 0.8 { return }
+
+                // 续播窗口内引擎报告的是 0 秒（seek 还没生效）。此时跟随引擎时间
+                // 会把进度和歌词一起拉回开头，正是「续播后歌词对不上」的原因。
+                if self.isRestoringSeek {
+                    self.updateLyricsCursor(at: self.progress)
+                    return
+                }
 
                 // Self-healing: once no fade is running, the audible state must match what the UI says
                 // (an interrupted fade used to leave the song playing after "pause", or silent after play).
@@ -1022,7 +1039,7 @@ final class PlayerService: ObservableObject {
     }
 
     func refreshLyricsCursor() {
-        updateLyricsCursor(at: livePlaybackTime)
+        updateLyricsCursor(at: lyricReferenceTime)
     }
 
     private func publishLyrics(_ parsed: ParsedLyrics, for track: Track, generation: Int) {
@@ -1030,7 +1047,7 @@ final class PlayerService: ObservableObject {
         DiagnosticLogStore.shared.append(
             level: .info, category: "歌词", message: parsed.hasVerbatimTimings ? "逐字歌词" : "逐句歌词",
             detail: "\(track.name) · 来源 \(track.source ?? "wy") · \(parsed.lines.count) 行")
-        updateLyricsCursor(at: livePlaybackTime)
+        updateLyricsCursor(at: lyricReferenceTime)
 
         // Many source adapters provide the original lyrics but omit the
         // translation field. Enrich the already-visible lyrics from a public
@@ -1088,7 +1105,7 @@ final class PlayerService: ObservableObject {
         // Translation enrichment happens after the first lyric payload. Push
         // the merged line through the same snapshot path so the widget and
         // Live Activity do not keep the pre-enrichment placeholder.
-        updateLyricsCursor(at: livePlaybackTime)
+        updateLyricsCursor(at: lyricReferenceTime)
     }
 
     private var seekInFlight = false
@@ -1462,6 +1479,7 @@ final class PlayerService: ObservableObject {
         }
         progress = resumeAt ?? 0
         pendingSeek = resumeAt
+        isRestoringSeek = false
         duration = track.duration
         // 已经接近结尾的旧进度不再续播，避免一打开就停在末尾或立刻跳下一首。
         if let resumeAt, track.duration > 0, resumeAt >= track.duration - 3 {
@@ -1513,6 +1531,8 @@ final class PlayerService: ObservableObject {
     private func resolveAndLoad(_ track: Track, generation: Int,
                                 requestedQuality: AudioQuality) async {
         guard !Task.isCancelled, generation == resolveGeneration else { return }
+        // 每次重新解析都从「未在续播窗口」开始，避免上一次失败的 seek 让标志位卡住。
+        isRestoringSeek = false
         let resolveStartedAt = Date()
         let quality = requestedQuality.rawValue
 #if os(macOS)
@@ -1831,12 +1851,31 @@ final class PlayerService: ObservableObject {
         let seekPosition = pendingSeek
         pendingSeek = nil
         if let seekPosition, seekPosition > 0 {
-            // Resuming at a position after a quality switch: an exact seek on a freshly attached stream waits for
-            // that byte range before anything plays, and starting only after it finished left playback hanging
-            // until the user nudged it. Seek loosely and start right away; AVPlayer applies the seek as data arrives.
+            // 续播/切音质后需要从保存的位置继续。先定位、后放声：如果先
+            // playImmediately，在线流会先从 0 秒出声再跳到续播位置，歌词就会
+            // 先跟着开头走再跳行，看起来正是「歌词和声音对不上」。
+            // 定位用宽松容差，避免精确 seek 在未就绪的流上卡住。
             engine.automaticallyWaitsToMinimizeStalling = false
-            engine.seek(to: CMTime(seconds: seekPosition, preferredTimescale: 600), completionHandler: { _ in })
-            engine.playImmediately(atRate: playbackRate)
+            isRestoringSeek = true
+            let gate = PlaybackStartGate()
+            let startPlayback: @MainActor () -> Void = { [weak self] in
+                guard let self, gate.take(),
+                      generation == self.resolveGeneration,
+                      self.engine.currentItem === item else { return }
+                self.isRestoringSeek = false
+                self.engine.playImmediately(atRate: self.playbackRate)
+                self.updateLyricsCursor(at: self.livePlaybackTime)
+            }
+            engine.seek(to: CMTime(seconds: seekPosition, preferredTimescale: 600),
+                        toleranceBefore: .positiveInfinity,
+                        toleranceAfter: .positiveInfinity) { _ in
+                Task { @MainActor in startPlayback() }
+            }
+            // 流尚未就绪时 seek 回调可能迟迟不来：到点兜底照常放声。
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                startPlayback()
+            }
         } else {
             // Pure online streaming: start as soon as the first data arrives instead of
             // waiting for AVPlayer to buffer ahead; nothing is written to disk.
@@ -3023,5 +3062,17 @@ final class PlayerService: ObservableObject {
             .appendingPathComponent("Kumone", isDirectory: true)
         try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         return support.appendingPathComponent("player-state.json")
+    }
+}
+
+/// 续播时「先定位、后播放」只执行一次：seek 回调和兜底计时器都会尝试放声。
+@MainActor
+private final class PlaybackStartGate {
+    private var started = false
+
+    func take() -> Bool {
+        guard !started else { return false }
+        started = true
+        return true
     }
 }

@@ -91,6 +91,7 @@ public struct IOSMainWindow: View {
                     account: account,
                     settings: settings
                 )
+                Task { await CloudFavoriteStore.shared.refreshIfNeeded() }
                 #if DEBUG
                 await DebugHarness.runIfRequested()
                 #endif
@@ -129,6 +130,7 @@ public struct IOSMainWindow: View {
                 Task { @MainActor in
                     await account.refreshForOpen()
                     await MusicSessionRefreshCoordinator.shared.refreshIfNeeded()
+                    await CloudFavoriteStore.shared.refreshIfNeeded()
                 }
             }
             .onOpenURL { url in

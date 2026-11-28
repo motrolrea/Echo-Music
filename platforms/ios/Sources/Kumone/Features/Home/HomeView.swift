@@ -250,7 +250,7 @@ final class HomeViewModel: ObservableObject {
             dailyFirstCover = tracks.first?.album.picUrl
                 ?? content.playlists.first?.coverURL
             saveSnapshot()
-            state = recommendTracks.isEmpty && lxRecommendPlaylists.isEmpty
+            state = recommendTracks.isEmpty && lxRecommendPlaylists.isEmpty && lxToplists.isEmpty
                 ? .error("LX 暂无推荐结果，请检查网络或切换推荐平台")
                 : .loaded
             return
