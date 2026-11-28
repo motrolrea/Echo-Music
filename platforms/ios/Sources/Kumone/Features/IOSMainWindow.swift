@@ -1013,7 +1013,8 @@ struct IOSMiniPlayerBar: View {
         let mode = UserDefaults.standard.string(forKey: "moumusic.miniPlayerSecondLine") ?? "lyric"
         if mode != "artist",
            let lyrics = player.lyrics,
-           let index = lyrics.activeIndex(at: player.progress + SettingsManager.shared.effectiveLyricsOffset),
+           let index = lyrics.activeIndex(at: player.lyricDisplayTime
+                                          + SettingsManager.shared.effectiveLyricsOffset + 0.2),
            lyrics.lines.indices.contains(index) {
             let text = lyrics.lines[index].text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !text.isEmpty { return text }

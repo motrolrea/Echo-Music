@@ -26,6 +26,7 @@ struct InteractiveCardStyle: ButtonStyle {
         #else
         configuration.label
             .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .hapticOnPress(configuration.isPressed)
         #endif
     }
 }
@@ -58,6 +59,7 @@ struct InteractiveRowStyle: ButtonStyle {
             )
             .opacity(configuration.isPressed ? 0.8 : 1.0)
             .animation(AppAnimation.quick, value: configuration.isPressed)
+            .hapticOnPress(configuration.isPressed)
         #endif
     }
 }
@@ -71,6 +73,7 @@ struct PressableButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? pressScale : 1.0)
             .opacity(configuration.isPressed ? 0.7 : 1.0)
             .animation(AppAnimation.quick, value: configuration.isPressed)
+            .hapticOnPress(configuration.isPressed)
     }
 }
 
@@ -115,6 +118,7 @@ struct ChipButtonStyle: ButtonStyle {
             .foregroundStyle(isSelected ? .white : .primary)
             .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
             .animation(AppAnimation.spring, value: configuration.isPressed)
+            .hapticOnPress(configuration.isPressed)
         #endif
     }
 }
@@ -134,3 +138,19 @@ extension ButtonStyle where Self == PressableButtonStyle {
 extension ButtonStyle where Self == ChipButtonStyle {
     static func chip(isSelected: Bool) -> ChipButtonStyle { ChipButtonStyle(isSelected: isSelected) }
 }
+
+#if os(iOS)
+extension View {
+    /// 按钮按下时触发一次轻触反馈。受「设置 → 界面与颜色 → 触摸反馈」控制，
+    /// 统一放在按钮样式里，普通按钮就不用各自写震动了。
+    func hapticOnPress(_ isPressed: Bool) -> some View {
+        onChange(of: isPressed) { pressed in
+            if pressed { Haptics.tap() }
+        }
+    }
+}
+#else
+extension View {
+    func hapticOnPress(_ isPressed: Bool) -> some View { self }
+}
+#endif

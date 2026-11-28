@@ -259,8 +259,14 @@ struct QishuiAccountLibrary: View {
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
+        // 四组数据互不依赖：并行拉取，否则「我的 → 汽水收藏」要等四轮请求。
+        async let playlistTask = QishuiCatalogService.myPlaylists(credential: credential)
+        async let albumTask = QishuiCatalogService.collectedAlbums(credential: credential)
+        async let artistTask = QishuiCatalogService.collectedArtists(credential: credential)
+        async let recentTask = QishuiCatalogService.recentPlayed(limit: 60, credential: credential)
+
         do {
-            playlists = try await QishuiCatalogService.myPlaylists(credential: credential)
+            playlists = try await playlistTask
             DiagnosticLogStore.shared.append(
                 level: .info, category: "汽水",
                 message: "账号歌单 \(playlists.count) 个（自建 \(owned.count)、收藏 \(collected.count)）")
@@ -269,11 +275,9 @@ struct QishuiAccountLibrary: View {
             DiagnosticLogStore.shared.append(level: .error, category: "汽水",
                                              message: "账号歌单读取失败", detail: "\(error)")
         }
-        async let albumTask = QishuiCatalogService.collectedAlbums(credential: credential)
-        async let artistTask = QishuiCatalogService.collectedArtists(credential: credential)
         albums = (try? await albumTask) ?? []
         artists = (try? await artistTask) ?? []
-        recentTracks = (try? await QishuiCatalogService.recentPlayed(limit: 60, credential: credential)) ?? []
+        recentTracks = (try? await recentTask) ?? []
     }
 }
 #endif

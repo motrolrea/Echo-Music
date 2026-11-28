@@ -560,33 +560,58 @@ final class PlayerService: ObservableObject {
         return t.isFinite ? t : progress
     }
 
-    /// 歌词定位用的时间。续播时音频还没挂到播放器上，引擎时间恒为 0，
-    /// 此时用已恢复的进度，避免歌词先显示第一行再跳行。
-    private var lyricReferenceTime: TimeInterval {
-        if let lyricAnchorTime { return lyricAnchorTime }
-        if isRestoringSeek || engine.currentItem == nil { return progress }
-        return livePlaybackTime
+    /// 歌词时钟：与 Coda 的 `LyricPlaybackClock` 同一套原理 ——
+    /// 每次引擎采样都把时钟重锚到引擎时间，两次采样之间按速率外推。
+    /// 歌词行高亮和逐字高亮都读这一个投影值，不再各自去取引擎时间。
+    private struct LyricClock {
+        private var anchorPosition: TimeInterval = 0
+        private var anchorDate = Date()
+        private var rate: Double = 0
+
+        mutating func reanchor(to position: TimeInterval, rate: Double, at date: Date = Date()) {
+            anchorPosition = position.isFinite ? max(position, 0) : 0
+            self.rate = rate.isFinite ? max(rate, 0) : 0
+            anchorDate = date
+        }
+
+        func position(at date: Date = Date(), duration: TimeInterval) -> TimeInterval {
+            let elapsed = max(date.timeIntervalSince(anchorDate), 0)
+            let estimated = max(anchorPosition + elapsed * rate, 0)
+            guard duration.isFinite, duration > 0 else { return estimated }
+            return min(estimated, duration)
+        }
     }
 
-    /// 歌词游标与逐字高亮共用的时间轴：定位后先用锚点，引擎到位后再跟随真实时间。
+    private var lyricClock = LyricClock()
+
+    /// seek 之后引擎还会继续上报旧位置。Coda 的播放引擎在这个阶段直接上报
+    /// 「请求的目标时间」，这里等价地记下目标值，等引擎自己走到附近再交还。
+    private var pendingLyricSeek: TimeInterval?
+    private var pendingLyricSeekDeadline = Date.distantPast
+
+    /// 歌词定位用的时间（视图侧逐帧外推，不需要等 0.1s 的进度回调）。
     var lyricDisplayTime: TimeInterval {
-        lyricAnchorTime ?? (isRestoringSeek || engine.currentItem == nil ? progress : livePlaybackTime)
+        lyricClock.position(duration: duration)
     }
 
-    /// 定位（拖动进度条 / 续播 / 点歌词）后，引擎在真正到达目标前仍会报告旧时间。
-    /// 这段时间歌词与进度都以目标时间为准，避免歌词先跳到旧行再跳回来。
-    private var lyricAnchorTime: TimeInterval?
-    private var lyricAnchorDeadline = Date.distantPast
+    private var lyricReferenceTime: TimeInterval { lyricDisplayTime }
 
-    private func setLyricAnchor(_ seconds: TimeInterval, timeout: TimeInterval = 8) {
+    /// 让歌词时钟以 position 为新锚点，并立即刷新一次当前行。
+    private func syncLyrics(at position: TimeInterval) {
+        lyricClock.reanchor(to: position, rate: isPlaying ? Double(playbackRate) : 0)
+        updateLyricsCursor(at: position)
+    }
+
+    private func beginLyricSeek(to seconds: TimeInterval, timeout: TimeInterval = 5) {
         guard seconds.isFinite, seconds >= 0 else { return }
-        lyricAnchorTime = seconds
-        lyricAnchorDeadline = Date().addingTimeInterval(timeout)
+        pendingLyricSeek = seconds
+        pendingLyricSeekDeadline = Date().addingTimeInterval(timeout)
+        syncLyrics(at: seconds)
     }
 
-    private func clearLyricAnchor() {
-        lyricAnchorTime = nil
-        lyricAnchorDeadline = Date.distantPast
+    private func clearPendingLyricSeek() {
+        pendingLyricSeek = nil
+        pendingLyricSeekDeadline = Date.distantPast
     }
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
@@ -737,30 +762,20 @@ final class PlayerService: ObservableObject {
                 guard !self.isScrubbing else { return }
                 let seconds = time.seconds
                 guard seconds.isFinite else { return }
-                // 定位后引擎会继续报告旧位置（在线流尤其明显）：在它真正到目标前，
-                // 歌词与进度都锁在目标时间上，否则歌词会先跳回旧行、进度条也会回弹。
-                // 只有 seek 完成回调会清 anchor；这里只负责把引擎新时间拉回目标对齐，
-                // 避免在引擎刚报到"接近目标"时就清 anchor、歌词被拉回还没到的时间。
-                if let anchor = self.lyricAnchorTime {
-                    if Date() > self.lyricAnchorDeadline {
-                        self.clearLyricAnchor()
+                // 歌词时钟（Coda 原理）：引擎采样只用来重锚，
+                // seek 未到位前锚在目标时间，续播窗口内锚在恢复位置。
+                var lyricSample = seconds
+                if let target = self.pendingLyricSeek {
+                    if abs(seconds - target) <= 1.0 || Date() > self.pendingLyricSeekDeadline {
+                        self.clearPendingLyricSeek()
                     } else {
-                        self.updateLyricsCursor(at: anchor)
-                        return
+                        lyricSample = target
                     }
                 }
-                // While a seek is pending the player still reports the old position: following it
-                // made the lyrics jump back and forth during quick scrubbing / lyric taps.
-                // Only briefly: a slow streamed seek must not freeze the lyrics while the audio keeps playing.
-                if (self.seekInFlight || self.queuedSeekTarget != nil),
-                   Date().timeIntervalSince(self.lastSeekRequestAt) < 0.8 { return }
-
-                // 续播窗口内引擎报告的是 0 秒（seek 还没生效）。此时跟随引擎时间
-                // 会把进度和歌词一起拉回开头，正是「续播后歌词对不上」的原因。
-                if self.isRestoringSeek {
-                    self.updateLyricsCursor(at: self.progress)
-                    return
-                }
+                if self.isRestoringSeek { lyricSample = self.progress }
+                self.lyricClock.reanchor(to: lyricSample,
+                                         rate: self.isPlaying ? Double(self.playbackRate) : 0)
+                self.updateLyricsCursor(at: self.lyricClock.position(duration: self.duration))
 
                 // Self-healing: once no fade is running, the audible state must match what the UI says
                 // (an interrupted fade used to leave the song playing after "pause", or silent after play).
@@ -773,9 +788,7 @@ final class PlayerService: ObservableObject {
                     }
                 }
 
-                // Lyrics need this cadence to stay in sync; the cursor itself
-                // only publishes when the line actually changes.
-                self.updateLyricsCursor(at: seconds)
+                // 歌词已在上方按时钟刷新；这里不再用原始引擎时间覆盖。
 
                 // 音源给出的音频长度有时和曲库元数据不一致（例如解析到了另一版
                 // 录音）。只信曲库时长会让「已播放」超过「总时长」，进度条也会溢出。
@@ -795,10 +808,12 @@ final class PlayerService: ObservableObject {
                 // re-renders it — and SwiftUI rebuilds the display list for the
                 // whole tree each time — to move the thumb a fraction of a
                 // pixel. Half a second is still smoother than the eye needs.
-                if abs(seconds - self.progress) > 0.45 {
-                    self.progress = seconds
+                // 拖动 / seek 后引擎还在报旧位置时，进度条也跟歌词用同一个采样值，
+                // 否则刚拖到的位置会被旧时间顶回去。
+                if abs(lyricSample - self.progress) > 0.45 {
+                    self.progress = lyricSample
                     NowPlayingManager.shared.updateElapsed(
-                        seconds,
+                        lyricSample,
                         rate: self.isPlaying ? Double(self.playbackRate) : 0
                     )
                     if self.isPlaying, Date().timeIntervalSince(self.lastProgressPersistAt) >= 1 {
@@ -991,6 +1006,8 @@ final class PlayerService: ObservableObject {
     private func pauseWithFade() {
         isPlaying = false
         AudioSpectrum.shared.reset()
+        // 暂停即以当前位置冻结 lyric clock 的速率，避免歌词在暂停后继续外推。
+        syncLyrics(at: livePlaybackTime)
         fadeVolume(to: 0, duration: 0.25) { [weak self] in
             guard let self, !self.isPlaying else { return }
             self.engine.pause()
@@ -1004,6 +1021,8 @@ final class PlayerService: ObservableObject {
         engine.play()
         engine.rate = playbackRate
         isPlaying = true
+        // 恢复播放时以当前引擎位置重锚歌词时钟，避免用暂停前的旧锚点外推。
+        syncLyrics(at: livePlaybackTime)
         fadeVolume(to: 1, duration: 0.45)
     }
 
@@ -1054,9 +1073,13 @@ final class PlayerService: ObservableObject {
     }
 
     /// Recomputes the current lyric line, publishing only on a change.
-    /// The lead makes a line light up just before it is sung.
+    /// 与 Coda 一致：逐句歌词提前 0.2s 点亮（人眼对"刚唱到"有延迟），
+    /// 逐字歌词使用作词人给的原生时间戳，不做提前。
     private func updateLyricsCursor(at seconds: TimeInterval) {
-        let index = lyrics?.activeIndex(at: seconds + SettingsManager.shared.effectiveLyricsOffset)
+        let wordTimed = SettingsManager.shared.verbatimLyrics && (lyrics?.hasVerbatimTimings ?? false)
+        let advance: TimeInterval = wordTimed ? 0 : 0.2
+        let offset = SettingsManager.shared.lyricsOffset
+        let index = lyrics?.activeIndex(at: seconds + offset + advance)
         let previousIndex = lyricsCursor.activeIndex
         if index != lyricsCursor.activeIndex {
             lyricsCursor.activeIndex = index
@@ -1151,9 +1174,8 @@ final class PlayerService: ObservableObject {
     /// never piles up requests on a streaming asset.
     func seek(to seconds: TimeInterval, completion: (@MainActor () -> Void)? = nil) {
         progress = seconds
-        // 先把歌词锚到目标时间：引擎要过一会儿才真的跳过去。
-        setLyricAnchor(seconds)
-        updateLyricsCursor(at: seconds)
+        // 引擎要过一会儿才真的跳过去：先让歌词时钟锚在目标时间。
+        beginLyricSeek(to: seconds)
         NowPlayingManager.shared.updateElapsed(
             seconds,
             rate: isPlaying ? Double(playbackRate) : 0
@@ -1179,11 +1201,13 @@ final class PlayerService: ObservableObject {
                 guard let self else { return }
                 self.seekInFlight = false
                 if self.queuedSeekTarget == nil {
-                    // 引擎确认 seek 完成时，清掉歌词锚点，之后让歌词跟随真实时间继续前进。
-                    let targetAnchor = self.lyricAnchorTime
-                    self.clearLyricAnchor()
-                    // 先按目标时间对齐一次，再让时间观察器接管（它会用 livePlaybackTime 继续刷新）。
-                    self.updateLyricsCursor(at: targetAnchor ?? self.livePlaybackTime)
+                    // 引擎报告 seek 完成；真正的歌词时间等观察器确认到位后自然接管。
+                    // 这里只把时钟重锚到目标，避免回调比音频到位更早时歌词被拉回旧位置。
+                    if let target = self.pendingLyricSeek {
+                        self.lyricClock.reanchor(to: target,
+                                                 rate: self.isPlaying ? Double(self.playbackRate) : 0)
+                        self.updateLyricsCursor(at: target)
+                    }
                     let completions = self.queuedSeekCompletions
                     self.queuedSeekCompletions = []
                     completions.forEach { $0() }
@@ -1388,7 +1412,7 @@ final class PlayerService: ObservableObject {
                     // 队列自然播完：把进度归零再持久化，下次启动不会又停在
                     // 结尾位置（否则会显示成上一次听完时的进度）。
                     progress = 0
-                    updateLyricsCursor(at: 0)
+                    syncLyrics(at: 0)
                     NowPlayingManager.shared.updateElapsed(0, rate: 0)
                     savePlaybackProgress()
                 }
@@ -1404,7 +1428,7 @@ final class PlayerService: ObservableObject {
         scrobbleIfNeeded(completed: true)
         if sleepTimer.consumeEndOfCurrentTrack() {
             progress = duration
-            updateLyricsCursor(at: duration)
+            syncLyrics(at: duration)
             pause()
             engine.replaceCurrentItem(with: nil)
             return
@@ -1535,8 +1559,9 @@ final class PlayerService: ObservableObject {
             progress = 0
             pendingSeek = nil
         }
-        // 换歌时清掉上一首的歌词锚点（续播的锚点会在真实 seek 时重新设置）。
-        clearLyricAnchor()
+        // 换歌时清掉上一首的定位状态，并把歌词时钟归零（续播会重新锚到恢复位置）。
+        clearPendingLyricSeek()
+        lyricClock.reanchor(to: progress, rate: 0)
         servedQuality = nil
         servedSourceLabel = nil
         servedQualityTrackKey = nil
@@ -1908,19 +1933,18 @@ final class PlayerService: ObservableObject {
             // 定位用宽松容差，避免精确 seek 在未就绪的流上卡住。
             engine.automaticallyWaitsToMinimizeStalling = false
             isRestoringSeek = true
-            // 续播：引擎在 seek 生效前一直报 0 秒，锚住恢复位置，歌词才不会先回到第一行。
-            setLyricAnchor(seekPosition)
+            // 续播：引擎在 seek 生效前一直报 0 秒，先把歌词锚在恢复位置。
+            beginLyricSeek(to: seekPosition)
             let gate = PlaybackStartGate()
             let startPlayback: @MainActor () -> Void = { [weak self] in
                 guard let self, gate.take(),
                       generation == self.resolveGeneration,
                       self.engine.currentItem === item else { return }
                 self.isRestoringSeek = false
-                // 续播 seek 也会给歌词一个锚点，引擎真的到位后就放它走。
-                let restoredAnchor = self.lyricAnchorTime
-                self.clearLyricAnchor()
+                let restored = self.pendingLyricSeek ?? self.progress
                 self.engine.playImmediately(atRate: self.playbackRate)
-                self.updateLyricsCursor(at: restoredAnchor ?? self.livePlaybackTime)
+                // 放声后立即以恢复位置起算，不等下一次进度回调。
+                self.syncLyrics(at: restored)
             }
             engine.seek(to: CMTime(seconds: seekPosition, preferredTimescale: 600),
                         toleranceBefore: .positiveInfinity,

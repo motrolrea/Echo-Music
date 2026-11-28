@@ -12,9 +12,12 @@ enum QishuiPlayback {
         let method: String?
 
         var isSupported: Bool {
+            // 只要带了解密密钥就一定能处理：以前会按 encryption_method 的字符串
+            // 判断，遇到没见过的写法就把整曲候选丢掉、只剩试听。
             if spadeA?.isEmpty == false || playAuth?.isEmpty == false { return true }
             let method = (self.method ?? "").lowercased()
             return method.isEmpty || method.contains("cenc") || method.contains("ctr")
+                || method.contains("spade") || method.contains("aes")
         }
     }
 
@@ -225,6 +228,8 @@ enum QishuiPlayback {
     }
 
     private static func resolve(player: [String: Any], requested: Tier) async throws -> AudioSource {
+        // 先记住试听候选，最后没有整曲才回退到它。
+        var previewFallback: AudioSource?
         for variant in ["full", "preview"] {
             guard let info = (player[variant] as? [String: Any])?["video_model_info"] as? [String: Any] else {
                 continue
@@ -248,7 +253,10 @@ enum QishuiPlayback {
                     candidates.append((url, tier, QishuiFields.int(meta["bitrate"]) ?? 0, codec, encryption))
                 }
             }
-            if candidates.isEmpty, let playInfoURL = info["url_player_info"] as? String,
+            // `url_player_info` 是车机/旧版客户端的整曲播放清单：早期就是从这里
+            // 拿到非会员也能听的整曲（只下载 + 本地解密，不做 30 秒裁切）。
+            // 以前只在 video_model 为空时才读它，会员歌就只能拿到试听片段。
+            if let playInfoURL = info["url_player_info"] as? String,
                let url = trustedURL(playInfoURL) {
                 if let list = try? await fetchPlayInfoList(url) {
                     for item in list {
@@ -275,14 +283,17 @@ enum QishuiPlayback {
             })
             guard let best = ranked.first else { continue }
 
-            let preview = variant == "preview"
+            let isPreviewVariant = variant == "preview"
             let previewInfo = player["preview"] as? [String: Any]
             let previewDuration = previewInfo?["duration"] as? [String: Any]
-            let clipStart = preview ? (QishuiFields.int(previewDuration?["start_ms"]) ?? 0) : 0
-            return AudioSource(url: best.url, quality: best.tier.lxToken,
-                               preview: preview, clipStartMS: clipStart,
-                               encryption: best.encryption, codec: best.codec)
+            let clipStart = isPreviewVariant ? (QishuiFields.int(previewDuration?["start_ms"]) ?? 0) : 0
+            let source = AudioSource(url: best.url, quality: best.tier.lxToken,
+                                     preview: isPreviewVariant, clipStartMS: clipStart,
+                                     encryption: best.encryption, codec: best.codec)
+            if !isPreviewVariant { return source }
+            previewFallback = previewFallback ?? source
         }
+        if let previewFallback { return previewFallback }
 
         // 字段结构不标准时（PC Web 的 track_v2、旧版本返回），递归扫描
         // 任意层级的可播放地址，尽量把能播的音源捡回来。

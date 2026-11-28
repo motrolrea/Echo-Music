@@ -399,7 +399,16 @@ enum QishuiCatalogService {
         await MainActor.run { QishuiSessionStore.shared.credential?.accountCookie }
     }
 
+    /// 场景列表和榜单在短时间内不会变。汽水每个请求都要过一次外部签名服务，
+    /// 每次进页面都重拉会让「封面/歌单」晚一拍才出现，所以缓存 10 分钟。
+    @MainActor private static var cachedFeedModes: (modes: [FeedMode], expires: Date)?
+    @MainActor private static var cachedCharts: (charts: [Chart], expires: Date)?
+    private static let catalogCacheLifetime: TimeInterval = 600
+
     static func feedModes(credential: QishuiCredential? = nil) async throws -> [FeedMode] {
+        if let cached = await MainActor.run(body: { cachedFeedModes }), cached.expires > Date() {
+            return cached.modes
+        }
         var cookie = credential?.accountCookie
         if cookie == nil { cookie = await currentAccountCookie() }
         let root = try await QishuiClient.shared.signedPost(
@@ -408,7 +417,11 @@ enum QishuiCatalogService {
         let rawBlocks = root["feed_mode_block"]
             ?? (root["data"] as? [String: Any])?["feed_mode_block"]
         var seen = Set(preferenceModes.map(\.id))
-        return preferenceModes + modes(from: objectsOrSingle(rawBlocks)).filter { seen.insert($0.id).inserted }
+        let result = preferenceModes + modes(from: objectsOrSingle(rawBlocks)).filter { seen.insert($0.id).inserted }
+        await MainActor.run {
+            cachedFeedModes = (result, Date().addingTimeInterval(catalogCacheLifetime))
+        }
+        return result
     }
 
     /// 汽水部分接口会把「只有一个元素的数组」直接写成字典。
@@ -553,6 +566,10 @@ enum QishuiCatalogService {
     }
 
     static func charts() async -> [Chart] {
+        if let cached = await MainActor.run(body: { cachedCharts }), cached.expires > Date(),
+           !cached.charts.isEmpty {
+            return cached.charts
+        }
         let root = try? await QishuiClient.shared.signedPost(path: "/luna/pc/discover", body: [:],
                                                              cookie: await currentAccountCookie())
         let blocks = QishuiFields.objects(root?["blocks"])
@@ -580,7 +597,11 @@ enum QishuiCatalogService {
             result.append(Chart(id: id, name: title, coverURL: cover))
         }
         result += knownCharts.filter { seen.insert($0.id).inserted }
-        return result
+        let final = result
+        await MainActor.run {
+            cachedCharts = (final, Date().addingTimeInterval(catalogCacheLifetime))
+        }
+        return final
     }
 
     static func chartTracks(id: String, limit: Int = 100) async throws -> (name: String?, tracks: [Track]) {

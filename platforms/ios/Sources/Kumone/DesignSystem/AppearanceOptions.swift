@@ -76,8 +76,14 @@ struct FloatingEffectOverlay: View {
     }
 
     private let orbs: [Orb] = FloatingEffectOverlay.makeOrbs()
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+        // 退到后台 / 开启减弱动态时停止重绘：这层是全屏 30fps 的模糊圆，
+        // 一直跑着是待机耗电的大头。
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0,
+                                paused: scenePhase != .active || reduceMotion)) { timeline in
             let time = timeline.date.timeIntervalSinceReferenceDate
             GeometryReader { proxy in
                 ForEach(orbs) { orb in
@@ -105,18 +111,24 @@ import UIKit
 
 /// Haptic feedback gated by the 触感反馈 setting (default on).
 enum Haptics {
+    private static let impact = UIImpactFeedbackGenerator(style: .light)
+    private static let selection = UISelectionFeedbackGenerator()
+
     static var isEnabled: Bool {
         UserDefaults.standard.object(forKey: "moumusic.hapticsEnabled") as? Bool ?? true
     }
 
+    /// 复用同一组 generator 并提前 prepare：每次点击都新建会让震动比动画晚一拍。
     static func tap() {
         guard isEnabled else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        impact.prepare()
+        impact.impactOccurred()
     }
 
     static func tick() {
         guard isEnabled else { return }
-        UISelectionFeedbackGenerator().selectionChanged()
+        selection.prepare()
+        selection.selectionChanged()
     }
 }
 #endif

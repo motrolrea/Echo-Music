@@ -115,7 +115,6 @@ struct SettingsView: View {
                     }
                 Toggle("播放暂停淡入淡出", isOn: $fadeEnabled)
                 Toggle("网易云每日自动签到", isOn: $neteaseAutoSignIn)
-                Toggle("触感反馈", isOn: $hapticsEnabled)
                 Toggle("启动时自动播放上次歌曲", isOn: $autoPlayLast)
                 Toggle("第三方音源播放会员歌时提醒", isOn: $vipReminder)
                 Toggle("音质降级时提示", isOn: $qualityDowngradeNotice)
@@ -551,41 +550,72 @@ struct SettingsView: View {
                 Text("关闭后卡片和按钮使用普通半透明材质，更省电。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Toggle("全局漂浮特效", isOn: $floatingEffects)
-                Toggle("滚动时收起底栏", isOn: $tabBarMinimizes)
-                LabeledContent("第三方字体") {
-                    Text(customFontName.isEmpty ? "系统默认" : customFontName)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Button {
-                    showFontImporter = true
-                } label: {
-                    Label("导入字体文件…", systemImage: "square.and.arrow.down")
-                }
-                .sheet(isPresented: $showFontImporter) {
-                    FontDocumentPicker { url in
-                        showFontImporter = false
-                        if let name = AppFontStore.shared.install(url) {
-                            customFontName = name
-                            ToastCenter.shared.show("已使用 \(name)")
-                        } else {
-                            ToastCenter.shared.show("这个字体无法安装")
-                        }
-                    } onCancel: {
-                        showFontImporter = false
-                    }
-                    .ignoresSafeArea()
-                }
-                if !customFontName.isEmpty {
-                    Button("恢复系统字体", role: .destructive) {
-                        AppFontStore.shared.clear()
-                        customFontName = ""
-                    }
-                }
-                Text("支持导入 ttf 或 otf。导入后重新打开页面即可看到效果。")
+                Toggle("触摸反馈", isOn: $hapticsEnabled)
+                Text("点击按钮、卡片时让手机轻微震动一下。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Toggle("全局漂浮特效", isOn: $floatingEffects)
+                Toggle("滚动时收起底栏", isOn: $tabBarMinimizes)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "textformat")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.accent)
+                            .frame(width: 30, height: 30)
+                            .background(Theme.accent.opacity(0.14),
+                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("第三方字体")
+                                .font(.subheadline.weight(.medium))
+                            Text(customFontName.isEmpty ? "系统默认" : customFontName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        if !customFontName.isEmpty {
+                            Button("恢复默认") {
+                                AppFontStore.shared.clear()
+                                customFontName = ""
+                            }
+                            .font(.caption.weight(.medium))
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    Button {
+                        showFontImporter = true
+                    } label: {
+                        Label("导入字体文件", systemImage: "square.and.arrow.down")
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity, minHeight: 38)
+                            .background(Theme.accent.opacity(0.12),
+                                        in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(Theme.accent.opacity(0.22), lineWidth: 0.8)
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(Theme.accent)
+                    .sheet(isPresented: $showFontImporter) {
+                        FontDocumentPicker { url in
+                            showFontImporter = false
+                            if let name = AppFontStore.shared.install(url) {
+                                customFontName = name
+                                ToastCenter.shared.show("已使用 \(name)")
+                            } else {
+                                ToastCenter.shared.show("这个字体无法安装")
+                            }
+                        } onCancel: {
+                            showFontImporter = false
+                        }
+                        .ignoresSafeArea()
+                    }
+                    Text("支持导入 ttf 或 otf。导入后重新打开页面即可看到效果。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Picker("语言", selection: $appLanguage) {
                     Text("跟随系统").tag("system")
                     Text("简体中文").tag("zh-Hans")

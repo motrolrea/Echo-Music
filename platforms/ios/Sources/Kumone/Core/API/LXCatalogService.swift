@@ -925,11 +925,14 @@ enum LXCatalogService {
         // 汽水：场景只做「场景电台」卡片，推荐歌曲用官方 song-tab 推荐流。
         // 以前用前三个场景歌单的歌曲拼推荐，结果整页都是一首歌单里的歌（比如总是「洗澡」）。
         if platform == .sd {
-            let scenes = (try? await qishuiFeedPlaylists(limit: limit)) ?? []
-            let tracks = (try? await QishuiCatalogService.feed(
+            // 场景卡和推荐歌曲互不依赖：并行请求，页面能早一步出内容。
+            async let scenesTask = qishuiFeedPlaylists(limit: limit)
+            async let tracksTask = QishuiCatalogService.feed(
                 preference: variety ? "fresh" : nil,
                 limit: limit
-            )) ?? []
+            )
+            let scenes = (try? await scenesTask) ?? []
+            let tracks = (try? await tracksTask) ?? []
             return (playlists: scenes, tracks: tracks)
         }
 

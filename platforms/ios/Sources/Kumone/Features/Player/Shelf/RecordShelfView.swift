@@ -76,6 +76,9 @@ struct RecordShelfView: UIViewRepresentable {
         private var coverAnchor = -1000
         private var dragStart: CGFloat = 0
         private var displayLink: CADisplayLink?
+        /// 静止时停止重绘，交互时再唤醒（省电）。
+        private weak var sceneView: SCNView?
+        private var idleFrames = 0
         private var lastTickTime: CFTimeInterval = 0
         private var syncedTracks: [Track] = []
 
@@ -122,14 +125,33 @@ struct RecordShelfView: UIViewRepresentable {
         func stop() {
             displayLink?.invalidate()
             displayLink = nil
+            sceneView?.isPlaying = false
+            sceneView = nil
         }
 
         private func start() {
             guard displayLink == nil else { return }
+            sceneView?.isPlaying = true
             let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
             link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 90)
             link.add(to: .main, forMode: .common)
             displayLink = link
+            idleFrames = 0
+        }
+
+        /// 唱片架静止时停掉 display link：3D 场景不再以 90fps 重绘，
+        /// 这是播放页最耗电的一块（尤其 iPad 常驻右栏）。
+        private func pauseRendering() {
+            displayLink?.invalidate()
+            displayLink = nil
+            sceneView?.isPlaying = false
+        }
+
+        /// 有交互或数据变化时唤醒渲染。
+        private func wake() {
+            idleFrames = 0
+            guard displayLink == nil else { return }
+            start()
         }
 
         @objc private func tick(_ link: CADisplayLink) {
@@ -186,6 +208,16 @@ struct RecordShelfView: UIViewRepresentable {
             if abs(anchor - coverAnchor) >= 2 {
                 coverAnchor = anchor
                 loadVisibleCovers(around: anchor, in: syncedTracks)
+            }
+
+            // 全部静止后降温：连续 40 帧无运动就停掉渲染，交互时再唤醒。
+            let moving = abs(scrollVelocity) > 0.01 || abs(layoutVelocity) > 0.01
+                || albums.contains { abs($0.velocity) > 0.01 }
+            if moving {
+                idleFrames = 0
+            } else {
+                idleFrames += 1
+                if idleFrames > 40 { pauseRendering() }
             }
         }
 
@@ -260,6 +292,7 @@ struct RecordShelfView: UIViewRepresentable {
         // MARK: - 手势
 
         func installGestures(on view: SCNView) {
+            sceneView = view
             let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
             view.addGestureRecognizer(tap)
 
@@ -275,6 +308,7 @@ struct RecordShelfView: UIViewRepresentable {
         }
 
         @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+            wake()
             guard let view = gesture.view as? SCNView else { return }
             let point = gesture.location(in: view)
             for hit in view.hitTest(point, options: [:]) {
@@ -294,6 +328,7 @@ struct RecordShelfView: UIViewRepresentable {
         }
 
         @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+            wake()
             guard let view = gesture.view else { return }
             switch gesture.state {
             case .began:
@@ -318,6 +353,7 @@ struct RecordShelfView: UIViewRepresentable {
         }
 
         private func select(_ index: Int) {
+            wake()
             if expandedIndex == index {
                 expandedIndex = nil
                 return
@@ -391,6 +427,7 @@ struct RecordShelfView: UIViewRepresentable {
                 applyCover(artwork, for: tracks[center].id)
             }
             loadVisibleCovers(around: center, in: tracks)
+            wake()
         }
 
         private func ensureWindow(around center: Int, tracks: [Track]) {
