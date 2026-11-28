@@ -258,7 +258,8 @@ enum QishuiCatalogService {
     }
 
     static func feedModes(credential: QishuiCredential? = nil) async throws -> [FeedMode] {
-        let cookie = credential?.accountCookie ?? await currentAccountCookie()
+        var cookie = credential?.accountCookie
+        if cookie == nil { cookie = await currentAccountCookie() }
         let root = try await QishuiClient.shared.signedPost(
             path: "/luna/pc/feed/mode", body: [:], cookie: cookie
         )
@@ -277,7 +278,8 @@ enum QishuiCatalogService {
 
     static func feed(scene: String? = nil, preference: String? = nil,
                      limit: Int = 20, credential: QishuiCredential? = nil) async throws -> [Track] {
-        let cookie = credential?.accountCookie ?? await currentAccountCookie()
+        var cookie = credential?.accountCookie
+        if cookie == nil { cookie = await currentAccountCookie() }
         var body: [String: Any] = [
             "played_media": [Any](),
             "did_first_use_time": Int(Date().timeIntervalSince1970),
